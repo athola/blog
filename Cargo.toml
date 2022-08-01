@@ -1,0 +1,22 @@
+[package]
+name = "blog"
+version = "0.1.0"
+authors = ["Alex Thola <alexthola@gmail.com>"]
+license = "0BSD"
+description = "A public webblog"
+homepage = "https://github.com/athola/blog"
+repository = "https://github.com/athola/blog"
+readme = "https://github.com/athola/blog/README.md"
+documentation = "https://github.com/athola/blog/docs"
+keywords = ["axum", "blog", "web", "website"]
+categories = [ "website" ]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+axum = "0.5"
+axum-server = { version = "0.3", features = ["tls-rustls"] }
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
