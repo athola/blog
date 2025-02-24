@@ -1,18 +1,15 @@
-#![deny(
-    clippy::pedantic,
-    clippy::nursery,
-    clippy::cargo,
-)]
+#![warn(clippy::all, clippy::cargo, clippy::nursery, clippy::pedantic)]
+use std::{net::SocketAddr, path::PathBuf};
 use axum::{
-    extract::Host,
-    handler::Handler,
+    handler::HandlerWithoutStateExt,
     http::{StatusCode, Uri},
     response::Redirect,
     routing::get,
     BoxError, Router,
 };
+use axum_extra::extract::Host;
 use axum_server::tls_rustls::RustlsConfig;
-use std::{net::SocketAddr, path::PathBuf};
+use tracing::{debug, error, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Clone, Copy)]
@@ -49,32 +46,32 @@ async fn main() {
     .await;
     let config = match config_result {
         Ok(v) => {
-            println!("Successfully read from .pem file {v:?}");
+            info!("Successfully read from .pem file {v:?}");
             v
-        },
+        }
         Err(e) => {
-            println!("Error reading from .pem file: {e:?}");
-            return
-        },
+            error!("Error reading from .pem file: {e:?}");
+            return;
+        }
     };
 
     let app = Router::new().route("/", get(handler));
 
     // run https server
     let addr = SocketAddr::from(([127, 0, 0, 1], ports.https));
-    tracing::debug!("listening on {}", addr);
-    println!("listening on {}", addr);
+    debug!("listening on {}", addr);
     match axum_server::bind_rustls(addr, config)
         .serve(app.into_make_service())
-        .await {
-            Ok(v) => println!("Bound to axum server {v:?}"),
-            Err(e) => println!("Error binding to axum server: {e:?}"),
-        }
+        .await
+    {
+        Ok(v) => info!("Bound to axum server {v:?}"),
+        Err(e) => error!("Error binding to axum server: {e:?}"),
+    }
 }
 
 #[allow(clippy::unused_async)]
 async fn handler() -> Result<String, StatusCode> {
-    Ok("Hello, World!".to_string())
+    Ok("Hello, World!".to_owned())
 }
 
 async fn redirect_http_to_https(ports: Ports) {
@@ -95,21 +92,27 @@ async fn redirect_http_to_https(ports: Ports) {
 
     let redirect = move |Host(host): Host, uri: Uri| async move {
         match make_https(&host, uri, ports) {
-            Ok(uri) => Ok(Redirect::permanent(&uri.to_string())),
+            Ok(redir_uri) => Ok(Redirect::permanent(&redir_uri.to_string())),
             Err(error) => {
-                tracing::warn!(%error, "failed to convert URI to HTTPS");
+                warn!(%error, "failed to convert URI to HTTPS");
                 Err(StatusCode::BAD_REQUEST)
             }
         }
     };
 
     let addr = SocketAddr::from(([127, 0, 0, 1], ports.http));
-    tracing::debug!("http redirect listening on {}", addr);
+    debug!("http redirect listening on {}", addr);
+    let listener = match tokio::net::TcpListener::bind(addr).await {
+        Ok(tcp_list) => tcp_list,
+        Err(e) => {
+            error!("Failed to bind {addr:?} to tcp listener: {e:?}");
+            return
+        },
+    };
 
-    match axum::Server::bind(&addr)
-        .serve(redirect.into_make_service())
-        .await {
-            Ok(v) => println!("Bound {addr:?} to axum server {v:?}"),
-            Err(e) => println!("Failed to bind {addr:?} to axum server: {e:?}"),
-        }
+    match axum::serve(listener, redirect.into_make_service()).await
+    {
+        Ok(v) => info!("Serving {addr:?} on axum server {v:?}"),
+        Err(e) => error!("Failed to serve {addr:?} on axum server: {e:?}"),
+    }
 }
