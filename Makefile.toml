@@ -50,14 +50,34 @@ command = "cargo"
 args = ["clippy", "--fix"]
 dependencies = ["build"]
 
+[tasks.bloat]
+command = "cargo"
+args = ["bloat", "${@}"]
+dependencies = ["build"]
+
+[tasks.leptos]
+command = "cargo"
+args = ["leptos", "${@}"]
+dependencies = ["build"]
+
+[tasks.machete]
+command = "cargo"
+args = ["machete"]
+dependencies = ["build"]
+
+[tasks.outdated]
+command = "cargo"
+args = ["outdated"]
+dependencies = ["build"]
+
 [tasks.security]
 command = "cargo"
 args = ["audit"]
 dependencies = ["build"]
 
-[tasks.bloat]
+[tasks.sort]
 command = "cargo"
-args = ["bloat", "${@}"]
+args = ["sort"]
 dependencies = ["build"]
 
 [tasks.spellcheck]

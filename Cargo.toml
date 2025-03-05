@@ -9,7 +9,7 @@ repository = "https://github.com/athola/blog"
 readme = "https://github.com/athola/blog/README.md"
 documentation = "https://github.com/athola/blog/docs"
 keywords = ["axum", "blog", "web", "website"]
-categories = [ "website" ]
+categories = ["website"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
