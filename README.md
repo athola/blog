@@ -4,3 +4,7 @@
 
 A blog engine written in Rust, powered by SurrealDB, Axum, and Leptos.
 This project is responsible for the https://alexthola.com blog.
+
+## Run
+
+Startup the server with `cargo run`.
