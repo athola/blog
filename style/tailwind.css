@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+    background-color: #fafafa;
+}
+
+h1 {
+    scroll-argin-top: 5rem;
+}
