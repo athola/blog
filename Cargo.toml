@@ -12,26 +12,77 @@ keywords = ["axum", "blog", "web", "website"]
 categories = ["website"]
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-[dependencies]
+[workspace]
+resolver = "2"
+members = ["app", "frontend", "markdown", "server"]
+
+[workspace.dependencies]
+axum = { version = "0.7", features = ["macros"] }
 cfg-if = "1"
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-wasm-bindgen-futures = "0.4.50"
-web-sys = "0.3.77"
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-axum = "0.8"
-axum-extra = "0.10"
-axum-server = { version = "0.7.1", features = ["tls-rustls"] }
-tokio = { version = "1", features = ["full"] }
+chrono = "0.4.38"
+console_error_panic_hook = "0.1"
+console_log = "1"
+dotenvy = "0.15.7"
+http = "1"
+icondata = "0.5.0"
+katex = { version = "0.4.6", default-features = false, features = ["duktape"] }
+log = "0.4.20"
+leptos = { version = "0.7.3", features = ["rustls", "nightly"] }
+leptos_axum = "0.7.3"
+leptos_icos = "0.4.0"
+leptos_meta = "0.7.3"
+leptos_router = { version = "0.7.3", features = ["nightly"] }
+lettre = { version = "0.11.9", default-features = false, features = [
+    "builder",
+    "smtp-transport",
+    "rustls-tls",
+    "tokio1",
+    "tokio1-rustls-tls",
+] }
+pulldown-cmark = "0.12.0"
+regex = "1.10.6"
+rss = "2.0.9"
+serde = { version = "1.0.204", features = ["derive"] }
+surrealdb = { version = "2.0.1", features = ["protocol-http"] }
+syntect = "5.2.0"
+thiserror = "1"
+tokio = { version = "1", features = ["rt-multi-thread"] }
+tower = "0.5.1"
+tower-https = { version = "0.6.2", features = [
+    "compression-br",
+    "compression-deflate",
+    "compression-gzip",
+    "compression-zstd",
+    "cors",
+    "fs",
+    "trace",
+] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = "0.3.18"
+wasm-bindgen = "0.2.96"
+web-sys = "0.3.72"
+
+# Defines a size-optimized profile for the WASM bundle in release mode
+[profile.wasm-release]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
 
 [package.metadata.leptos]
+# This name is used for the WASM, JS, and CSS file names.
+name = "blog"
+
 # The name used by wasm-bindgen/cargo-leptos for the JS/WASM bundle.
 # Defaults to the crate name.
 output-name = "blog"
+
+# The package in the workspace which contains the server binary (binary crate).
+bin-package = "server"
+
+# The package in the workspace that contains the frontend wasm binary (library crate).
+lib-package = "frontend"
 
 # The site root directory is where cargo-leptos generates all output.
 # WARNING: all content of this directory will be erased upon rebuild. Use in ssr setup.
@@ -74,7 +125,7 @@ env = "DEV"
 # The feautres to use when compiling the bin target
 #
 # Optional. Can be over-ridden with the command line parameter --bin-features.
-bin-features = ["ssr"]
+bin-features = []
 
 # If the --no-default-features flag should be used when compiling the bin target.
 #
@@ -84,7 +135,12 @@ bin-default-feaures = false
 # The features to use when compiling the lib target.
 #
 # Optional. Can be over-ridden with the command line parameter --lib-features.
-lib-features = ["hydrate"]
+lib-features = []
+
+# If the --no-default-features flag should be used when compiling the lib target.
+#
+# Optional. Defaults to false.
+lib-default-feaures = false
 
 # The profile to use for the lib target when compiling for release.
 #
