@@ -1,4 +1,8 @@
-[package]
+[workspace]
+resolver = "2"
+members = ["app", "frontend", "markdown", "server"]
+
+[workspace.package]
 name = "blog"
 version = "0.1.0"
 authors = ["Alex Thola <alexthola@gmail.com>"]
@@ -8,47 +12,43 @@ homepage = "https://github.com/athola/blog"
 repository = "https://github.com/athola/blog"
 readme = "https://github.com/athola/blog/README.md"
 documentation = "https://github.com/athola/blog/docs"
-keywords = ["axum", "blog", "web", "website"]
+keywords = ["axum", "blog", "leptos", "web", "website"]
 categories = ["website"]
-edition = "2021"
-
-[workspace]
-resolver = "2"
-members = ["app", "frontend", "markdown", "server"]
+edition = "2024"
 
 [workspace.dependencies]
-axum = { version = "0.7", features = ["macros"] }
+axum = { version = "0.8", features = ["macros"] }
 cfg-if = "1"
-chrono = "0.4.38"
+chrono = "0.4.40"
 console_error_panic_hook = "0.1"
 console_log = "1"
 dotenvy = "0.15.7"
 http = "1"
 icondata = "0.5.0"
 katex = { version = "0.4.6", default-features = false, features = ["duktape"] }
-log = "0.4.20"
-leptos = { version = "0.7.3", features = ["rustls", "nightly"] }
-leptos_axum = "0.7.3"
-leptos_icos = "0.4.0"
-leptos_meta = "0.7.3"
-leptos_router = { version = "0.7.3", features = ["nightly"] }
-lettre = { version = "0.11.9", default-features = false, features = [
+log = "0.4.26"
+leptos = { version = "0.7.7", features = ["rustls", "nightly"] }
+leptos_axum = "0.7.7"
+leptos_icons = "0.5.0"
+leptos_meta = "0.7.7"
+leptos_router = { version = "0.7.7", features = ["nightly"] }
+lettre = { version = "0.11.15", default-features = false, features = [
     "builder",
     "smtp-transport",
     "rustls-tls",
     "tokio1",
     "tokio1-rustls-tls",
 ] }
-pulldown-cmark = "0.12.0"
-regex = "1.10.6"
-rss = "2.0.9"
-serde = { version = "1.0.204", features = ["derive"] }
-surrealdb = { version = "2.0.1", features = ["protocol-http"] }
+pulldown-cmark = "0.13.0"
+regex = "1.11.1"
+rss = "2.0.12"
+serde = { version = "1.0.219", features = ["derive"] }
+surrealdb = { version = "2.2.1", features = ["protocol-http"] }
 syntect = "5.2.0"
-thiserror = "1"
+thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread"] }
-tower = "0.5.1"
-tower-https = { version = "0.6.2", features = [
+tower = "0.5.2"
+tower-http = { version = "0.6.2", features = [
     "compression-br",
     "compression-deflate",
     "compression-gzip",
@@ -58,9 +58,9 @@ tower-https = { version = "0.6.2", features = [
     "trace",
 ] }
 tracing = "0.1"
-tracing-subscriber = "0.3.18"
-wasm-bindgen = "0.2.96"
-web-sys = "0.3.72"
+tracing-subscriber = "0.3.19"
+wasm-bindgen = "0.2.100"
+web-sys = "0.3.77"
 
 # Defines a size-optimized profile for the WASM bundle in release mode
 [profile.wasm-release]
@@ -70,7 +70,7 @@ lto = true
 codegen-units = 1
 panic = "abort"
 
-[package.metadata.leptos]
+[[workspace.metadata.leptos]]
 # This name is used for the WASM, JS, and CSS file names.
 name = "blog"
 

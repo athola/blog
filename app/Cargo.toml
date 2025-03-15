@@ -1,0 +1,44 @@
+[package]
+name = "app"
+version = "0.1.0"
+authors = ["Alex Thola <alexthola@gmail.com>"]
+license = "0BSD"
+description = "A public webblog app"
+homepage = "https://github.com/athola/blog"
+repository = "https://github.com/athola/blog"
+readme = "https://github.com/athola/blog/README.md"
+documentation = "https://github.com/athola/blog/docs"
+keywords = ["axum", "blog", "leptos", "web", "website"]
+categories = ["website"]
+edition = "2024"
+
+[dependencies]
+markdown = { path = "../markdown", default-features = false, features = ["ssr"], optional = true }
+axum = { workspace = true, optional = true }
+chrono.workspace = true
+http.workspace = true
+icondata.workspace = true
+leptos.workspace = true
+leptos_axum = { workspace = true, optional = true }
+leptos_icons.workspace = true
+leptos_meta.workspace = true
+leptos_router.workspace = true
+lettre = { workspace = true, optional = true }
+serde.workspace = true
+surrealdb.workspace = true
+thiserror.workspace = true
+tracing = { workspace = true, optional = true }
+web-sys.workspace = true
+
+[features]
+hydrate = ["leptos/hydrate"]
+ssr = [
+    "leptos/ssr",
+    "leptos_meta/ssr",
+    "leptos_router/ssr",
+    "dep:axum",
+    "dep:leptos_axum",
+    "dep:lettre",
+    "dep:markdown",
+    "dep:tracing",
+]

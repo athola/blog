@@ -51,4 +51,46 @@ async fn main() {
         db,
         leptos_options: leptos_options.clone(),
     };
+
+    let app = Router::new()
+        .leptos_routes_with_context(
+            &app_state,
+            routes,
+            move || provide_context(app_state.clone()),
+            move || shell(leptos_options.clone()),
+        )
+        .route("/rss.xml", get(rss_handler))
+        .route("/sitemap.xml", get(sitemap_handler))
+        .layer(
+            tower::ServiceBuilder::new()
+                .layer(TraceLayer::new_for_http())
+                .layer(axum::middleware::from_fn(redirect_www)),
+        )
+        .layer(
+            CompressionLayer::new()
+                .quality(CompressionLevel::Default)
+                .compress_when(
+                    SizeAbove::new(1500)
+                        .and(NotForContentType::GRPC)
+                        .and(NotForContentType::IMAGES)
+                        .and(NotForContentType::const_new("application/xml"))
+                        .and(NotForContentType::const_new("application/javascript"))
+                        .and(NotForContentType::const_new("application/wasm"))
+                        .and(NotForContentType::const_new("test/css"))
+                ),
+        )
+        .fallback(leptos_axum::file_and_error_handler::<AppState, _>(shell))
+        .with_state(app_state);
+
+    let listener = match tokio::net::TcpListener::bind(&addr).await {
+        Ok(list) => list,
+        Err(_err) => {
+            logging::error!("Failed to bind tcp listener to {}: {}", &addr, _err);
+            return;
+        }
+    };
+    logging::log!("Listening on http://{}", &addr);
+    if let Err(_err) = axum::serve(listener, app.into_make_service()).await {
+        logging::error!("Failed to serve app: {}", _err);
+    };
 }
