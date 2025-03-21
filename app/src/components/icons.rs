@@ -7,7 +7,7 @@ use leptos_icons::{Icon, IconProps};
 
 pub fn component() -> impl IntoView {
     div().class("flex flex-row gap-3 items-center h-10").child((
-        a().href("https://github.com/alexthola/")
+        a().href("https://github.com/athola/")
             .rel("noopener noreferrer")
             .target("_blank")
             .aria_label("GitHub")
