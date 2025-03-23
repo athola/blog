@@ -23,7 +23,7 @@ async fn main() {
         tracing::Level::INFO
     };
 
-    tracing_subscriber::fmt)
+    tracing_subscriber::fmt()
         .with_file(true)
         .with_line_number(true)
         .with_max_level(tracing_level)
@@ -37,7 +37,7 @@ async fn main() {
     let conf = match get_configuration(None) {
         Ok(cfg) => cfg,
         Err(_) => {
-            logging.error!("Failed to get configuration");
+            logging::error!("Failed to get configuration");
             return
         }
     };
@@ -56,8 +56,14 @@ async fn main() {
         .leptos_routes_with_context(
             &app_state,
             routes,
-            move || provide_context(app_state.clone()),
-            move || shell(leptos_options.clone()),
+            {
+                let app_state = app_state.clone();
+                move || provide_context(app_state.clone())
+            },
+            {
+                let leptos_options = leptos_options.clone();
+                move || shell(leptos_options.clone())
+            },
         )
         .route("/rss.xml", get(rss_handler))
         .route("/sitemap.xml", get(sitemap_handler))

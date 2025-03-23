@@ -13,7 +13,7 @@ pub fn component() -> impl IntoView {
     let params = use_params_map();
     let slug = move || params.with(|params| params.get("slug").unwrap_or_default());
     let post = Resource::new_blocking(|| (), move |_| async move { select_post(slug()).await.unwrap() });
-    let increment_view = Action::new(move |id: &String| {
+    let _increment_view = Action::new(move |id: &String| {
         let id = id.clone();
         async move {
             let _ = increment_views(id.to_string()).await;
@@ -22,7 +22,7 @@ pub fn component() -> impl IntoView {
     Effect::new(move |_| {
         #[cfg(not(debug_assertions))]
         if post.get().is_some() {
-            increment_view.dispatch(post.get().as_ref().unwrap().id.id.to_string());
+            _increment_view.dispatch(post.get().as_ref().unwrap().id.id.to_string());
         }
     });
 

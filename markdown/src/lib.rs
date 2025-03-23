@@ -142,7 +142,7 @@ pub async fn process_markdown(markdown: String) -> Result<String, ServerFnError>
             Event::Start(Tag::Image { dest_url, .. }) => {
                 // Handle the image
                 let img_path = dest_url.into_string();
-                let img_format = img_path.split('.').last().unwrap_or("").to_lowercase();
+                let img_format = img_path.split('.').next_back().unwrap_or("").to_lowercase();
 
                 let img_html = if img_format == "svg" {
                     format!(

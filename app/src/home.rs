@@ -30,7 +30,7 @@ pub fn component() -> impl IntoView {
                     .class("gap-4 columns-1 sm:columns-2")
                     .child(For(ForProps::builder()
                         .each(move || posts.get().and_then(Result::ok).unwrap_or_default())
-                        .key(|post| post.id.id.to_string())
+                        .key(|post| post.id.to_string())
                         .children(|post| {
                             div().class("flex flex-col p-3 text-left text-white rounded-lg transition-all duration-500 cursor-pointer break-inside-avoid bg-card hover:text-[#ffef5c]").child(
                                     A(AProps::builder()

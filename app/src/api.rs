@@ -47,12 +47,10 @@ pub async fn select_tags() -> Result<BTreeMap<String, usize>, ServerFnError> {
 
     let AppState { db, .. } = expect_context::<AppState>();
 
-    let query = format!(
-        "
+    let query = "
     LET $tags = SELECT tags FROM post;
     array::flatten($tags.map(|$t| $t.tags));
-    "
-    );
+    ".to_string();
     let query = db.query(&query).await;
 
     if let Err(e) = query {
@@ -171,4 +169,3 @@ pub async fn select_references() -> Result<Vec<Reference>, ServerFnError> {
     let references = query?.take::<Vec<Reference>>(0)?;
     Ok(references)
 }
-:wqa
