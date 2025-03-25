@@ -29,16 +29,12 @@ pub async fn select_posts(#[server(default)] tags: Vec<String>) -> Result<Vec<Po
 
     let mut posts = query?.take::<Vec<Post>>(0)?;
     posts.iter_mut().for_each(|post| {
-        let parsed_date = match DateTime::parse_from_rfc3339(&post.created_at) {
-            Ok(date) => date,
-            Err(date_err) => {
-                return Err(ServerFnError::from(date_err));
-            }
-        };
-        let date_time = parsed_date.with_timezone(&Utc);
-        let naive_date = date_time.date_naive();
-        let formatted_date = naive_date.format("%b %-d, %Y").to_string();
-        post.created_at = formatted_date;
+        if let Ok(parsed_date) = DateTime::parse_from_rfc3339(&post.created_at) {
+            let date_time = parsed_date.with_timezone(&Utc);
+            let naive_date = date_time.date_naive();
+            let formatted_date = naive_date.format("%b %-d, %Y").to_string();
+            post.created_at = formatted_date;
+        }
     });
 
     Ok(posts)
@@ -88,9 +84,9 @@ pub async fn select_post(slug: String) -> Result<Post, ServerFnError> {
 
     let post = query?.take::<Vec<Post>>(0)?;
     let mut post = match post.first() {
-        Ok(first_post) => first_post.clone(),
-        Err(post_err) => {
-            return Err(ServerFnError::from(post_err));
+        Some(first_post) => first_post.clone(),
+        None => {
+            return Err(ServerFnError::Request("Failed to retrieve first post".to_string()));
         }
     };
 
