@@ -23,15 +23,19 @@ pub async fn select_posts(#[server(default)] tags: Vec<String>) -> Result<Vec<Po
 
     let query = db.query(&query).await;
 
-    if let Err(e) = query {
-        return Err(ServerFnError::from(e));
+    if let Err(query_err) = query {
+        return Err(ServerFnError::from(query_err));
     }
 
     let mut posts = query?.take::<Vec<Post>>(0)?;
     posts.iter_mut().for_each(|post| {
-        let date_time = DateTime::parse_from_rfc3339(&post.created_at)
-            .unwrap()
-            .with_timezone(&Utc);
+        let parsed_date = match DateTime::parse_from_rfc3339(&post.created_at) {
+            Ok(date) => date,
+            Err(date_err) => {
+                return Err(ServerFnError::from(date_err));
+            }
+        };
+        let date_time = parsed_date.with_timezone(&Utc);
         let naive_date = date_time.date_naive();
         let formatted_date = naive_date.format("%b %-d, %Y").to_string();
         post.created_at = formatted_date;
@@ -76,15 +80,19 @@ pub async fn select_post(slug: String) -> Result<Post, ServerFnError> {
     let AppState { db, .. } = expect_context::<AppState>();
 
     let query = format!(r#"SELECT *, author.* from post WHERE slug = "{slug}""#);
-    println!("{:?}", query);
     let query = db.query(&query).await;
 
-    if let Err(e) = query {
-        return Err(ServerFnError::from(e));
+    if let Err(query_err) = query {
+        return Err(ServerFnError::from(query_err));
     }
 
     let post = query?.take::<Vec<Post>>(0)?;
-    let mut post = post.first().unwrap().clone();
+    let mut post = match post.first() {
+        Ok(first_post) => first_post.clone(),
+        Err(post_err) => {
+            return Err(ServerFnError::from(post_err));
+        }
+    };
 
     let date_time = DateTime::parse_from_rfc3339(&post.created_at)?.with_timezone(&Utc);
     let naive_date = date_time.date_naive();
@@ -105,8 +113,8 @@ pub async fn increment_views(id: String) -> Result<(), ServerFnError> {
     let query = format!("UPDATE post:{0} SET total_views = total_views + 1;", id);
     let query = db.query(&query).await;
 
-    if let Err(e) = query {
-        return Err(ServerFnError::from(e));
+    if let Err(query_err) = query {
+        return Err(ServerFnError::from(query_err));
     }
 
     Ok(())
@@ -137,17 +145,16 @@ pub async fn contact(data: ContactRequest) -> Result<(), ServerFnError> {
         .to(env::var("SMTP_USER")?.parse()?)
         .subject(format!("{} - {}", data.email, data.subject))
         .header(ContentType::TEXT_HTML)
-        .body(data.message)
-        .expect("failed to build email");
+        .body(data.message)?;
 
     match mailer.send(email).await {
         Ok(_) => {
             tracing::info!("Email sent successfully");
             Ok(())
         }
-        Err(e) => {
-            tracing::error!("Failed to send email: {:?}", e);
-            Err(ServerFnError::from(e))
+        Err(email_err) => {
+            tracing::error!("Failed to send email: {:?}", email_err);
+            Err(ServerFnError::from(email_err))
         }
     }
 }
@@ -161,9 +168,8 @@ pub async fn select_references() -> Result<Vec<Reference>, ServerFnError> {
 
     let query = "SELECT * from reference WHERE is_published = true ORDER BY created_at DESC;";
     let query = db.query(query).await;
-    println!("{:?}", query);
-    if let Err(e) = query {
-        return Err(ServerFnError::from(e));
+    if let Err(query_err) = query {
+        return Err(ServerFnError::from(query_err));
     }
 
     let references = query?.take::<Vec<Reference>>(0)?;
