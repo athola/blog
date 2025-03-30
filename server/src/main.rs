@@ -34,7 +34,7 @@ async fn main() {
         logging::warn!("There is no corresponding .env file");
     }
 
-    let conf = match get_configuration(None) {
+    let conf = match get_configuration(Some("Cargo.toml")) {
         Ok(cfg) => cfg,
         Err(_) => {
             logging::error!("Failed to get configuration");

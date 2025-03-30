@@ -16,11 +16,16 @@ edition = "2024"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+# local dependencies
 app = { path = "../app", default-features = false, features = [
     "hydrate",
 ] }
-console_error_panic_hook.workspace = true
-console_log.workspace = true
+
+# workspace dependencies
 leptos = { workspace = true, features = ["hydrate"] }
-log.workspace = true
-wasm-bindgen.workspace = true
+
+# specific dependencies
+console_error_panic_hook = "0.1"
+console_log = "1"
+log = "0.4.20"
+wasm-bindgen = "0.2.100"

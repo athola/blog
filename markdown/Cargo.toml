@@ -13,11 +13,14 @@ categories = ["website"]
 edition = "2024"
 
 [dependencies]
+# workspace dependencies
 leptos = { workspace = true, features = ["ssr"]}
-katex.workspace = true
-pulldown-cmark.workspace = true
-regex.workspace = true
-syntect.workspace = true    
+
+# specific dependencies
+katex = { version = "0.4.6", default-features = false, features = ["duktape"] }
+pulldown-cmark = "0.13.0"
+regex = "1.11.1"
+syntect = "5.2.0"
 
 [features]
 ssr = ["leptos/ssr"]

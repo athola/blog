@@ -13,18 +13,31 @@ categories = ["website"]
 edition = "2024"
 
 [dependencies]
+# local dependencies
 app = { path = "../app", default-features = false, features = ["ssr"] }
 markdown = { path = "../markdown", default-features = false, features = ["ssr"] }
+
+# workspace dependencies
 axum.workspace = true
 chrono.workspace = true
-dotenvy.workspace = true
 leptos_axum.workspace = true
 leptos = { workspace = true, features = ["ssr"] }
-rss.workspace = true
 serde.workspace = true
 surrealdb.workspace = true
-tokio.workspace = true
-tower.workspace = true
-tower-http.workspace = true
 tracing.workspace = true
-tracing-subscriber.workspace = true
+
+# specific dependencies
+dotenvy = "0.15.7"
+rss = "2.0.12"
+tokio = { version = "1", features = ["rt-multi-thread"] }
+tower = "0.5.2"
+tower-http = { version = "0.6.2", features = [
+    "compression-br",
+    "compression-deflate",
+    "compression-gzip",
+    "compression-zstd",
+    "cors",
+    "fs",
+    "trace",
+] }
+tracing-subscriber = "0.3.19"

@@ -15,7 +15,7 @@ use tokio::sync::Mutex;
 
 pub async fn connect() -> Surreal<Client> {
     let protocol = env::var("SURREAL_PROTOCOL").unwrap_or("http".to_string());
-    let host = env::var("SURREAL_HOST").unwrap_or("127.0.0.1:8000".to_string());
+    let host = env::var("SURREAL_HOST").unwrap_or("127.0.0.1:8999".to_string());
     let username = env::var("SURREAL_ROOT_USER").unwrap_or("root".to_string());
     let password = env::var("SURREAL_ROOT_PASS").unwrap_or("root".to_string());
     let ns = env::var("SURREAL_NS").unwrap_or("rustblog".to_string());
