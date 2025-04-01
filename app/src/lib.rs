@@ -44,7 +44,7 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
             ))).child(
             Title(
                 TitleProps::builder()
-                    .text("Rust-DD Blog – Tech Insights & Consulting")
+                    .text("Alex Thola's Blog – Tech Insights & Consulting")
                     .build(),
             )).child((
             Meta(
@@ -95,13 +95,13 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
             Meta(
                 MetaProps::builder()
                     .property("og:title")
-                    .content("Rust-DD Blog – Tech Insights & Consulting")
+                    .content("Alex Thola's Blog – Tech Insights & Consulting")
                     .build(),
             ),
             Meta(
                 MetaProps::builder()
                     .property("og:site_name")
-                    .content("Rust-DD Blog – Tech Insights & Consulting")
+                    .content("Alex Thola's Blog – Tech Insights & Consulting")
                     .build(),
             ),
             Meta(
@@ -152,7 +152,7 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
             Meta(
                 MetaProps::builder()
                     .name("twitter:title")
-                    .content("Rust-DD Blog – Tech Insights & Consulting")
+                    .content("Alex Thola's Blog – Tech Insights & Consulting")
                     .build(),
             ),
             Meta(

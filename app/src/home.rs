@@ -21,7 +21,7 @@ pub fn component() -> impl IntoView {
     div().child((
         Title(
             TitleProps::builder()
-                .text("Alex Thola Blog – Tech Insights & Consulting")
+                .text("Alex Thola's Blog – Tech Insights & Consulting")
                 .build(),
         ),
         Suspense(

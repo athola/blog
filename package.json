@@ -1,5 +1,7 @@
 {
-  "dependencies": {},
+  "dependencies": {
+    "katex": "^0.16.21"
+  },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.15"
   }
