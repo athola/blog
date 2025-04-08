@@ -88,6 +88,11 @@ valgrind:
 	@echo "[$@]: Checking memory leaks for ${PROJECT}"
 	@cargo make --makefile Makefile.toml valgrind
 
+watch:
+	@echo "[$@]: Watching ${PROJECT}"
+	@sh db.sh&
+	@cargo leptos watch
+
 install-pkgs:
 	@echo "[$@]: Installing ${RUST_PKGS}"
 	@rustup component add clippy rustfmt
