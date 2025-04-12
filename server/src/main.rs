@@ -2,18 +2,17 @@ mod redirect;
 mod utils;
 
 use app::{component, shell, types::AppState};
-use axum::{routing::get, Router};
+use axum::{Router, routing::get};
 use dotenvy::dotenv;
 use leptos::logging;
 use leptos::prelude::*;
-use leptos_axum::{generate_route_list, LeptosRoutes};
+use leptos_axum::{LeptosRoutes, generate_route_list};
 use redirect::redirect_www;
+use tower_http::CompressionLevel;
 use tower_http::compression::predicate::{NotForContentType, SizeAbove};
 use tower_http::compression::{CompressionLayer, Predicate};
 use tower_http::trace::TraceLayer;
-use tower_http::CompressionLevel;
 use utils::{connect, rss_handler, sitemap_handler};
-
 
 #[tokio::main]
 async fn main() {
@@ -34,12 +33,9 @@ async fn main() {
         logging::warn!("There is no corresponding .env file");
     }
 
-    let conf = match get_configuration(Some("Cargo.toml")) {
-        Ok(cfg) => cfg,
-        Err(_) => {
-            logging::error!("Failed to get configuration");
-            return
-        }
+    let Ok(conf) = get_configuration(Some("Cargo.toml")) else {
+        logging::error!("Failed to get configuration");
+        return;
     };
 
     let leptos_options = conf.leptos_options;
@@ -82,7 +78,7 @@ async fn main() {
                         .and(NotForContentType::const_new("application/xml"))
                         .and(NotForContentType::const_new("application/javascript"))
                         .and(NotForContentType::const_new("application/wasm"))
-                        .and(NotForContentType::const_new("test/css"))
+                        .and(NotForContentType::const_new("test/css")),
                 ),
         )
         .fallback(leptos_axum::file_and_error_handler::<AppState, _>(shell))
@@ -90,13 +86,13 @@ async fn main() {
 
     let listener = match tokio::net::TcpListener::bind(&addr).await {
         Ok(list) => list,
-        Err(_err) => {
-            logging::error!("Failed to bind tcp listener to {}: {}", &addr, _err);
+        Err(err) => {
+            logging::error!("Failed to bind tcp listener to {}: {}", &addr, err);
             return;
         }
     };
     logging::log!("Listening on http://{}", &addr);
-    if let Err(_err) = axum::serve(listener, app.into_make_service()).await {
-        logging::error!("Failed to serve app: {}", _err);
-    };
+    if let Err(err) = axum::serve(listener, app.into_make_service()).await {
+        logging::error!("Failed to serve app: {}", err);
+    }
 }

@@ -1,20 +1,27 @@
 use std::collections::BTreeMap;
 
-use leptos::prelude::{server, ServerFnError};
+use leptos::prelude::{ServerFnError, server};
 use serde::{Deserialize, Serialize};
 
 use crate::types::{Post, Reference};
 
 #[server(endpoint = "/posts")]
-pub async fn select_posts(#[server(default)] tags: Vec<String>) -> Result<Vec<Post>, ServerFnError> {
+pub async fn select_posts(
+    #[server(default)] tags: Vec<String>,
+) -> Result<Vec<Post>, ServerFnError> {
     use crate::types::AppState;
     use chrono::{DateTime, Utc};
     use leptos::prelude::expect_context;
 
     let AppState { db, .. } = expect_context::<AppState>();
-    let mut query = String::from("SELECT *, author.* from post WHERE is_published = true ORDER BY created_at DESC;");
+    let mut query = String::from(
+        "SELECT *, author.* from post WHERE is_published = true ORDER BY created_at DESC;",
+    );
     if !tags.is_empty() {
-        let tags = tags.iter().map(|tag| format!(r#""{}""#, tag)).collect::<Vec<_>>();
+        let tags = tags
+            .iter()
+            .map(|tag| format!(r#""{tag}""#))
+            .collect::<Vec<_>>();
         query = format!(
             "SELECT *, author.* from post WHERE tags CONTAINSANY [{0}] ORDER BY created_at DESC;",
             tags.join(", ")
@@ -28,14 +35,14 @@ pub async fn select_posts(#[server(default)] tags: Vec<String>) -> Result<Vec<Po
     }
 
     let mut posts = query?.take::<Vec<Post>>(0)?;
-    posts.iter_mut().for_each(|post| {
+    for post in &mut posts.iter_mut() {
         if let Ok(parsed_date) = DateTime::parse_from_rfc3339(&post.created_at) {
             let date_time = parsed_date.with_timezone(&Utc);
             let naive_date = date_time.date_naive();
             let formatted_date = naive_date.format("%b %-d, %Y").to_string();
             post.created_at = formatted_date;
         }
-    });
+    }
 
     Ok(posts)
 }
@@ -50,7 +57,8 @@ pub async fn select_tags() -> Result<BTreeMap<String, usize>, ServerFnError> {
     let query = "
     LET $tags = SELECT tags FROM post;
     array::flatten($tags.map(|$t| $t.tags));
-    ".to_string();
+    "
+    .to_string();
     let query = db.query(&query).await;
 
     if let Err(e) = query {
@@ -86,7 +94,9 @@ pub async fn select_post(slug: String) -> Result<Post, ServerFnError> {
     let mut post = match post.first() {
         Some(first_post) => first_post.clone(),
         None => {
-            return Err(ServerFnError::Request("Failed to retrieve first post".to_string()));
+            return Err(ServerFnError::Request(
+                "Failed to retrieve first post".to_string(),
+            ));
         }
     };
 
@@ -94,7 +104,7 @@ pub async fn select_post(slug: String) -> Result<Post, ServerFnError> {
     let naive_date = date_time.date_naive();
     let formatted_date = naive_date.format("%b %-d").to_string();
     post.created_at = formatted_date;
-    post.body = process_markdown(post.body.to_string()).await?;
+    post.body = process_markdown(&post.body)?;
 
     Ok(post)
 }
@@ -106,7 +116,7 @@ pub async fn increment_views(id: String) -> Result<(), ServerFnError> {
 
     let AppState { db, .. } = expect_context::<AppState>();
 
-    let query = format!("UPDATE post:{0} SET total_views = total_views + 1;", id);
+    let query = format!("UPDATE post:{id} SET total_views = total_views + 1;");
     let query = db.query(&query).await;
 
     if let Err(query_err) = query {
@@ -127,13 +137,16 @@ pub struct ContactRequest {
 #[server(endpoint = "/contact")]
 pub async fn contact(data: ContactRequest) -> Result<(), ServerFnError> {
     use lettre::{
-        message::header::ContentType, transport::smtp::authentication::Credentials, AsyncSmtpTransport, AsyncTransport,
-        Message, Tokio1Executor,
+        AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor, message::header::ContentType,
+        transport::smtp::authentication::Credentials,
     };
     use std::env;
 
     let mailer = AsyncSmtpTransport::<Tokio1Executor>::relay(&env::var("SMTP_HOST")?)?
-        .credentials(Credentials::new(env::var("SMTP_USER")?, env::var("SMTP_PASSWORD")?))
+        .credentials(Credentials::new(
+            env::var("SMTP_USER")?,
+            env::var("SMTP_PASSWORD")?,
+        ))
         .build::<Tokio1Executor>();
 
     let email = Message::builder()

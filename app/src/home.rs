@@ -3,16 +3,22 @@ use leptos::html::{button, div, p, span};
 use leptos::{ev, prelude::*};
 use leptos_icons::{Icon, IconProps};
 use leptos_meta::{Title, TitleProps};
-use leptos_router::components::{AProps, A};
+use leptos_router::components::{A, AProps};
+use std::clone::Clone;
+use std::vec::Vec;
 
 use crate::{
     api::{select_posts, select_tags},
     components::loader,
 };
 
+#[allow(clippy::too_many_lines)]
 pub fn component() -> impl IntoView {
     let selected_tags = RwSignal::new(Vec::<String>::new());
-    let tags = Resource::new_blocking(|| (), move |_| async move { select_tags().await.unwrap_or_default() });
+    let tags = Resource::new_blocking(
+        || (),
+        move |()| async move { select_tags().await.unwrap_or_default() },
+    );
     let posts = Resource::new(
         move || selected_tags.get(),
         move |selected_tags| async move { select_posts(selected_tags).await },
@@ -78,7 +84,7 @@ pub fn component() -> impl IntoView {
                                                             e.prevent_default();
                                                             e.stop_propagation();
                                                             let _ = window().open_with_url_and_target(
-                                                                post.author.github.as_ref().unwrap_or(&"".to_string()),
+                                                                post.author.github.as_ref().unwrap_or(&String::new()),
                                                                 "_blank",
                                                             );
                                                         }).child(
@@ -96,13 +102,13 @@ pub fn component() -> impl IntoView {
         ),
         Suspense(SuspenseProps::builder().fallback(|| loader::component).children(TypedChildren::to_children(move || {
             div().class("flex flex-row flex-wrap gap-1 px-4 text-xs").child((
-                button().on(ev::click, move |_| selected_tags.update(|prev| prev.clear()))
+                button().on(ev::click, move |_| selected_tags.update(Vec::clear))
                     .class("py-1 px-2 text-white rounded-lg transition-all duration-500 cursor-pointer bg-primary")
                     .class(("underline", move || selected_tags.get().is_empty()))
                     .child("All"),
                 For(ForProps::builder()
                     .each(move || tags.get().unwrap_or_default())
-                    .key(|tag| tag.clone())
+                    .key(Clone::clone)
                     .children(move |(tag, count)| {
                         button().on(ev::click, {
                             let tag = tag.clone();

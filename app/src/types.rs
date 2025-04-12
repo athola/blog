@@ -6,7 +6,7 @@ use axum::extract::FromRef;
 #[cfg(feature = "ssr")]
 use leptos::config::LeptosOptions;
 #[cfg(feature = "ssr")]
-use surrealdb::{engine::remote::http::Client, Surreal};
+use surrealdb::{Surreal, engine::remote::http::Client};
 
 #[cfg(feature = "ssr")]
 #[derive(FromRef, Debug, Clone)]

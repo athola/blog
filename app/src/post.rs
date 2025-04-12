@@ -1,6 +1,6 @@
 use leptos::html::{article, div, img, p, span};
 use leptos::{ev, prelude::*};
-use leptos_meta::*;
+use leptos_meta::{Title, TitleProps};
 use leptos_router::hooks::use_params_map;
 
 use crate::{
@@ -12,7 +12,10 @@ use crate::{
 pub fn component() -> impl IntoView {
     let params = use_params_map();
     let slug = move || params.with(|params| params.get("slug").unwrap_or_default());
-    let post = Resource::new_blocking(|| (), move |_| async move { select_post(slug()).await.unwrap() });
+    let post = Resource::new_blocking(
+        || (),
+        move |()| async move { select_post(slug()).await.unwrap() },
+    );
     let _increment_view = Action::new(move |id: &String| {
         let id = id.clone();
         async move {

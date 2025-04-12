@@ -7,10 +7,11 @@ use markdown::process_markdown;
 use rss::{ChannelBuilder, Item};
 use serde::{Deserialize, Serialize};
 use std::env;
+use std::fmt::Write;
 use std::sync::Arc;
+use surrealdb::Surreal;
 use surrealdb::engine::remote::http::{Client, Http, Https};
 use surrealdb::opt::auth::Root;
-use surrealdb::Surreal;
 use tokio::sync::Mutex;
 
 pub async fn connect() -> Surreal<Client> {
@@ -51,14 +52,14 @@ pub async fn generate_rss(db: Surreal<Client>) -> leptos::error::Result<String, 
         .query("SELECT *, author.* from post WHERE is_published = true ORDER BY created_at DESC;")
         .await;
     let mut posts = query?.take::<Vec<Post>>(0)?;
-    posts.iter_mut().for_each(|post| {
+    for post in &mut posts.iter_mut() {
         let date_time = DateTime::parse_from_rfc3339(&post.created_at)
             .unwrap()
             .with_timezone(&Utc);
         let naive_date = date_time.date_naive();
         let formatted_date = naive_date.format("%b %-d").to_string();
         post.created_at = formatted_date;
-    });
+    }
     let posts = Arc::new(Mutex::new(posts));
     let mut handles = vec![];
 
@@ -67,7 +68,7 @@ pub async fn generate_rss(db: Surreal<Client>) -> leptos::error::Result<String, 
         let handle = tokio::spawn(async move {
             let mut posts = posts_clone.lock().await;
             if let Some(post) = posts.iter_mut().next() {
-                post.body = process_markdown(post.body.to_string()).await.unwrap();
+                post.body = process_markdown(&post.body).unwrap();
             }
         });
 
@@ -113,7 +114,9 @@ pub async fn sitemap_handler(State(state): State<AppState>) -> Response<String> 
 
     let AppState { db, .. } = state;
     let query = db
-        .query("SELECT slug, created_at FROM post WHERE is_published = true ORDER BY created_at DESC;")
+        .query(
+            "SELECT slug, created_at FROM post WHERE is_published = true ORDER BY created_at DESC;",
+        )
         .await;
     let posts = query.unwrap().take::<Vec<Post>>(0).unwrap();
     let mut sitemap = String::new();
@@ -130,18 +133,23 @@ pub async fn sitemap_handler(State(state): State<AppState>) -> Response<String> 
 
     for (url, freq, priority) in static_urls {
         sitemap.push_str("<url>\n");
-        sitemap.push_str(&format!("<loc>{}</loc>\n", url));
-        sitemap.push_str(&format!("<changefreq>{}</changefreq>\n", freq));
-        sitemap.push_str(&format!("<priority>{}</priority>\n", priority));
+        writeln!(sitemap, "<loc>{url}</loc>").unwrap();
+        writeln!(sitemap, "<changefreq>{freq}</changefreq>").unwrap();
+        writeln!(sitemap, "<priority>{priority}</priority>").unwrap();
         sitemap.push_str("</url>\n");
     }
 
     for post in posts {
         sitemap.push_str("<url>\n");
-        sitemap.push_str(&format!("<loc>https://alexthola.com/post/{}</loc>\n", post.slug.unwrap()));
+        writeln!(
+            sitemap,
+            "<loc>https://alexthola.com/post/{}</loc>",
+            post.slug.unwrap()
+        )
+        .unwrap();
         sitemap.push_str("<changefreq>monthly</changefreq>\n");
         sitemap.push_str("<priority>1.0</priority>\n");
-        sitemap.push_str(&format!("<lastmod>{}</lastmod>\n", post.created_at));
+        writeln!(sitemap, "<lastmod>{}</lastmod>", post.created_at).unwrap();
         sitemap.push_str("</url>\n");
     }
     sitemap.push_str("</urlset>");

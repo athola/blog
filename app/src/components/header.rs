@@ -1,4 +1,3 @@
-
 use crate::icons;
 use leptos::{
     ev,
@@ -39,4 +38,3 @@ pub fn component() -> impl IntoView {
             ),
         )
 }
-

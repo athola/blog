@@ -22,7 +22,10 @@ impl AppError {
 
 // A basic function to display errors served by the error boundaries.
 // Feel free to do more complicated things here than just displaying the error.
-pub fn component(outside_errors: Option<Errors>, errors: Option<RwSignal<Errors>>) -> impl IntoView {
+pub fn component(
+    outside_errors: Option<Errors>,
+    errors: Option<RwSignal<Errors>>,
+) -> impl IntoView {
     let errors = match outside_errors {
         Some(e) => RwSignal::new(e),
         None => match errors {
@@ -63,7 +66,7 @@ pub fn component(outside_errors: Option<Errors>, errors: Option<RwSignal<Errors>
 
                     div().child((
                         h1().class("text-xl tracking-widest text-gray-400 uppercase").child(
-                            format!("{}| {}", error_code, error_string),
+                            format!("{error_code}| {error_string}")
                         ),
                         a()
                             .href("/")

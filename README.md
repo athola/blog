@@ -7,4 +7,4 @@ This project is responsible for the https://alexthola.com blog.
 
 ## Run
 
-Startup the server with `cargo run`.
+Begin watching the website server with `make watch`.

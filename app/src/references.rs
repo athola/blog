@@ -5,7 +5,8 @@ use leptos::{
 };
 
 pub fn component() -> impl IntoView {
-    let references = Resource::new_blocking(|| (), move |_| async move { select_references().await });
+    let references =
+        Resource::new_blocking(|| (), move |()| async move { select_references().await });
 
     div().class("container py-12 px-4 mx-auto").child((
         section().id("about").class("mx-auto mb-16 max-w-4xl text-center").child((

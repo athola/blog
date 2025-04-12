@@ -4,12 +4,15 @@ use leptos::{
     html::{a, body, div, footer, head, html, main, meta, p},
     prelude::*,
 };
-use leptos_meta::*;
+use leptos_meta::{
+    Link, LinkProps, Meta, MetaProps, MetaTags, Stylesheet, StylesheetProps, Title, TitleProps,
+    provide_meta_context,
+};
 use leptos_router::{
-    components::{FlatRoutes, FlatRoutesProps, Route, RouteChildren, RouteProps, Router, RouterProps},
-    ParamSegment,
-    SsrMode,
-    StaticSegment,
+    ParamSegment, SsrMode, StaticSegment,
+    components::{
+        FlatRoutes, FlatRoutesProps, Route, RouteChildren, RouteProps, Router, RouterProps,
+    },
 };
 
 pub mod api;
@@ -20,6 +23,7 @@ mod post;
 mod references;
 pub mod types;
 
+#[allow(clippy::too_many_lines)]
 pub fn shell(options: LeptosOptions) -> impl IntoView {
     let html_comp = html().lang("en").child((
         head().child((
@@ -208,6 +212,7 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
     }
 }
 
+#[must_use]
 pub fn component() -> impl IntoView {
     // Provides context that manages stylesheets, titles, meta tags, etc.
     provide_meta_context();

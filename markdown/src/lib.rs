@@ -1,12 +1,14 @@
 use leptos::prelude::ServerFnError;
+use pulldown_cmark::html::push_html;
 use pulldown_cmark::{CodeBlockKind, CowStr, Event, Options, Parser, Tag, TagEnd, TextMergeStream};
 use regex::Regex;
 use syntect::easy::HighlightLines;
 use syntect::highlighting::ThemeSet;
-use syntect::html::{styled_line_to_highlighted_html, IncludeBackground};
+use syntect::html::{IncludeBackground, styled_line_to_highlighted_html};
 use syntect::parsing::SyntaxSet;
 
-pub async fn process_markdown(markdown: String) -> Result<String, ServerFnError> {
+#[allow(clippy::too_many_lines)]
+pub fn process_markdown(markdown: &str) -> Result<String, ServerFnError> {
     pub struct MathEventProcessor {
         display_style_opts: katex::Opts,
     }
@@ -21,7 +23,9 @@ pub async fn process_markdown(markdown: String) -> Result<String, ServerFnError>
 
         pub fn process_math_event<'a>(&'a self, event: Event<'a>) -> Event<'a> {
             match event {
-                Event::InlineMath(math_exp) => Event::InlineHtml(CowStr::from(katex::render(&math_exp).unwrap())),
+                Event::InlineMath(math_exp) => {
+                    Event::InlineHtml(CowStr::from(katex::render(&math_exp).unwrap()))
+                }
                 Event::DisplayMath(math_exp) => Event::Html(CowStr::from(
                     katex::render_with_opts(&math_exp, &self.display_style_opts).unwrap(),
                 )),
@@ -41,23 +45,23 @@ pub async fn process_markdown(markdown: String) -> Result<String, ServerFnError>
     // Preprocess the markdown to handle images
     let mut processed_markdown = String::new();
     let mut last_img_end = 0;
-    for img_cap in re_img.captures_iter(&markdown) {
-        processed_markdown.push_str(&markdown[last_img_end..img_cap.get(0).unwrap().start()]);
-        let img_path = &img_cap[1];
-        let img_format = &img_cap[2];
-        let img_html = if img_format == "svg" {
-            format!(
-                r#"<div style="display: flex; justify-content: center;"><img src="{}" style="filter: invert(100%); width: 100%;"></div>"#,
-                img_path
-            )
-        } else {
-            format!(
-                r#"<div style="display: flex; justify-content: center;"><img src="{}" style="width: 100%;"></div>"#,
-                img_path
-            )
-        };
-        processed_markdown.push_str(&img_html);
-        last_img_end = img_cap.get(0).unwrap().end();
+    for img_cap in re_img.captures_iter(markdown) {
+        if let Some(img_cap_first) = img_cap.get(0) {
+            processed_markdown.push_str(&markdown[last_img_end..img_cap_first.start()]);
+            let img_path = &img_cap[1];
+            let img_format = &img_cap[2];
+            let img_html = if img_format == "svg" {
+                format!(
+                    r#"<div style="display: flex; justify-content: center;"><img src="{img_path}" style="filter: invert(100%); width: 100%;"></div>"#
+                )
+            } else {
+                format!(
+                    r#"<div style="display: flex; justify-content: center;"><img src="{img_path}" style="width: 100%;"></div>"#
+                )
+            };
+            processed_markdown.push_str(&img_html);
+            last_img_end = img_cap_first.end();
+        }
     }
     processed_markdown.push_str(&markdown[last_img_end..]);
 
@@ -122,7 +126,8 @@ pub async fn process_markdown(markdown: String) -> Result<String, ServerFnError>
 
                 for line in code_block_content.lines() {
                     let ranges = h.highlight_line(line, &ps)?;
-                    let escaped = styled_line_to_highlighted_html(&ranges[..], IncludeBackground::No)?;
+                    let escaped =
+                        styled_line_to_highlighted_html(&ranges[..], IncludeBackground::No)?;
                     highlighted_html.push_str(&escaped);
                     highlighted_html.push('\n');
                 }
@@ -146,13 +151,11 @@ pub async fn process_markdown(markdown: String) -> Result<String, ServerFnError>
 
                 let img_html = if img_format == "svg" {
                     format!(
-                        r#"<div style="display: flex; justify-content: center;"><img alt="iamge" src="{}" style="filter: invert(100%); width: 100%;"></div>"#,
-                        img_path
+                        r#"<div style="display: flex; justify-content: center;"><img alt="iamge" src="{img_path}" style="filter: invert(100%); width: 100%;"></div>"#
                     )
                 } else {
                     format!(
-                        r#"<div style="display: flex; justify-content: center;"><img alt="iamge" src="{}" style="width: 100%;"></div>"#,
-                        img_path
+                        r#"<div style="display: flex; justify-content: center;"><img alt="iamge" src="{img_path}" style="width: 100%;"></div>"#
                     )
                 };
 
@@ -174,7 +177,6 @@ pub async fn process_markdown(markdown: String) -> Result<String, ServerFnError>
     }
 
     // Render the events back to HTML
-    use pulldown_cmark::html::push_html;
     let mut html_output = String::new();
     push_html(&mut html_output, events.into_iter());
 
