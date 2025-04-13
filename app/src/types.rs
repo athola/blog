@@ -15,7 +15,7 @@ pub struct AppState {
     pub leptos_options: LeptosOptions,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Author {
     pub id: Thing,
     pub name: String,
@@ -40,7 +40,7 @@ impl Default for Author {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Post {
     pub id: Thing,
     pub title: String,
@@ -77,7 +77,7 @@ impl Default for Post {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Reference {
     pub id: Thing,
     pub title: String,

@@ -88,7 +88,7 @@ pub fn component() -> impl IntoView {
                                                                 "_blank",
                                                             );
                                                         }).child(
-                                                            span().class("text-xs font-semibold cursor-pointer hover:underline").child(post.author.name.clone()),
+                                                            span().class("text-xs font-semibold cursor-pointer hover:underline").child(post.author.name),
                                                         ),
                                                     )),
                                                 )),
@@ -137,7 +137,7 @@ pub fn component() -> impl IntoView {
                                 move || selected_tags.get().contains(&tag)
                             }),
                         )
-                        .child(tag.clone() + " (" + &count.to_string() + ")")
+                        .child(tag + " (" + &count.to_string() + ")")
                     })
                     .build())
             ))

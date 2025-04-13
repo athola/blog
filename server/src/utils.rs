@@ -15,12 +15,12 @@ use surrealdb::opt::auth::Root;
 use tokio::sync::Mutex;
 
 pub async fn connect() -> Surreal<Client> {
-    let protocol = env::var("SURREAL_PROTOCOL").unwrap_or("http".to_string());
-    let host = env::var("SURREAL_HOST").unwrap_or("127.0.0.1:8999".to_string());
-    let username = env::var("SURREAL_ROOT_USER").unwrap_or("root".to_string());
-    let password = env::var("SURREAL_ROOT_PASS").unwrap_or("root".to_string());
-    let ns = env::var("SURREAL_NS").unwrap_or("rustblog".to_string());
-    let db_name = env::var("SURREAL_DB").unwrap_or("rustblog".to_string());
+    let protocol = env::var("SURREAL_PROTOCOL").unwrap_or_else(|_| "http".to_string());
+    let host = env::var("SURREAL_HOST").unwrap_or_else(|_| "127.0.0.1:8999".to_string());
+    let username = env::var("SURREAL_ROOT_USER").unwrap_or_else(|_| "root".to_string());
+    let password = env::var("SURREAL_ROOT_PASS").unwrap_or_else(|_| "root".to_string());
+    let ns = env::var("SURREAL_NS").unwrap_or_else(|_| "rustblog".to_string());
+    let db_name = env::var("SURREAL_DB").unwrap_or_else(|_| "rustblog".to_string());
     let db = if protocol == "http" {
         Surreal::new::<Http>(host).await.unwrap()
     } else {
@@ -63,7 +63,8 @@ pub async fn generate_rss(db: Surreal<Client>) -> leptos::error::Result<String, 
     let posts = Arc::new(Mutex::new(posts));
     let mut handles = vec![];
 
-    for _ in 0..posts.lock().await.len() {
+    let post_len = posts.lock().await.len();
+    for _ in 0..post_len {
         let posts_clone = Arc::clone(&posts);
         let handle = tokio::spawn(async move {
             let mut posts = posts_clone.lock().await;
@@ -95,7 +96,7 @@ pub async fn generate_rss(db: Surreal<Client>) -> leptos::error::Result<String, 
                     item.set_title(post.title.to_string());
                     item.set_description(post.body.to_string());
                     item.set_link(format!("https://alexthola.com/post/{}", post.slug.unwrap()));
-                    item.set_pub_date(post.created_at.to_string());
+                    item.set_pub_date(post.created_at);
                     item
                 })
                 .collect::<Vec<_>>(),

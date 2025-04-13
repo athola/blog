@@ -8,15 +8,30 @@ use syntect::html::{IncludeBackground, styled_line_to_highlighted_html};
 use syntect::parsing::SyntaxSet;
 
 #[allow(clippy::too_many_lines)]
+/// Process markdown for display to frontend.
+///
+/// # Arguments
+///
+/// * `markdown` - A markdown [`&str`] to process.
+///
+/// # Returns
+///
+/// * [`Result<String, ServerFnError>`] - Processed markdown [`String`] to 
+///   process if success, else [`ServerFnError`].
+///
+/// # Errors
+///
+/// * [`ServerFnError`] - Return if issue with processing function on server.
+///
 pub fn process_markdown(markdown: &str) -> Result<String, ServerFnError> {
     pub struct MathEventProcessor {
         display_style_opts: katex::Opts,
     }
 
     impl MathEventProcessor {
-        pub fn new() -> MathEventProcessor {
+        pub fn new() -> Self {
             let opts = katex::Opts::builder().display_mode(true).build().unwrap();
-            MathEventProcessor {
+            Self {
                 display_style_opts: opts,
             }
         }
@@ -90,7 +105,7 @@ pub fn process_markdown(markdown: &str) -> Result<String, ServerFnError> {
 
     for event in iterator {
         if skip_image {
-            if let Event::End(TagEnd::Image) = event {
+            if event == Event::End(TagEnd::Image) {
                 skip_image = false;
             }
             continue;
