@@ -1,33 +1,35 @@
+extern crate alloc;
 use icondata as i;
 use leptos::html::{button, div, p, span};
 use leptos::{ev, prelude::*};
 use leptos_icons::{Icon, IconProps};
 use leptos_meta::{Title, TitleProps};
 use leptos_router::components::{A, AProps};
-use std::clone::Clone;
-use std::vec::Vec;
+use core::clone::Clone;
+use alloc::vec::Vec;
 
 use crate::{
     api::{select_posts, select_tags},
     components::loader,
 };
 
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines)]
 pub fn component() -> impl IntoView {
     let selected_tags = RwSignal::new(Vec::<String>::new());
     let tags = Resource::new_blocking(
         || (),
         move |()| async move { select_tags().await.unwrap_or_default() },
     );
+    #[expect(clippy::all)]
     let posts = Resource::new(
-        move || selected_tags.get(),
-        move |selected_tags| async move { select_posts(selected_tags).await },
+        move || return selected_tags.get(),
+        move |selected_tags| return async move { return select_posts(selected_tags).await },
     );
 
     div().child((
         Title(
             TitleProps::builder()
-                .text("Alex Thola's Blog – Tech Insights & Consulting")
+                .text("Alex Thola's Blog \u{2013} Tech Insights & Consulting")
                 .build(),
         ),
         Suspense(
@@ -117,7 +119,7 @@ pub fn component() -> impl IntoView {
                                     if prev.contains(&tag) {
                                         *prev = prev.clone().into_iter().filter(|v| v != &tag).collect::<Vec<_>>();
                                     } else {
-                                        *prev = prev.clone().into_iter().chain(std::iter::once(tag.clone())).collect();
+                                        *prev = prev.clone().into_iter().chain(core::iter::once(tag.clone())).collect();
                                     }
                                 });
                             }

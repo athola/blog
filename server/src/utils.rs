@@ -1,26 +1,27 @@
+extern crate alloc;
+use alloc::sync::Arc;
 use app::types::{AppState, Post};
 use axum::extract::State;
 use axum::response::Response;
 use chrono::{DateTime, Utc};
+use core::fmt::Write as _;
 use leptos::prelude::ServerFnError;
 use markdown::process_markdown;
 use rss::{ChannelBuilder, Item};
 use serde::{Deserialize, Serialize};
 use std::env;
-use std::fmt::Write;
-use std::sync::Arc;
 use surrealdb::Surreal;
 use surrealdb::engine::remote::http::{Client, Http, Https};
 use surrealdb::opt::auth::Root;
 use tokio::sync::Mutex;
 
 pub async fn connect() -> Surreal<Client> {
-    let protocol = env::var("SURREAL_PROTOCOL").unwrap_or_else(|_| "http".to_string());
-    let host = env::var("SURREAL_HOST").unwrap_or_else(|_| "127.0.0.1:8999".to_string());
-    let username = env::var("SURREAL_ROOT_USER").unwrap_or_else(|_| "root".to_string());
-    let password = env::var("SURREAL_ROOT_PASS").unwrap_or_else(|_| "root".to_string());
-    let ns = env::var("SURREAL_NS").unwrap_or_else(|_| "rustblog".to_string());
-    let db_name = env::var("SURREAL_DB").unwrap_or_else(|_| "rustblog".to_string());
+    let protocol = env::var("SURREAL_PROTOCOL").unwrap_or_else(|_| "http".to_owned());
+    let host = env::var("SURREAL_HOST").unwrap_or_else(|_| "127.0.0.1:8999".to_owned());
+    let username = env::var("SURREAL_ROOT_USER").unwrap_or_else(|_| "root".to_owned());
+    let password = env::var("SURREAL_ROOT_PASS").unwrap_or_else(|_| "root".to_owned());
+    let ns = env::var("SURREAL_NS").unwrap_or_else(|_| "rustblog".to_owned());
+    let db_name = env::var("SURREAL_DB").unwrap_or_else(|_| "rustblog".to_owned());
     let db = if protocol == "http" {
         Surreal::new::<Http>(host).await.unwrap()
     } else {
@@ -83,7 +84,7 @@ pub async fn generate_rss(db: Surreal<Client>) -> leptos::error::Result<String, 
     let channel = ChannelBuilder::default()
         .title("alexthola")
         .link("https://alexthola.com")
-        .description("Alex Thola's Blog – Tech Insights & Consulting")
+        .description("Alex Thola's Blog \u{2013} Tech Insights & Consulting")
         .items(
             posts
                 .lock()

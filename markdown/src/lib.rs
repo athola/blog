@@ -7,7 +7,7 @@ use syntect::highlighting::ThemeSet;
 use syntect::html::{IncludeBackground, styled_line_to_highlighted_html};
 use syntect::parsing::SyntaxSet;
 
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines)]
 /// Process markdown for display to frontend.
 ///
 /// # Arguments
@@ -16,7 +16,7 @@ use syntect::parsing::SyntaxSet;
 ///
 /// # Returns
 ///
-/// * [`Result<String, ServerFnError>`] - Processed markdown [`String`] to 
+/// * [`Result<String, ServerFnError>`] - Processed markdown [`String`] to
 ///   process if success, else [`ServerFnError`].
 ///
 /// # Errors
@@ -41,9 +41,11 @@ pub fn process_markdown(markdown: &str) -> Result<String, ServerFnError> {
                 Event::InlineMath(math_exp) => {
                     Event::InlineHtml(CowStr::from(katex::render(&math_exp).unwrap()))
                 }
-                Event::DisplayMath(math_exp) => Event::Html(CowStr::from(
-                    katex::render_with_opts(&math_exp, &self.display_style_opts).unwrap(),
-                )),
+                Event::DisplayMath(math_exp) => {
+                    Event::Html(CowStr::from(
+                        katex::render_with_opts(&math_exp, &self.display_style_opts).unwrap(),
+                    ))
+                }
                 _ => event,
             }
         }
@@ -120,7 +122,7 @@ pub fn process_markdown(markdown: &str) -> Result<String, ServerFnError> {
                 code_block_language = match kind {
                     CodeBlockKind::Fenced(info) => {
                         // Get the first word as the language identifier
-                        let lang = info.split_whitespace().next().unwrap_or("").to_string();
+                        let lang = info.split_whitespace().next().unwrap_or("").to_owned();
                         Some(lang)
                     }
                     CodeBlockKind::Indented => None,
@@ -141,8 +143,7 @@ pub fn process_markdown(markdown: &str) -> Result<String, ServerFnError> {
 
                 for line in code_block_content.lines() {
                     let ranges = h.highlight_line(line, &ps)?;
-                    let escaped =
-                        styled_line_to_highlighted_html(&ranges[..], IncludeBackground::No)?;
+                    let escaped = styled_line_to_highlighted_html(&ranges, IncludeBackground::No)?;
                     highlighted_html.push_str(&escaped);
                     highlighted_html.push('\n');
                 }

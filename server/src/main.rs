@@ -6,11 +6,11 @@ use axum::{Router, routing::get};
 use dotenvy::dotenv;
 use leptos::logging;
 use leptos::prelude::*;
-use leptos_axum::{LeptosRoutes, generate_route_list};
+use leptos_axum::{LeptosRoutes as _, generate_route_list};
 use redirect::redirect_www;
 use tower_http::CompressionLevel;
 use tower_http::compression::predicate::{NotForContentType, SizeAbove};
-use tower_http::compression::{CompressionLayer, Predicate};
+use tower_http::compression::{CompressionLayer, Predicate as _};
 use tower_http::trace::TraceLayer;
 use utils::{connect, rss_handler, sitemap_handler};
 

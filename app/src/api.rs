@@ -1,4 +1,5 @@
-use std::collections::BTreeMap;
+extern crate alloc;
+use alloc::collections::BTreeMap;
 
 use leptos::prelude::{ServerFnError, server};
 use serde::{Deserialize, Serialize};
@@ -14,19 +15,20 @@ pub async fn select_posts(
     use leptos::prelude::expect_context;
 
     let AppState { db, .. } = expect_context::<AppState>();
-    let mut query = String::from(
-        "SELECT *, author.* from post WHERE is_published = true ORDER BY created_at DESC;",
-    );
-    if !tags.is_empty() {
+    let query = if tags.is_empty() {
+        String::from(
+            "SELECT *, author.* from post WHERE is_published = true ORDER BY created_at DESC;",
+        )
+    } else {
         let tags = tags
             .iter()
             .map(|tag| format!(r#""{tag}""#))
             .collect::<Vec<_>>();
-        query = format!(
+        format!(
             "SELECT *, author.* from post WHERE tags CONTAINSANY [{0}] ORDER BY created_at DESC;",
             tags.join(", ")
-        );
-    }
+        )
+    };
 
     let query = db.query(&query).await;
 
@@ -57,8 +59,7 @@ pub async fn select_tags() -> Result<BTreeMap<String, usize>, ServerFnError> {
     let query = "
     LET $tags = SELECT tags FROM post;
     array::flatten($tags.map(|$t| $t.tags));
-    "
-    .to_string();
+    ".to_owned();
     let query = db.query(&query).await;
 
     if let Err(e) = query {
@@ -95,7 +96,7 @@ pub async fn select_post(slug: String) -> Result<Post, ServerFnError> {
         Some(first_post) => first_post.clone(),
         None => {
             return Err(ServerFnError::Request(
-                "Failed to retrieve first post".to_string(),
+                "Failed to retrieve first post".to_owned(),
             ));
         }
     };
@@ -137,7 +138,7 @@ pub struct ContactRequest {
 #[server(endpoint = "/contact")]
 pub async fn contact(data: ContactRequest) -> Result<(), ServerFnError> {
     use lettre::{
-        AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor, message::header::ContentType,
+        AsyncSmtpTransport, AsyncTransport as _, Message, Tokio1Executor, message::header::ContentType,
         transport::smtp::authentication::Credentials,
     };
     use std::env;

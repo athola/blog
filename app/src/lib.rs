@@ -1,5 +1,5 @@
 use crate::components::{error_template, header, icons};
-use chrono::{Datelike, Utc};
+use chrono::{Datelike as _, Utc};
 use leptos::{
     html::{a, body, div, footer, head, html, main, meta, p},
     prelude::*,
@@ -23,7 +23,7 @@ mod post;
 mod references;
 pub mod types;
 
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines)]
 pub fn shell(options: LeptosOptions) -> impl IntoView {
     let html_comp = html().lang("en").child((
         head().child((
@@ -48,7 +48,7 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
             ))).child(
             Title(
                 TitleProps::builder()
-                    .text("Alex Thola's Blog – Tech Insights & Consulting")
+                    .text("Alex Thola's Blog \u{2013} Tech Insights & Consulting")
                     .build(),
             )).child((
             Meta(
@@ -99,13 +99,13 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
             Meta(
                 MetaProps::builder()
                     .property("og:title")
-                    .content("Alex Thola's Blog – Tech Insights & Consulting")
+                    .content("Alex Thola's Blog \u{2013} Tech Insights & Consulting")
                     .build(),
             ),
             Meta(
                 MetaProps::builder()
                     .property("og:site_name")
-                    .content("Alex Thola's Blog – Tech Insights & Consulting")
+                    .content("Alex Thola's Blog \u{2013} Tech Insights & Consulting")
                     .build(),
             ),
             Meta(
@@ -156,7 +156,7 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
             Meta(
                 MetaProps::builder()
                     .name("twitter:title")
-                    .content("Alex Thola's Blog – Tech Insights & Consulting")
+                    .content("Alex Thola's Blog \u{2013} Tech Insights & Consulting")
                     .build(),
             ),
             Meta(
@@ -276,7 +276,7 @@ pub fn component() -> impl IntoView {
                     .href("https://github.com/athola")
                     .class("hover:underline text-[#ffef5c]")
                     .child(" athola"),
-                  format!(" © {}", Utc::now().year()),
+                  format!(" \u{a9} {}", Utc::now().year()),
                 )),
                 div().class("block md:hidden").child(icons::component),
               )),
