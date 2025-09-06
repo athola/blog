@@ -3,15 +3,15 @@ name: Rust
 on:
   push:
     branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-
+  test:
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@nightly
@@ -25,6 +25,42 @@ jobs:
     - name: Run tests
       run: cargo test --verbose
 
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@nightly
+      with:
+        components: clippy
+    
+    - name: Run clippy
+      run: cargo clippy --all-targets --all-features -- -D warnings
+
+  migration-check:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Check migrations
+      uses: Odonno/surrealdb-migrations-action@v0.2.0
+      with:
+        address: ${{ secrets.SURREAL_ADDRESS }}
+        ns: ${{ secrets.SURREAL_NS }}
+        db: ${{ secrets.SURREAL_DB }}
+        username: ${{ secrets.SURREAL_USERNAME }}
+        password: ${{ secrets.SURREAL_PASSWORD }}
+        version: v2.0.0-preview.1
+        skip-untracked-files: true
+        dry-run: true
+
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [test, clippy]
+    steps:
+    - uses: actions/checkout@v4
+    
     - name: Apply migrations
       uses: Odonno/surrealdb-migrations-action@v0.2.0
       with:
