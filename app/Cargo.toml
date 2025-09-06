@@ -32,7 +32,7 @@ icondata = "0.5.0"
 leptos_icons = "0.5.0"
 leptos_meta = "0.7.8"
 leptos_router = { version = "0.7.8", features = ["nightly"] }
-lettre = { version = "0.11.15", default-features = false, optional = true, features = [
+lettre = { version = "0.11.18", default-features = false, optional = true, features = [
     "builder",
     "smtp-transport",
     "rustls-tls",
@@ -40,7 +40,7 @@ lettre = { version = "0.11.15", default-features = false, optional = true, featu
     "tokio1-rustls-tls",
 ] }
 thiserror = "2"
-web-sys = "0.3.77"
+web-sys = "0.3.78"
 
 [features]
 hydrate = ["leptos/hydrate", "dep:getrandom"]

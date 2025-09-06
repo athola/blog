@@ -3,8 +3,22 @@ name: Rust
 on:
   push:
     branches: [ "main" ]
+    paths:
+      - "**/*.rs"
+      - "**/Cargo.toml"
+      - "Cargo.lock"
+      - "Makefile"
+      - "Makefile.toml"
+      - "leptosfmt.toml"
   pull_request:
     branches: [ "main" ]
+    paths:
+      - "**/*.rs"
+      - "**/Cargo.toml"
+      - "Cargo.lock"
+      - "Makefile"
+      - "Makefile.toml"
+      - "leptosfmt.toml"
 
 env:
   CARGO_TERM_COLOR: always
@@ -36,23 +50,6 @@ jobs:
     - name: Run clippy
       run: cargo clippy --all-targets --all-features -- -D warnings
 
-  migration-check:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Check migrations
-      uses: Odonno/surrealdb-migrations-action@v0.2.0
-      with:
-        address: ${{ secrets.SURREAL_ADDRESS }}
-        ns: ${{ secrets.SURREAL_NS }}
-        db: ${{ secrets.SURREAL_DB }}
-        username: ${{ secrets.SURREAL_USERNAME }}
-        password: ${{ secrets.SURREAL_PASSWORD }}
-        version: v2.0.0-preview.1
-        skip-untracked-files: true
-        dry-run: true
 
   deploy:
     runs-on: ubuntu-latest

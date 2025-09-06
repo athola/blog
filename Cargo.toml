@@ -18,11 +18,11 @@ edition = "2024"
 [workspace.dependencies]
 axum = { version = "0.7.9", features = ["macros"] }
 cfg-if = "1"
-chrono = "0.4.40"
+chrono = "0.4.41"
 leptos = { version = "0.7.8", features = ["rustls", "nightly"] }
 leptos_axum = "0.7.8"
 serde = { version = "1.0.219", features = ["derive"] }
-surrealdb = { version = "2.2.1", features = ["protocol-http"] }
+surrealdb = { version = "2.3.7", features = ["protocol-http"] }
 tracing = "0.1"
 
 # Defines a size-optimized profile for the WASM bundle in release mode

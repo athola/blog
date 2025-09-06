@@ -1,6 +1,6 @@
 .POSIX:
 ## Always treat these targets as out of date
-.PHONY: help rebuild build lint bloat spellcheck udeps security test install-pkgs\
+.PHONY: help rebuild build lint bloat spellcheck udeps security test install-pkgs upgrade\
 	server cli build-release server-release cli-release
 
 include .config.mk
@@ -28,8 +28,9 @@ help:
 		"security    " "checks security of ${PROJECT}"\
 		"sort        " "sort ${PROJECT}'s Cargo.toml"\
 		"spellcheck  " "checks documentation spellcheck for ${PROJECT}"\
-		"test        " "runs tests on ${PROJECT}")\
+		"test        " "runs tests on ${PROJECT}"\
 		"udeps       " "checks unused dependencies for ${PROJECT}"\
+		"upgrade     " "upgrades all dependencies for ${PROJECT}"\
 		"valgrind    " "run ${PROJECT} binary through valgrind"
 
 rebuild:
@@ -97,3 +98,8 @@ install-pkgs:
 	@echo "[$@]: Installing ${RUST_PKGS}"
 	@rustup component add clippy rustfmt
 	@cargo install ${RUST_PKGS}
+
+upgrade:
+	@echo "[$@]: Upgrading all dependencies for ${PROJECT}"
+	@cargo install cargo-edit
+	@cargo upgrade
