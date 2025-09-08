@@ -1,0 +1,18 @@
+rules:
+  - id: detect-gcp-api-key
+    pattern-regex: 'AIza[0-9A-Za-z\-_]{35}'
+    message: "GCP API key detected"
+    languages: [generic]
+    severity: "ERROR"
+
+  - id: detect-passwords
+    pattern-regex: '(password|pwd|pass)\s*[=:]\s*["\'']*[A-Za-z0-9!@#$%^&*()_+\-=\[\]{};:"\\|,.<>/?]+["\'']*'
+    message: "Potential password detected"
+    languages: [generic]
+    severity: "WARNING"
+
+  - id: detect-private-key
+    pattern-regex: '-----BEGIN [A-Z ]*PRIVATE KEY-----'
+    message: "Private key detected"
+    languages: [generic]
+    severity: "ERROR"

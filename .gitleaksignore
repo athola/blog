@@ -1,0 +1,9 @@
+# Gitleaks ignore file for false positives
+# This file uses fingerprint format: file:rule:line
+
+# Compiled target files (false positives from dependencies)
+target/llvm-cov-target/debug/deps/libkatex-24369f0801e11f94.rmeta:generic-api-key:267
+
+# Documentation examples (already sanitized to use placeholder values)
+README.md:sidekiq-secret:52
+README.md:generic-api-key:569

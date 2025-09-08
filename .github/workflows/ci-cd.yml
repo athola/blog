@@ -1,0 +1,59 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  # This workflow orchestrates the CI/CD pipeline but doesn't run jobs directly
+  # Individual workflows (rust.yml, migrations.yml, deploy.yml) handle the actual work
+  
+  pipeline-status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2  # Simple status reporting should be very quick
+    steps:
+    - name: Pipeline Information
+      run: |
+        echo "## CI/CD Pipeline Overview" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "This commit will trigger the following workflows in sequence:" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 1. 🔒 Security Scanning" >> $GITHUB_STEP_SUMMARY
+        echo "- Scans for secrets and sensitive information" >> $GITHUB_STEP_SUMMARY
+        echo "- Uses Gitleaks, Semgrep, and Trufflehog" >> $GITHUB_STEP_SUMMARY
+        echo "- Blocks pipeline if critical security issues found" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 2. 🦀 Rust Build & Test" >> $GITHUB_STEP_SUMMARY
+        echo "- Compiles Rust/Leptos application" >> $GITHUB_STEP_SUMMARY
+        echo "- Runs test suite in dev and release modes" >> $GITHUB_STEP_SUMMARY
+        echo "- Performs security audit and linting" >> $GITHUB_STEP_SUMMARY
+        echo "- Creates build artifacts for deployment" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 3. 🗄️ Database Migrations" >> $GITHUB_STEP_SUMMARY
+        echo "- Validates migration syntax for external PRs" >> $GITHUB_STEP_SUMMARY
+        echo "- Tests database connectivity for trusted PRs" >> $GITHUB_STEP_SUMMARY
+        echo "- Applies migrations in dry-run mode" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 4. 🚀 Production Deployment" >> $GITHUB_STEP_SUMMARY
+        echo "- **Only runs on main branch pushes**" >> $GITHUB_STEP_SUMMARY
+        echo "- Checks DigitalOcean configuration" >> $GITHUB_STEP_SUMMARY
+        echo "- Deploys to https://alexthola.com if configured" >> $GITHUB_STEP_SUMMARY
+        echo "- Performs comprehensive health checks" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          echo "📋 **Current Status**: Pull Request - Only build and test steps will run" >> $GITHUB_STEP_SUMMARY
+        elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+          echo "📋 **Current Status**: Main branch push - Full CI/CD pipeline will execute" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Workflow Dependencies" >> $GITHUB_STEP_SUMMARY
+        echo "```" >> $GITHUB_STEP_SUMMARY
+        echo "secrets-scan.yml ─┐" >> $GITHUB_STEP_SUMMARY
+        echo "                  ├──> rust.yml ──┐" >> $GITHUB_STEP_SUMMARY
+        echo "                  └──> migrations.yml ──┼──> deploy.yml (production only)" >> $GITHUB_STEP_SUMMARY
+        echo "                                       ┘" >> $GITHUB_STEP_SUMMARY
+        echo "```" >> $GITHUB_STEP_SUMMARY

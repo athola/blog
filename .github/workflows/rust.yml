@@ -2,7 +2,7 @@ name: Rust
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "master" ]
     paths:
       - "**/*.rs"
       - "**/Cargo.toml"
@@ -10,8 +10,13 @@ on:
       - "Makefile"
       - "Makefile.toml"
       - "leptosfmt.toml"
+      - "Dockerfile"
+      - ".do/**"
+      - "style/**"
+      - "public/**"
   pull_request:
-    branches: [ "main" ]
+    types: [opened, synchronize]
+    branches: [ "master" ]
     paths:
       - "**/*.rs"
       - "**/Cargo.toml"
@@ -19,58 +24,186 @@ on:
       - "Makefile"
       - "Makefile.toml"
       - "leptosfmt.toml"
+      - "Dockerfile"
+      - ".do/**"
+      - "style/**"
+      - "public/**"
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: short
+  # Optimize for CI builds with limited retries
+  CARGO_NET_RETRY: 3  # Reduced from 10 to prevent excessive wait times
+  CARGO_NET_TIMEOUT: 120  # Reduced from 300 to fail faster
+  # WASM optimization
+  RUSTFLAGS: "-C target-cpu=native -C opt-level=3"
+  # Security hardening
+  RUSTDOCFLAGS: "-D warnings"
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30  # Prevent excessive CI usage
+    strategy:
+      matrix:
+        profile: [dev, release]
+      fail-fast: false  # Allow both profiles to complete for better debugging
     steps:
-    - uses: actions/checkout@v4
-    - uses: dtolnay/rust-toolchain@nightly
+    - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+    - uses: dtolnay/rust-toolchain@55d80eb3c5a4228eec5390a083c092095115c6f1 # nightly
+    
+    - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
+      with:
+        shared-key: "test-${{ matrix.profile }}"
+        cache-targets: "true"
+        cache-on-failure: "true"
+        save-if: ${{ github.ref == 'refs/heads/master' }}
+        workspaces: |
+          .
+        cache-all-crates: "true"
     
     - name: Version
       run: cargo --version --verbose
 
-    - name: Build
-      run: cargo build --verbose
+    - name: Build workspace
+      timeout-minutes: 20  # Rust builds can be slow, but not indefinite
+      run: |
+        if [ "${{ matrix.profile }}" = "dev" ]; then
+          cargo build --verbose --workspace
+          cargo test --verbose
+        else
+          cargo build --verbose --workspace --release --profile wasm-release
+          cargo test --verbose --release
+        fi
     
-    - name: Run tests
-      run: cargo test --verbose
+    - name: Upload build artifacts
+      if: matrix.profile == 'release'
+      uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+      with:
+        name: rust-build-artifacts
+        path: |
+          target/release/
+          target/wasm-release/
+          Cargo.lock
+          migrations/
+          schemas/
+          events/
+          **/*.surql
+          db.sh
+        retention-days: 1
+
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25  # Coverage analysis can take longer than regular tests
+    steps:
+    - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+    - uses: dtolnay/rust-toolchain@55d80eb3c5a4228eec5390a083c092095115c6f1 # nightly
+      with:
+        components: llvm-tools-preview
+    
+    - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
+      with:
+        shared-key: "coverage"
+        cache-targets: "true"
+        cache-on-failure: "true"
+        save-if: ${{ github.ref == 'refs/heads/master' }}
+        workspaces: |
+          .
+        cache-all-crates: "true"
+    
+    - name: Install test tools
+      run: |
+        cargo install --locked cargo-nextest cargo-llvm-cov
+    
+    - name: Run test coverage
+      timeout-minutes: 20  # Coverage tests can be slower
+      run: make test-coverage
+    
+    - name: Generate HTML coverage report
+      run: make test-coverage-html
+    
+    - name: Upload coverage reports
+      uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+      with:
+        name: coverage-reports
+        path: |
+          test-results/coverage/
+        retention-days: 7
+    
+    - name: Upload coverage to Codecov
+      if: github.event_name == 'push' || github.event_name == 'pull_request'
+      uses: codecov/codecov-action@4fe8c5f003fae66aa5ebb77cfd3e7bfbbda0b6b0 # v3.1.5
+      with:
+        file: test-results/coverage/lcov.info
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false  # Don't fail CI if codecov upload fails
+        verbose: true  # Enable verbose output for debugging
+        
+    - name: Coverage Summary
+      if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+      run: |
+        echo "✅ Coverage uploaded to Codecov for master branch"
+        echo "🔗 Badge will update at: https://codecov.io/gh/athola/blog/branch/master/graph/badge.svg"
 
   clippy:
     runs-on: ubuntu-latest
+    timeout-minutes: 20  # Clippy + security tools shouldn't take too long
     steps:
-    - uses: actions/checkout@v4
-    - uses: dtolnay/rust-toolchain@nightly
+    - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+    - uses: dtolnay/rust-toolchain@55d80eb3c5a4228eec5390a083c092095115c6f1 # nightly
       with:
         components: clippy
     
+    - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
+      with:
+        shared-key: "clippy"
+        cache-targets: "true"
+        cache-on-failure: "true"
+        save-if: ${{ github.ref == 'refs/heads/master' }}
+        workspaces: |
+          .
+        cache-all-crates: "true"
+    
     - name: Run clippy
       run: cargo clippy --all-targets --all-features -- -D warnings
-
-
-  deploy:
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    needs: [test, clippy]
-    steps:
-    - uses: actions/checkout@v4
     
-    - name: Apply migrations
-      uses: Odonno/surrealdb-migrations-action@v0.2.0
-      with:
-        address: ${{ secrets.SURREAL_ADDRESS }}
-        ns: ${{ secrets.SURREAL_NS }}
-        db: ${{ secrets.SURREAL_DB }}
-        username: ${{ secrets.SURREAL_USERNAME }}
-        password: ${{ secrets.SURREAL_PASSWORD }}
-        version: v2.0.0-preview.1
-        skip-untracked-files: true
+    - name: Security audit
+      timeout-minutes: 5  # Security tools should be fast
+      run: |
+        cargo install --locked cargo-audit
+        cargo audit --deny warnings
+    
+    - name: Check for unused dependencies
+      timeout-minutes: 10  # udeps can be slow on large projects
+      run: |
+        cargo install --locked cargo-udeps
+        cargo +nightly udeps --all-targets
+    
+    - name: Performance benchmarks
+      timeout-minutes: 15  # Benchmarks can vary in duration
+      run: |
+        # Run benchmarks if they exist
+        if find . -name "benches" -type d | grep -q .; then
+          timeout 600 cargo bench --workspace  # 10 minute max for benchmarks
+        else
+          echo "No benchmarks found, skipping performance tests"
+        fi
+    
+    - name: WASM size check
+      timeout-minutes: 2  # Simple file check should be quick
+      run: |
+        # Check WASM bundle size for performance
+        if find target/wasm-release -name "*.wasm" -type f | head -1; then
+          WASM_FILE=$(find target/wasm-release -name "*.wasm" -type f | head -1)
+          WASM_SIZE=$(stat -c%s "$WASM_FILE")
+          echo "WASM bundle size: $WASM_SIZE bytes"
+          
+          # Warn if WASM is larger than 2MB
+          if [ "$WASM_SIZE" -gt 2097152 ]; then
+            echo "::warning::WASM bundle is larger than 2MB, consider optimization"
+          fi
+        fi
 
-    - name: Deploy to DigitalOcean
-      uses: digitalocean/app_action@v1 # switch to v2 after https://github.com/digitalocean/app_action/issues/123
-      with:
-        app_name: blog
-        token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+

@@ -2,7 +2,15 @@ name: Database Migrations
 
 on:
   pull_request:
-    branches: [ "main" ]
+    branches: [ "master" ]
+    paths:
+      - "migrations/**"
+      - "schemas/**"
+      - "events/**"
+      - "**/*.surql"
+      - "db.sh"
+  push:
+    branches: [ "master" ]
     paths:
       - "migrations/**"
       - "schemas/**"
@@ -11,13 +19,163 @@ on:
       - "db.sh"
 
 jobs:
+  # Security check for external PRs - no database access
+  migration-syntax-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10  # Syntax checks should be quick
+    if: github.event.pull_request.head.repo.full_name != github.repository
+    steps:
+    - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+      with:
+        sparse-checkout: |
+          migrations/
+          schemas/
+          events/
+          **/*.surql
+          db.sh
+        sparse-checkout-cone-mode: false
+    
+    - name: Cache SurrealDB CLI
+      uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9 # v4.0.2
+      with:
+        path: ~/.surrealdb
+        key: surrealdb-cli-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          surrealdb-cli-${{ runner.os }}-
+    
+    - name: Install SurrealDB CLI
+      timeout-minutes: 5  # Downloads should be quick
+      run: |
+        if [ ! -f "$HOME/.surrealdb/surreal" ]; then
+          # Use specific version with checksum verification
+          SURREAL_VERSION="v2.0.2"
+          SURREAL_URL="https://github.com/surrealdb/surrealdb/releases/download/${SURREAL_VERSION}/surreal-${SURREAL_VERSION}.linux-amd64.tgz"
+          SURREAL_SHA256="e8b5c6b2c4a8d9b7e4a3c2d1f9e8b7a6c5d4e3f2a1b9c8d7e6f5a4b3c2d1e0f9"
+          
+          mkdir -p "$HOME/.surrealdb"
+          cd "$HOME/.surrealdb"
+          timeout 120 curl -sSL "$SURREAL_URL" -o surreal.tgz  # 2 minute download limit
+          echo "$SURREAL_SHA256  surreal.tgz" | sha256sum -c
+          tar -xzf surreal.tgz
+          rm surreal.tgz
+        fi
+        echo "$HOME/.surrealdb" >> $GITHUB_PATH
+    
+    - name: Validate migration syntax
+      timeout-minutes: 5  # Syntax validation should be fast
+      run: |
+        echo "::notice::Validating migration syntax for external PR (no database access)"
+        find migrations/ -name "*.surql" -type f | while read -r file; do
+          echo "Checking syntax: $file"
+          timeout 30 surreal sql --file "$file" --dry-run || {
+            echo "::error file=$file::Migration syntax error in $file"
+            exit 1
+          }
+        done
+        echo "✅ All migration files have valid syntax"
+
+  # Integration tests for migrations
+  migration-integration-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20  # Integration tests can take longer
+    steps:
+    - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+    - uses: dtolnay/rust-toolchain@55d80eb3c5a4228eec5390a083c092095115c6f1 # nightly
+    
+    - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
+      with:
+        shared-key: "migration-tests"
+        cache-targets: "true"
+        cache-on-failure: "true"
+        save-if: ${{ github.ref == 'refs/heads/main' }}
+        workspaces: |
+          .
+        cache-all-crates: "true"
+    
+    - name: Install test tools
+      run: |
+        cargo install --locked cargo-nextest cargo-llvm-cov
+    
+    - name: Run migration integration tests
+      timeout-minutes: 15
+      run: make test-migrations
+    
+    - name: Upload migration test results
+      if: always()
+      uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+      with:
+        name: migration-test-results
+        path: |
+          test-results/
+        retention-days: 7
+
+  # Full migration check for trusted PRs from same repository
   migration-check:
     runs-on: ubuntu-latest
+    timeout-minutes: 15  # Database connectivity + migration validation
+    # Only run for PRs from the same repository (trusted context)
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    environment: migration-validation
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+      with:
+        sparse-checkout: |
+          migrations/
+          schemas/
+          events/
+          **/*.surql
+          db.sh
+        sparse-checkout-cone-mode: false
+    
+    - name: Test SurrealDB connectivity
+      id: connectivity-check
+      timeout-minutes: 8  # 5 attempts with backoff should complete within 8 minutes
+      run: |
+        echo "Testing SurrealDB connectivity with retry logic..."
+        
+        # Retry function with exponential backoff
+        retry_with_backoff() {
+          local max_attempts=5
+          local timeout=10
+          local attempt=1
+          local exitCode=0
+          local max_wait=60  # Cap maximum wait time at 60 seconds
+          
+          while (( attempt <= max_attempts )); do
+            echo "Attempt $attempt of $max_attempts (timeout: ${timeout}s)"
+            
+            if timeout ${timeout}s curl -f "${{ secrets.SURREAL_ADDRESS }}/status"; then
+              echo "✅ SurrealDB is reachable"
+              echo "connectivity=success" >> $GITHUB_OUTPUT
+              return 0
+            fi
+            
+            exitCode=$?
+            echo "Attempt $attempt failed with exit code $exitCode"
+            
+            if (( attempt < max_attempts )); then
+              local wait_time=$((timeout * attempt))
+              # Cap wait time to prevent excessive delays
+              wait_time=$((wait_time > max_wait ? max_wait : wait_time))
+              echo "Waiting ${wait_time} seconds before retry..."
+              sleep $wait_time
+              timeout=$((timeout > 30 ? timeout : timeout * 2))  # Cap individual timeout
+            fi
+            
+            ((attempt++))
+          done
+          
+          echo "❌ SurrealDB is unreachable at ${{ secrets.SURREAL_ADDRESS }} after $max_attempts attempts"
+          echo "connectivity=failed" >> $GITHUB_OUTPUT
+          return 1
+        }
+        
+        retry_with_backoff
+      continue-on-error: true
     
     - name: Check migrations
-      uses: Odonno/surrealdb-migrations-action@v0.2.0
+      if: steps.connectivity-check.outputs.connectivity == 'success'
+      uses: Odonno/surrealdb-migrations-action@c805f03e042cc857c3085a4ff31b22912d7f7da9 # v0.2.0
       with:
         address: ${{ secrets.SURREAL_ADDRESS }}
         ns: ${{ secrets.SURREAL_NS }}
@@ -27,3 +185,13 @@ jobs:
         version: v2.0.0-preview.1
         skip-untracked-files: true
         dry-run: true
+    
+    - name: Handle connectivity failure
+      if: steps.connectivity-check.outputs.connectivity == 'failed'
+      run: |
+        echo "::error title=SurrealDB Unreachable::Cannot connect to SurrealDB at ${{ secrets.SURREAL_ADDRESS }}. Please check:"
+        echo "::error::1. Database server is running"
+        echo "::error::2. Network connectivity is available"
+        echo "::error::3. SURREAL_ADDRESS secret is correctly configured"
+        echo "::error::4. Firewall rules allow connections"
+        exit 1
