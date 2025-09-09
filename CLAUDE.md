@@ -130,6 +130,13 @@ The project uses a comprehensive security-first GitHub Actions pipeline with the
 ### Integration with Development
 - **Local scanning**: Use `./run_secret_scan.sh` before committing
 - **Pre-commit validation**: Security scans run on every push/PR
+- **SHA hash updates**: Before committing workflow changes, update action SHA hashes to latest versions:
+  ```bash
+  # Example: Update actions/cache to latest v4.2.0
+  # Get latest SHA: curl -s https://api.github.com/repos/actions/cache/git/refs/tags/v4.2.0
+  # Replace: uses: actions/cache@OLD_SHA # v4.1.x
+  # With: uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+  ```
 - **Environment protection**: `.env.example` provides secure template
 - **False positive management**: `.gitleaksignore` with fingerprint-based exclusions
 
