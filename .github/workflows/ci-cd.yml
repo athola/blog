@@ -22,23 +22,32 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "This commit will trigger the following workflows in sequence:" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### 1. 🔒 Security Scanning" >> $GITHUB_STEP_SUMMARY
+        
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          echo "### 1. 📏 PR Size Check" >> $GITHUB_STEP_SUMMARY
+          echo "- Validates PR size is under 2000 lines changed" >> $GITHUB_STEP_SUMMARY
+          echo "- Provides feedback on PR size category" >> $GITHUB_STEP_SUMMARY
+          echo "- Blocks oversized PRs from merging" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "### $([ "${{ github.event_name }}" = "pull_request" ] && echo "2" || echo "1"). 🔒 Security Scanning" >> $GITHUB_STEP_SUMMARY
         echo "- Scans for secrets and sensitive information" >> $GITHUB_STEP_SUMMARY
         echo "- Uses Gitleaks, Semgrep, and Trufflehog" >> $GITHUB_STEP_SUMMARY
         echo "- Blocks pipeline if critical security issues found" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### 2. 🦀 Rust Build & Test" >> $GITHUB_STEP_SUMMARY
+        echo "### $([ "${{ github.event_name }}" = "pull_request" ] && echo "3" || echo "2"). 🦀 Rust Build & Test" >> $GITHUB_STEP_SUMMARY
         echo "- Compiles Rust/Leptos application" >> $GITHUB_STEP_SUMMARY
         echo "- Runs test suite in dev and release modes" >> $GITHUB_STEP_SUMMARY
         echo "- Performs security audit and linting" >> $GITHUB_STEP_SUMMARY
         echo "- Creates build artifacts for deployment" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### 3. 🗄️ Database Migrations" >> $GITHUB_STEP_SUMMARY
+        echo "### $([ "${{ github.event_name }}" = "pull_request" ] && echo "4" || echo "3"). 🗄️ Database Migrations" >> $GITHUB_STEP_SUMMARY
         echo "- Validates migration syntax for external PRs" >> $GITHUB_STEP_SUMMARY
         echo "- Tests database connectivity for trusted PRs" >> $GITHUB_STEP_SUMMARY
         echo "- Applies migrations in dry-run mode" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### 4. 🚀 Production Deployment" >> $GITHUB_STEP_SUMMARY
+        echo "### $([ "${{ github.event_name }}" = "pull_request" ] && echo "5" || echo "4"). 🚀 Production Deployment" >> $GITHUB_STEP_SUMMARY
         echo "- **Only runs on main branch pushes**" >> $GITHUB_STEP_SUMMARY
         echo "- Checks DigitalOcean configuration" >> $GITHUB_STEP_SUMMARY
         echo "- Deploys to https://alexthola.com if configured" >> $GITHUB_STEP_SUMMARY
@@ -54,8 +63,16 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Workflow Dependencies" >> $GITHUB_STEP_SUMMARY
         echo "```" >> $GITHUB_STEP_SUMMARY
-        echo "secrets-scan.yml ─┐" >> $GITHUB_STEP_SUMMARY
-        echo "                  ├──> rust.yml ──┐" >> $GITHUB_STEP_SUMMARY
-        echo "                  └──> migrations.yml ──┼──> deploy.yml (production only)" >> $GITHUB_STEP_SUMMARY
-        echo "                                       ┘" >> $GITHUB_STEP_SUMMARY
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          echo "pr-size-check.yml ──┐" >> $GITHUB_STEP_SUMMARY
+          echo "secrets-scan.yml ───┼──┐" >> $GITHUB_STEP_SUMMARY
+          echo "                    │  ├──> rust.yml ──┐" >> $GITHUB_STEP_SUMMARY
+          echo "                    │  └──> migrations.yml ──┼──> deploy.yml (production only)" >> $GITHUB_STEP_SUMMARY
+          echo "                    └──────────────────────── ┘" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "secrets-scan.yml ─┐" >> $GITHUB_STEP_SUMMARY
+          echo "                  ├──> rust.yml ──┐" >> $GITHUB_STEP_SUMMARY
+          echo "                  └──> migrations.yml ──┼──> deploy.yml (production only)" >> $GITHUB_STEP_SUMMARY
+          echo "                                       ┘" >> $GITHUB_STEP_SUMMARY
+        fi
         echo "```" >> $GITHUB_STEP_SUMMARY

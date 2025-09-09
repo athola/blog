@@ -1,0 +1,225 @@
+name: PR Size Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [ "master" ]
+
+env:
+  # PR size limits (lines changed = additions + deletions)
+  MAX_PR_SIZE: 2000
+  IDEAL_PR_SIZE: 500
+  GOOD_PR_SIZE: 1500
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+jobs:
+  check-pr-size:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+    - name: Checkout PR
+      uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+      with:
+        fetch-depth: 0  # Need full history to compare with base branch
+
+    - name: Calculate PR size
+      id: pr-size
+      run: |
+        set -euo pipefail
+        
+        # Get base branch SHA
+        BASE_SHA="${{ github.event.pull_request.base.sha }}"
+        HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+        
+        echo "Comparing $HEAD_SHA with base $BASE_SHA"
+        
+        # Get diff stats (additions and deletions)
+        DIFF_OUTPUT=$(git diff --numstat $BASE_SHA...$HEAD_SHA)
+        
+        # Calculate total lines changed (additions + deletions)
+        ADDITIONS=0
+        DELETIONS=0
+        CHANGED_FILES=0
+        
+        while IFS=$'\t' read -r added deleted filename; do
+          # Skip binary files (marked with -)
+          if [[ "$added" != "-" && "$deleted" != "-" ]]; then
+            ADDITIONS=$((ADDITIONS + added))
+            DELETIONS=$((DELETIONS + deleted))
+            CHANGED_FILES=$((CHANGED_FILES + 1))
+            echo "  $filename: +$added -$deleted"
+          else
+            echo "  $filename: binary file"
+          fi
+        done <<< "$DIFF_OUTPUT"
+        
+        TOTAL_LINES=$((ADDITIONS + DELETIONS))
+        
+        echo "PR Statistics:"
+        echo "  Files changed: $CHANGED_FILES"
+        echo "  Lines added: $ADDITIONS"
+        echo "  Lines deleted: $DELETIONS"
+        echo "  Total lines changed: $TOTAL_LINES"
+        
+        # Set outputs for later steps
+        echo "total-lines=$TOTAL_LINES" >> $GITHUB_OUTPUT
+        echo "additions=$ADDITIONS" >> $GITHUB_OUTPUT
+        echo "deletions=$DELETIONS" >> $GITHUB_OUTPUT
+        echo "changed-files=$CHANGED_FILES" >> $GITHUB_OUTPUT
+
+    - name: Determine PR size category
+      id: category
+      run: |
+        TOTAL_LINES=${{ steps.pr-size.outputs.total-lines }}
+        
+        if [ "$TOTAL_LINES" -le "$IDEAL_PR_SIZE" ]; then
+          echo "category=ideal" >> $GITHUB_OUTPUT
+          echo "status=success" >> $GITHUB_OUTPUT
+          echo "message=✅ Ideal PR size ($TOTAL_LINES lines)" >> $GITHUB_OUTPUT
+          echo "emoji=✅" >> $GITHUB_OUTPUT
+        elif [ "$TOTAL_LINES" -le "$GOOD_PR_SIZE" ]; then
+          echo "category=good" >> $GITHUB_OUTPUT
+          echo "status=success" >> $GITHUB_OUTPUT
+          echo "message=🟡 Good PR size ($TOTAL_LINES lines)" >> $GITHUB_OUTPUT
+          echo "emoji=🟡" >> $GITHUB_OUTPUT
+        elif [ "$TOTAL_LINES" -le "$MAX_PR_SIZE" ]; then
+          echo "category=large" >> $GITHUB_OUTPUT
+          echo "status=neutral" >> $GITHUB_OUTPUT
+          echo "message=⚠️ Large PR size ($TOTAL_LINES lines) - consider splitting" >> $GITHUB_OUTPUT
+          echo "emoji=⚠️" >> $GITHUB_OUTPUT
+        else
+          echo "category=too-large" >> $GITHUB_OUTPUT
+          echo "status=failure" >> $GITHUB_OUTPUT
+          echo "message=❌ PR too large ($TOTAL_LINES lines) - must be split" >> $GITHUB_OUTPUT
+          echo "emoji=❌" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Create PR status check
+      uses: actions/github-script@60a0d83039c74a4adc543b1f9a90c4fb8b8e3b72 # v7.0.1
+      with:
+        script: |
+          const totalLines = ${{ steps.pr-size.outputs.total-lines }};
+          const category = '${{ steps.category.outputs.category }}';
+          const message = '${{ steps.category.outputs.message }}';
+          
+          let state, conclusion;
+          
+          if (category === 'ideal' || category === 'good') {
+            state = 'completed';
+            conclusion = 'success';
+          } else if (category === 'large') {
+            state = 'completed';
+            conclusion = 'neutral';
+          } else {
+            state = 'completed';
+            conclusion = 'failure';
+          }
+          
+          await github.rest.checks.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            name: 'PR Size Check',
+            head_sha: context.payload.pull_request.head.sha,
+            status: state,
+            conclusion: conclusion,
+            output: {
+              title: message,
+              summary: `
+          ## PR Size Analysis
+          
+          - **Total lines changed**: ${totalLines}
+          - **Lines added**: ${{ steps.pr-size.outputs.additions }}
+          - **Lines deleted**: ${{ steps.pr-size.outputs.deletions }}
+          - **Files changed**: ${{ steps.pr-size.outputs.changed-files }}
+          
+          ### Size Guidelines
+          - ✅ **Ideal (0-${process.env.IDEAL_PR_SIZE} lines)**: Single feature, bug fix, or refactor
+          - 🟡 **Good (${process.env.IDEAL_PR_SIZE + 1}-${process.env.GOOD_PR_SIZE} lines)**: Medium feature or multiple related changes  
+          - ⚠️ **Large (${process.env.GOOD_PR_SIZE + 1}-${process.env.MAX_PR_SIZE} lines)**: Complex feature requiring justification
+          - ❌ **Too Large (${process.env.MAX_PR_SIZE + 1}+ lines)**: Should be broken into multiple PRs
+          
+          ${totalLines > process.env.MAX_PR_SIZE ? `
+          ### 🚨 Action Required
+          
+          This PR exceeds the maximum size limit. Please consider:
+          
+          1. **Break into smaller PRs** using [strategies from CLAUDE.md](../blob/master/CLAUDE.md#breaking-down-large-changes)
+          2. **Add justification** in PR description if this change cannot be split
+          3. **Request maintainer review** for size limit override
+          ` : totalLines > process.env.GOOD_PR_SIZE ? `
+          ### 💡 Suggestion
+          
+          Consider breaking this PR into smaller, more focused changes for easier review.
+          ` : ''}
+              `
+            }
+          });
+
+    - name: Add PR comment for oversized PRs
+      if: steps.category.outputs.category == 'too-large'
+      uses: actions/github-script@60a0d83039c74a4adc543b1f9a90c4fb8b8e3b72 # v7.0.1
+      with:
+        script: |
+          const totalLines = ${{ steps.pr-size.outputs.total-lines }};
+          
+          // Check if we already commented on this PR to avoid spam
+          const comments = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+          });
+          
+          const botComments = comments.data.filter(comment => 
+            comment.user.type === 'Bot' && 
+            comment.body.includes('PR Size Check')
+          );
+          
+          if (botComments.length === 0) {
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `## 🚨 PR Size Check: Too Large
+          
+          This pull request changes **${totalLines} lines**, which exceeds our limit of **${process.env.MAX_PR_SIZE} lines**.
+          
+          ### Why Size Matters
+          - **Faster reviews**: Smaller PRs are reviewed more quickly and thoroughly
+          - **Reduced bugs**: Easier to spot issues in focused changes
+          - **Better discussion**: Reviewers can provide more meaningful feedback
+          - **Easier rollbacks**: Smaller changes are simpler to revert if needed
+          
+          ### What to do next
+          
+          1. **Break this PR into smaller ones** - See [strategies in CLAUDE.md](../blob/master/CLAUDE.md#breaking-down-large-changes)
+          2. **If this change cannot be split**, add a detailed justification in the PR description and request a maintainer review for override
+          3. **Focus each PR on a single concern** - separate infrastructure, logic, UI, and testing changes
+          
+          ### Override Process
+          If this PR truly cannot be split:
+          - Add detailed justification in PR description
+          - Include comprehensive testing plan
+          - Request review from maintainer with override permissions
+          - Include migration/rollback strategy for large changes
+          `
+            });
+          }
+
+    - name: Fail workflow for oversized PRs
+      if: steps.category.outputs.category == 'too-large'
+      run: |
+        echo "❌ PR is too large (${{ steps.pr-size.outputs.total-lines }} lines > $MAX_PR_SIZE limit)"
+        echo "Please split this PR into smaller, more focused changes."
+        echo "See CLAUDE.md for strategies on breaking down large PRs."
+        exit 1
+
+    - name: Success summary
+      if: steps.category.outputs.category != 'too-large'
+      run: |
+        echo "${{ steps.category.outputs.message }}"
+        echo "PR size: ${{ steps.pr-size.outputs.total-lines }} lines (additions: ${{ steps.pr-size.outputs.additions }}, deletions: ${{ steps.pr-size.outputs.deletions }})"
+        echo "Files changed: ${{ steps.pr-size.outputs.changed-files }}"

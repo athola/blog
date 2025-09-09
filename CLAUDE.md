@@ -140,6 +140,71 @@ The project uses a comprehensive security-first GitHub Actions pipeline with the
 - **Environment protection**: `.env.example` provides secure template
 - **False positive management**: `.gitleaksignore` with fingerprint-based exclusions
 
+## Pull Request Guidelines
+
+### Size Limits and Best Practices
+
+**Target Size**: Pull requests should contain **2000 total lines of code changes or less** (additions + deletions combined).
+
+#### Why Size Matters
+- **Faster reviews**: Smaller PRs are reviewed more quickly and thoroughly
+- **Reduced bugs**: Easier to spot issues in focused changes
+- **Better discussion**: Reviewers can provide more meaningful feedback
+- **Easier rollbacks**: Smaller changes are simpler to revert if needed
+- **CI/CD efficiency**: Faster builds and tests with smaller changesets
+
+#### Size Guidelines
+- **✅ Ideal (0-500 lines)**: Single feature, bug fix, or refactor
+- **🟡 Good (500-1500 lines)**: Medium feature or multiple related changes
+- **⚠️ Large (1500-2000 lines)**: Complex feature requiring justification
+- **❌ Too Large (2000+ lines)**: Should be broken into multiple PRs
+
+#### Automated Enforcement
+The project includes GitHub Actions workflow checks that:
+- **Calculate total lines changed** (additions + deletions)
+- **Block PRs exceeding 2000 lines** from merging
+- **Provide size feedback** in PR status checks
+- **Allow emergency overrides** for critical fixes (maintainer approval required)
+
+#### Breaking Down Large Changes
+
+**Strategies for splitting large PRs**:
+
+1. **Feature Stages**: Break features into logical phases
+   ```
+   PR 1: Database schema changes
+   PR 2: Backend API implementation  
+   PR 3: Frontend UI components
+   PR 4: Integration and testing
+   ```
+
+2. **Component Separation**: Split by architectural layers
+   ```
+   PR 1: Data models and types
+   PR 2: Business logic functions
+   PR 3: Server endpoints
+   PR 4: Client-side integration
+   ```
+
+3. **Preparatory PRs**: Infrastructure first, features second
+   ```
+   PR 1: Dependencies and configuration
+   PR 2: Helper utilities and shared code
+   PR 3: Main feature implementation
+   ```
+
+#### Exception Process
+For PRs that must exceed 2000 lines:
+1. **Add justification** in PR description explaining why the change cannot be split
+2. **Request maintainer review** for size limit override
+3. **Provide detailed testing plan** showing comprehensive validation
+4. **Include migration/rollback strategy** for large changes
+
+#### Monitoring and Metrics
+- PR size is tracked in CI/CD pipeline
+- Regular reports on average PR size trends
+- Recognition for consistently well-sized PRs
+
 ## Test Status Summary
 
 This project maintains excellent code quality with comprehensive test coverage. All tests must pass:

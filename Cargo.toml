@@ -139,7 +139,7 @@ categories.workspace = true
 edition.workspace = true
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage)', 'cfg(feature, values("ci"))'] }
 
 # SurrealDB migration test suite
 [[test]]
