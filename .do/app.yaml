@@ -1,0 +1,165 @@
+#
+# DigitalOcean App Platform specification for alexthola.com blog
+#
+name: alexthola-blog
+region: nyc
+
+# Services configuration
+services:
+  # Main web application
+  - name: blog-web
+    source_dir: /
+    github:
+      repo: athola/blog
+      branch: main
+      deploy_on_push: true
+    
+    # Build configuration
+    build_command: |
+      # Install system dependencies
+      apt-get update && apt-get install -y pkg-config libssl-dev
+      
+      # Install Rust and cargo-leptos
+      curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly
+      source $HOME/.cargo/env
+      rustup target add wasm32-unknown-unknown
+      cargo install cargo-leptos wasm-bindgen-cli
+      
+      # Build the application
+      cargo leptos build --release
+    
+    # Use custom Dockerfile for better control
+    dockerfile_path: Dockerfile
+    
+    # Runtime configuration
+    instance_count: 1
+    instance_size_slug: basic-xxs  # Can scale up as needed
+    
+    # Port configuration
+    http_port: 8080
+    
+    # Environment variables
+    envs:
+      - key: RUST_LOG
+        value: info
+      - key: LEPTOS_SITE_ADDR
+        value: 0.0.0.0:8080
+      - key: LEPTOS_SITE_ROOT
+        value: site
+      - key: LEPTOS_HASH_FILES
+        value: "true"
+      - key: DATABASE_URL
+        value: ${DATABASE_URL}
+        type: SECRET
+      - key: SURREAL_ADDRESS
+        value: ${db.SURREAL_ADDRESS}
+      - key: SURREAL_NS
+        value: ${db.SURREAL_NS}
+      - key: SURREAL_DB
+        value: ${db.SURREAL_DB}
+      - key: SURREAL_USERNAME
+        value: ${db.SURREAL_USERNAME}
+      - key: SURREAL_PASSWORD
+        value: ${db.SURREAL_PASSWORD}
+        type: SECRET
+    
+    # Health check configuration
+    health_check:
+      http_path: /health
+      initial_delay_seconds: 60
+      period_seconds: 30
+      timeout_seconds: 10
+      failure_threshold: 3
+      success_threshold: 1
+    
+    # Resource limits
+    source_commit_ish: main
+
+# Database configuration - SurrealDB
+databases:
+  - name: surrealdb
+    engine: PG  # Using PostgreSQL as SurrealDB backing store for now
+    version: "15"
+    size: basic
+    num_nodes: 1
+    
+# Domain configuration
+domains:
+  - domain: alexthola.com
+    type: PRIMARY
+    wildcard: false
+    certificate_id: ""  # Will be auto-generated
+  - domain: www.alexthola.com
+    type: ALIAS
+    wildcard: false
+
+# Static assets (if any additional assets are needed)
+static_sites: []
+
+# Worker services (for background tasks if needed)
+workers: []
+
+# Job configuration for migrations
+jobs:
+  - name: db-migrate
+    source_dir: /
+    github:
+      repo: athola/blog
+      branch: main
+    
+    build_command: |
+      # Install SurrealDB CLI for migrations
+      curl -sSf https://install.surrealdb.com | sh
+      echo "$HOME/.surrealdb" >> $GITHUB_PATH
+    
+    run_command: |
+      # Run database migrations
+      surreal import --conn $SURREAL_ADDRESS --user $SURREAL_USERNAME --pass $SURREAL_PASSWORD --ns $SURREAL_NS --db $SURREAL_DB ./migrations/
+    
+    kind: PRE_DEPLOY
+    
+    envs:
+      - key: SURREAL_ADDRESS
+        value: ${db.SURREAL_ADDRESS}
+      - key: SURREAL_NS
+        value: ${db.SURREAL_NS}
+      - key: SURREAL_DB
+        value: ${db.SURREAL_DB}
+      - key: SURREAL_USERNAME
+        value: ${db.SURREAL_USERNAME}
+      - key: SURREAL_PASSWORD
+        value: ${db.SURREAL_PASSWORD}
+        type: SECRET
+
+# Alerts configuration
+alerts:
+  - rule: CPU_UTILIZATION
+    disabled: false
+    operator: GREATER_THAN
+    value: 80
+    window: FIVE_MINUTES
+    
+  - rule: MEM_UTILIZATION
+    disabled: false
+    operator: GREATER_THAN
+    value: 80
+    window: FIVE_MINUTES
+    
+  - rule: RESTART_COUNT
+    disabled: false
+    operator: GREATER_THAN
+    value: 3
+    window: FIVE_MINUTES
+
+# Feature flags
+features:
+  - buildpack-stack=ubuntu-22
+
+# Ingress configuration
+ingress:
+  rules:
+    - match:
+        path:
+          prefix: "/"
+      component:
+        name: blog-web

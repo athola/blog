@@ -8,7 +8,7 @@ use syntect::html::{IncludeBackground, styled_line_to_highlighted_html};
 use syntect::parsing::SyntaxSet;
 
 #[expect(clippy::too_many_lines)]
-/// Process markdown for display to frontend.
+/// Process markdown for display to `frontend`.
 ///
 /// # Arguments
 ///
@@ -41,11 +41,9 @@ pub fn process_markdown(markdown: &str) -> Result<String, ServerFnError> {
                 Event::InlineMath(math_exp) => {
                     Event::InlineHtml(CowStr::from(katex::render(&math_exp).unwrap()))
                 }
-                Event::DisplayMath(math_exp) => {
-                    Event::Html(CowStr::from(
-                        katex::render_with_opts(&math_exp, &self.display_style_opts).unwrap(),
-                    ))
-                }
+                Event::DisplayMath(math_exp) => Event::Html(CowStr::from(
+                    katex::render_with_opts(&math_exp, &self.display_style_opts).unwrap(),
+                )),
                 _ => event,
             }
         }
@@ -197,4 +195,62 @@ pub fn process_markdown(markdown: &str) -> Result<String, ServerFnError> {
     push_html(&mut html_output, events.into_iter());
 
     Ok(html_output)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_process_markdown_basic() {
+        let markdown = "# Hello World\n\nThis is a test.";
+        let result = process_markdown(markdown);
+        assert!(result.is_ok());
+        let html = result.unwrap();
+        assert!(html.contains("<h1"));
+        assert!(html.contains("Hello World"));
+        assert!(html.contains("<p"));
+        assert!(html.contains("This is a test"));
+    }
+
+    #[test]
+    fn test_process_markdown_code_block() {
+        let markdown = "```rust\nfn main() {\n    println!(\"Hello, world!\");\n}\n```";
+        let result = process_markdown(markdown);
+        assert!(result.is_ok());
+        let html = result.unwrap();
+        assert!(html.contains("<pre"));
+        assert!(html.contains("<code"));
+        // The code should be somewhere in the HTML, possibly HTML-escaped
+        assert!(html.contains("main") || html.contains("fn"));
+    }
+
+    #[test]
+    fn test_process_markdown_empty() {
+        let markdown = "";
+        let result = process_markdown(markdown);
+        assert!(result.is_ok());
+        let html = result.unwrap();
+        assert!(html.is_empty() || html.trim().is_empty());
+    }
+
+    #[test]
+    fn test_process_markdown_math() {
+        let markdown = "This is inline math: $x^2$\n\n$$\\int_0^1 x dx$$";
+        let result = process_markdown(markdown);
+        assert!(result.is_ok());
+        // Math processing should work without panicking
+    }
+
+    #[test]
+    fn test_markdown_processing_components() {
+        // Test that internal components work correctly
+        // This tests the overall markdown processing pipeline
+        let simple_markdown = "**bold** and *italic*";
+        let result = process_markdown(simple_markdown);
+        assert!(result.is_ok());
+        let html = result.unwrap();
+        assert!(html.contains("<strong>") || html.contains("<b>"));
+        assert!(html.contains("<em>") || html.contains("<i>"));
+    }
 }

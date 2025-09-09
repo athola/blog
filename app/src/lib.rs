@@ -1,3 +1,4 @@
+// Core application modules and components
 use crate::components::{error_template, header, icons};
 use chrono::{Datelike as _, Utc};
 use leptos::{
@@ -285,4 +286,58 @@ pub fn component() -> impl IntoView {
             }))
             .build(),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_shell_creation() {
+        // Test shell function with default options
+        let options = LeptosOptions::default();
+        let shell_view = shell(options);
+        // Verify the shell returns a non-null view
+        // We can't easily test the rendered content without a full Leptos context,
+        // but we can verify the function executes without panicking
+        drop(shell_view); // Explicitly consume the view to verify it was created
+    }
+
+    #[test]
+    fn test_component_function_signatures() {
+        // Test that component functions exist with correct signatures
+        // Following Leptos best practices: test logic separately, not component rendering
+
+        // Verify function signatures compile and are callable
+        let _shell_fn: fn(LeptosOptions) -> _ = shell;
+        let _component_fn: fn() -> _ = component;
+
+        // Test that LeptosOptions can be created (this is the testable logic)
+        let options = LeptosOptions::default();
+        assert_eq!(options.site_addr.port(), 3000); // Default port
+        assert_eq!(options.site_addr.ip().to_string(), "127.0.0.1"); // Default IP
+    }
+
+    #[cfg(feature = "ssr")]
+    #[test]
+    fn test_server_functions_integration() {
+        // Test that server functions maintain correct signatures after retry implementation
+
+        use crate::api::*;
+
+        // Verify server function signatures haven't changed due to retry logic
+        let _posts_fn: fn(Vec<String>) -> _ = select_posts;
+        let _tags_fn: fn() -> _ = select_tags;
+        let _post_fn: fn(String) -> _ = select_post;
+        let _views_fn: fn(String) -> _ = increment_views;
+        let _contact_fn: fn(ContactRequest) -> _ = contact;
+        let _refs_fn: fn() -> _ = select_references;
+
+        // Test that ContactRequest can be created and has expected fields
+        let request = ContactRequest::default();
+        assert_eq!(request.name, "");
+        assert_eq!(request.email, "");
+        assert_eq!(request.subject, "");
+        assert_eq!(request.message, "");
+    }
 }

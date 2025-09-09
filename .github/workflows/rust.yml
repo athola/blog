@@ -2,42 +2,372 @@ name: Rust
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "master" ]
+    paths:
+      # Rust source code changes
+      - "**/*.rs"
+      - "**/Cargo.toml"
+      - "Cargo.lock"
+      # Build configuration changes
+      - "Makefile"
+      - "Makefile.toml"
+      - "leptosfmt.toml"
+      - "Dockerfile"
+      # Deployment configuration changes
+      - ".do/**"
+      # Frontend assets and styling (affects build output)
+      - "style/**/*.css"
+      - "style/**/*.js"
+      - "public/**"
+      # Configuration files that affect builds
+      - ".config/**"
+      - "audit.toml"
+    paths-ignore:
+      # Exclude documentation changes from triggering CI
+      - "**/*.md"
+      - "LICENSE"
+      - "docs/**"
+      - ".github/**/*.md"
+      # Exclude non-essential configuration
+      - ".gitleaksignore"
+      - ".semgrep.yml"
+      - "run_secret_scan.sh"
+  pull_request:
+    types: [opened, synchronize]
+    branches: [ "master" ]
+    paths:
+      # Rust source code changes
+      - "**/*.rs"
+      - "**/Cargo.toml"
+      - "Cargo.lock"
+      # Build configuration changes
+      - "Makefile"
+      - "Makefile.toml"
+      - "leptosfmt.toml"
+      - "Dockerfile"
+      # Deployment configuration changes
+      - ".do/**"
+      # Frontend assets and styling (affects build output)
+      - "style/**/*.css"
+      - "style/**/*.js"
+      - "public/**"
+      # Configuration files that affect builds
+      - ".config/**"
+      - "audit.toml"
+    paths-ignore:
+      # Exclude documentation changes from triggering CI
+      - "**/*.md"
+      - "LICENSE"
+      - "docs/**"
+      - ".github/**/*.md"
+      # Exclude non-essential configuration
+      - ".gitleaksignore"
+      - ".semgrep.yml"
+      - "run_secret_scan.sh"
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: short
+  # Optimize for CI builds with limited retries
+  CARGO_NET_RETRY: 3  # Reduced from 10 to prevent excessive wait times
+  CARGO_NET_TIMEOUT: 120  # Reduced from 300 to fail faster
+  # WASM optimization
+  RUSTFLAGS: "-C target-cpu=native -C opt-level=3"
+  # Security hardening
+  RUSTDOCFLAGS: "-D warnings"
 
 jobs:
-  build:
-
+  # Detect what type of changes were made to optimize CI strategy
+  detect-changes:
     runs-on: ubuntu-latest
-
+    timeout-minutes: 2
+    outputs:
+      rust-code: ${{ steps.changes.outputs.rust-code }}
+      frontend-assets: ${{ steps.changes.outputs.frontend-assets }}
+      config-files: ${{ steps.changes.outputs.config-files }}
+      test-profiles: ${{ steps.strategy.outputs.profiles }}
     steps:
-    - uses: actions/checkout@v4
-    - uses: dtolnay/rust-toolchain@nightly
+    - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+      with:
+        fetch-depth: 0  # Need history to detect changes
+    
+    - name: Detect changed files
+      id: changes
+      run: |
+        set -euo pipefail  # Exit on error, undefined vars, and pipe failures
+        
+        # Get changed files between HEAD and the base branch
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+        else
+          BASE_SHA="${{ github.event.before }}"
+        fi
+        
+        CHANGED_FILES=$(git diff --name-only $BASE_SHA HEAD || echo "")
+        
+        # Detect change types
+        echo "rust-code=false" >> $GITHUB_OUTPUT
+        echo "frontend-assets=false" >> $GITHUB_OUTPUT  
+        echo "config-files=false" >> $GITHUB_OUTPUT
+        
+        if echo "$CHANGED_FILES" | grep -q '\.\(rs\|toml\)$'; then
+          echo "rust-code=true" >> $GITHUB_OUTPUT
+        fi
+        
+        if echo "$CHANGED_FILES" | grep -q 'style/\|public/'; then
+          echo "frontend-assets=true" >> $GITHUB_OUTPUT
+        fi
+        
+        if echo "$CHANGED_FILES" | grep -q 'Makefile\|Dockerfile\|\.config/'; then
+          echo "config-files=true" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Determine test strategy
+      id: strategy
+      run: |
+        # Default to dev profile only for faster feedback
+        PROFILES='["dev"]'
+        
+        # Use both profiles for:
+        # 1. Changes to core Rust code (ensure release builds work)
+        # 2. Pull requests from external contributors  
+        # 3. Main branch pushes (full validation)
+        if [ "${{ steps.changes.outputs.rust-code }}" = "true" ] || \
+           [ "${{ github.event_name }}" = "push" ] || \
+           [ "${{ github.event.pull_request.author_association }}" = "FIRST_TIME_CONTRIBUTOR" ]; then
+          PROFILES='["dev", "release"]'
+        fi
+        
+        echo "profiles=$PROFILES" >> $GITHUB_OUTPUT
+        echo "Selected test profiles: $PROFILES"
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20  # Optimized: unit tests ~5-10min, integration tests ~10-15min
+    needs: detect-changes
+    strategy:
+      matrix:
+        profile: ${{ fromJson(needs.detect-changes.outputs.test-profiles) }}
+      fail-fast: false  # Allow both profiles to complete for better debugging
+    steps:
+    - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+    - uses: dtolnay/rust-toolchain@55d80eb3c5a4228eec5390a083c092095115c6f1 # nightly
+    
+    # More aggressive dependency caching
+    - name: Cache cargo registry
+      uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+      with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-registry-
+
+    - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
+      with:
+        # More granular cache keys based on change type and profile
+        shared-key: "test-${{ matrix.profile }}-${{ needs.detect-changes.outputs.rust-code }}-${{ needs.detect-changes.outputs.frontend-assets }}"
+        cache-targets: "true"
+        cache-on-failure: "true"
+        # Save cache more aggressively for faster subsequent runs
+        save-if: ${{ !cancelled() }}
+        workspaces: |
+          .
+        cache-all-crates: "true"
     
     - name: Version
       run: cargo --version --verbose
 
-    - name: Build
-      run: cargo build --verbose
+    - name: Build workspace
+      timeout-minutes: 30  # Increased timeout for CI environments
+      run: |
+        if [ "${{ matrix.profile }}" = "dev" ]; then
+          cargo build --verbose --workspace
+          cargo test --verbose
+        else
+          cargo build --verbose --workspace --profile server
+          cargo test --verbose --profile server
+        fi
     
-    - name: Run tests
-      run: cargo test --verbose
-
-    - name: Apply migrations
-      uses: Odonno/surrealdb-migrations-action@v0.2.0
+    - name: Upload build artifacts
+      if: matrix.profile == 'release'
+      uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
       with:
-        address: ${{ secrets.SURREAL_ADDRESS }}
-        ns: ${{ secrets.SURREAL_NS }}
-        db: ${{ secrets.SURREAL_DB }}
-        username: ${{ secrets.SURREAL_USERNAME }}
-        password: ${{ secrets.SURREAL_PASSWORD }}
-        version: v2.0.0-preview.1
-        skip-untracked-files: true
+        name: rust-build-artifacts
+        path: |
+          target/release/
+          target/wasm-release/
+          Cargo.lock
+          migrations/
+          schemas/
+          events/
+          **/*.surql
+          db.sh
+        retention-days: 1
 
-    - name: Deploy to DigitalOcean
-      uses: digitalocean/app_action@v1 # switch to v2 after https://github.com/digitalocean/app_action/issues/123
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20  # Optimized: coverage adds ~5min overhead to test execution
+    needs: detect-changes
+    # Only run coverage on substantial Rust code changes to save CI resources
+    if: needs.detect-changes.outputs.rust-code == 'true' || github.event_name == 'push'
+    steps:
+    - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+    - uses: dtolnay/rust-toolchain@55d80eb3c5a4228eec5390a083c092095115c6f1 # nightly
       with:
-        app_name: blog
-        token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+        components: llvm-tools-preview
+    
+    # Reuse registry cache from test job
+    - name: Cache cargo registry
+      uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+      with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-registry-
+
+    - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
+      with:
+        shared-key: "coverage-${{ needs.detect-changes.outputs.rust-code }}"
+        cache-targets: "true"
+        cache-on-failure: "true"
+        save-if: ${{ !cancelled() }}
+        workspaces: |
+          .
+        cache-all-crates: "true"
+    
+    - name: Install test tools
+      run: |
+        cargo install --locked cargo-nextest cargo-llvm-cov
+    
+    - name: Create test results directory
+      run: mkdir -p test-results/coverage
+    
+    - name: Run test coverage
+      timeout-minutes: 20  # Coverage tests can be slower
+      run: cargo llvm-cov nextest --workspace --lcov --output-path test-results/coverage/lcov.info
+    
+    - name: Generate HTML coverage report
+      run: cargo llvm-cov nextest --workspace --html --output-dir test-results/coverage/html
+    
+    - name: Upload coverage reports
+      uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+      with:
+        name: coverage-reports
+        path: |
+          test-results/coverage/
+        retention-days: 7
+    
+    - name: Upload coverage to Codecov
+      if: github.event_name == 'push' || github.event_name == 'pull_request'
+      uses: codecov/codecov-action@4fe8c5f003fae66aa5ebb77cfd3e7bfbbda0b6b0 # v3.1.5
+      with:
+        file: test-results/coverage/lcov.info
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false  # Don't fail CI if codecov upload fails
+        verbose: true  # Enable verbose output for debugging
+        
+    - name: Coverage Summary
+      if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+      run: |
+        echo "✅ Coverage uploaded to Codecov for master branch"
+        echo "🔗 Badge will update at: https://codecov.io/gh/athola/blog/branch/master/graph/badge.svg"
+
+  clippy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20  # Clippy + security tools shouldn't take too long
+    needs: detect-changes
+    # Skip clippy for non-code changes (documentation, assets only)
+    if: needs.detect-changes.outputs.rust-code == 'true' || needs.detect-changes.outputs.config-files == 'true' || github.event_name == 'push'
+    steps:
+    - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+    - uses: dtolnay/rust-toolchain@55d80eb3c5a4228eec5390a083c092095115c6f1 # nightly
+      with:
+        components: clippy
+    
+    # Reuse registry cache from test job
+    - name: Cache cargo registry
+      uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+      with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-registry-
+
+    - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
+      with:
+        shared-key: "clippy-${{ needs.detect-changes.outputs.rust-code }}"
+        cache-targets: "true"
+        cache-on-failure: "true"
+        save-if: ${{ !cancelled() }}
+        workspaces: |
+          .
+        cache-all-crates: "true"
+    
+    - name: Run clippy
+      run: cargo clippy --all-targets --all-features -- -D warnings
+    
+    - name: Security audit
+      timeout-minutes: 5  # Security tools should be fast
+      run: |
+        cargo install --locked cargo-audit
+        cargo audit --deny warnings --ignore RUSTSEC-2024-0436 --ignore RUSTSEC-2024-0320
+    
+    - name: Check for unused dependencies
+      timeout-minutes: 10  # udeps can be slow on large projects
+      run: |
+        cargo install --locked cargo-udeps
+        cargo +nightly udeps --all-targets
+    
+    - name: Performance benchmarks
+      timeout-minutes: 15  # Benchmarks can vary in duration
+      run: |
+        # Run benchmarks if they exist
+        if find . -name "benches" -type d | grep -q .; then
+          timeout 600 cargo bench --workspace  # 10 minute max for benchmarks
+        else
+          echo "No benchmarks found, skipping performance tests"
+        fi
+    
+    - name: WASM size check
+      timeout-minutes: 2  # Simple file check should be quick
+      run: |
+        set -euo pipefail  # Exit on error, undefined vars, and pipe failures
+        
+        echo "Checking for WASM bundle size..."
+        
+        # Check if WASM directory exists first
+        if [ -d "target/wasm-release" ]; then
+          # Look for WASM files
+          WASM_FILE=$(find target/wasm-release -name "*.wasm" -type f | head -1 || echo "")
+          
+          if [ -n "$WASM_FILE" ] && [ -f "$WASM_FILE" ]; then
+            WASM_SIZE=$(stat -c%s "$WASM_FILE")
+            echo "WASM bundle found: $WASM_FILE"
+            echo "WASM bundle size: $WASM_SIZE bytes"
+            
+            # Warn if WASM is larger than 2MB
+            if [ "$WASM_SIZE" -gt 2097152 ]; then
+              echo "::warning::WASM bundle is larger than 2MB ($WASM_SIZE bytes), consider optimization"
+            else
+              echo "✅ WASM bundle size is acceptable ($WASM_SIZE bytes)"
+            fi
+          else
+            echo "ℹ️ No WASM files found in target/wasm-release directory"
+          fi
+        else
+          echo "ℹ️ WASM release directory not found - skipping size check"
+          echo "   This is normal for workflows that don't build WASM artifacts"
+        fi
+
+

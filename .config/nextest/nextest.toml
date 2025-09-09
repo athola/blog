@@ -1,0 +1,38 @@
+[profile.default]
+# Show output for failing tests
+failure-output = "immediate"
+# Show output for passing tests that have warnings
+success-output = "never"
+# Don't cancel other tests on failure
+fail-fast = false
+
+[profile.ci]
+# For CI environments - more verbose output
+failure-output = "final"
+success-output = "never" 
+fail-fast = false
+# Store JUnit XML reports
+junit-path = "test-results/junit/junit.xml"
+
+[profile.coverage]
+# Profile for coverage runs
+failure-output = "immediate"
+success-output = "never"
+fail-fast = false
+
+# Test discovery settings
+[test-groups]
+# Group retry mechanism tests together
+retry-tests = { filter = "test_retry", max-threads = 1 }
+
+# Group database tests
+db-tests = { filter = "test.*db", max-threads = 1 }
+
+# Group email tests  
+email-tests = { filter = "test.*email", max-threads = 1 }
+
+# Group component tests
+component-tests = { filter = "test.*component", max-threads = 1 }
+
+# Group server integration tests - must run sequentially due to port conflicts
+server-tests = { filter = "test.*server", max-threads = 1 }

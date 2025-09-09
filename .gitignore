@@ -3,3 +3,17 @@
 *.pem
 *.png
 *.db
+
+# Test artifacts
+/test-results/
+*.profraw
+*.profdata
+
+# Migration test artifacts
+/migration-tests/
+
+# Local .env
+.env
+
+# Secret scanning
+secret_scanning_results/

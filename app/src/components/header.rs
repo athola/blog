@@ -18,11 +18,10 @@ pub fn component() -> impl IntoView {
                                 .on(ev::click, move |_| {
                                     use web_sys::window;
                                     let document = window().unwrap().document().unwrap();
-                                    if let Some(element) = document.get_element_by_id("giscus") {
-                                        if let Some(parent) = element.parent_node() {
+                                    if let Some(element) = document.get_element_by_id("giscus")
+                                        && let Some(parent) = element.parent_node() {
                                             parent.remove_child(&element).unwrap();
                                         }
-                                    }
                                 })
                                 .class("text-lg font-bold transition-all duration-500 sm:text-3xl hover:text-[#ffef5c]")
                                 .child("blog"),

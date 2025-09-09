@@ -1,0 +1,29 @@
+# LLVM coverage configuration
+[workspace]
+# Include all workspace members
+include-packages = ["app", "server", "frontend", "markdown"]
+
+[report]
+# Output formats
+formats = ["html", "lcov", "json"]
+# Output directory
+output-dir = "test-results/coverage"
+
+[html]
+# HTML coverage report settings
+output-file = "test-results/coverage/html/index.html"
+title = "Blog Engine Test Coverage"
+
+[lcov]
+# LCOV format for CI integration
+output-file = "test-results/coverage/lcov.info"
+
+[json]
+# JSON format for programmatic access
+output-file = "test-results/coverage/coverage.json"
+
+[filters]
+# Exclude test files from coverage
+exclude-files = ["tests/*", "*/tests.rs", "*/test_*.rs"]
+# Exclude generated code
+exclude-generated = true
