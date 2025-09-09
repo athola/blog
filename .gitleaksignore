@@ -7,3 +7,6 @@ target/llvm-cov-target/debug/deps/libkatex-24369f0801e11f94.rmeta:generic-api-ke
 # Documentation examples (already sanitized to use placeholder values)
 README.md:sidekiq-secret:52
 README.md:generic-api-key:569
+
+# Secret scanning result files (false positives from tool output)
+secret_scanning_results/trufflehog-report.json:private-key:76
