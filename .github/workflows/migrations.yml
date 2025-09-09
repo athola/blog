@@ -68,14 +68,12 @@ jobs:
         set -euo pipefail  # Exit on error, undefined vars, and pipe failures
         
         echo "::notice::Validating migration syntax (no database access required)"
-        find migrations/ -name "*.surql" -type f | while read -r file; do
-          echo "Checking syntax: $file"
-          timeout 30 surreal sql --file "$file" --dry-run || {
-            echo "::error file=$file::Migration syntax error in $file"
-            exit 1
-          }
-        done
-        echo "✅ All migration files have valid syntax"
+        if surreal validate "migrations/*.surql"; then
+          echo "✅ All migration files have valid syntax"
+        else
+          echo "::error::Migration syntax validation failed"
+          exit 1
+        fi
 
   # Integration tests for migrations
   migration-integration-tests:

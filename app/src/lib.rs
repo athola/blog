@@ -1,3 +1,4 @@
+// Core application modules and components
 use crate::components::{error_template, header, icons};
 use chrono::{Datelike as _, Utc};
 use leptos::{
