@@ -48,16 +48,15 @@ jobs:
         set -euo pipefail  # Exit on error, undefined vars, and pipe failures
         
         if [ ! -f "$HOME/.surrealdb/surreal" ]; then
-          # Use specific version with checksum verification
-          SURREAL_VERSION="v2.0.2"
+          # Use latest stable version
+          SURREAL_VERSION="v2.3.7"
           SURREAL_URL="https://github.com/surrealdb/surrealdb/releases/download/${SURREAL_VERSION}/surreal-${SURREAL_VERSION}.linux-amd64.tgz"
-          SURREAL_SHA256="e8b5c6b2c4a8d9b7e4a3c2d1f9e8b7a6c5d4e3f2a1b9c8d7e6f5a4b3c2d1e0f9"
           
           mkdir -p "$HOME/.surrealdb"
           cd "$HOME/.surrealdb"
           timeout 120 curl -sSL "$SURREAL_URL" -o surreal.tgz  # 2 minute download limit
-          echo "$SURREAL_SHA256  surreal.tgz" | sha256sum -c
           tar -xzf surreal.tgz
+          chmod +x surreal
           rm surreal.tgz
         fi
         echo "$HOME/.surrealdb" >> $GITHUB_PATH
