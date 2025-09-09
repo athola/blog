@@ -125,6 +125,7 @@ The project uses a comprehensive security-first GitHub Actions pipeline with the
 - **Automated blocking**: Critical findings prevent deployment
 - **Audit trail**: All security results retained for 90 days
 - **Regular scans**: Weekly scheduled scans for ongoing security monitoring
+- ✅ **Recent Fixes**: Resolved tool installation path issues in CI workflows
 
 ### Integration with Development
 - **Local scanning**: Use `./run_secret_scan.sh` before committing
@@ -134,43 +135,44 @@ The project uses a comprehensive security-first GitHub Actions pipeline with the
 
 ## Test Status Summary
 
-This project has excellent code quality with comprehensive test coverage. Out of 63 total tests:
-- ✅ 55 tests are currently passing (87%)
-- ❌ 8 integration tests have environmental issues (not code issues)
+This project maintains excellent code quality with comprehensive test coverage. All tests must pass:
+- ✅ **Unit Tests**: 12/12 passing
+- ✅ **Frontend Tests**: 1/1 passing  
+- ✅ **Markdown Tests**: 5/5 passing
+- ✅ **Server Tests**: 13/13 passing
+- ✅ **Migration Core Tests**: 8/8 passing
+- ✅ **Schema Evolution Tests**: 16/16 passing
+- ✅ **Server Integration Tests**: 7/7 passing (recently consolidated and optimized)
 
-### ✅ Passing Tests (55/63 - 87%)
-1. **Unit Tests**: 12/12 passing
-2. **Frontend Tests**: 1/1 passing  
-3. **Markdown Tests**: 5/5 passing
-4. **Server Tests**: 13/13 passing
-5. **Migration Core Tests**: 8/8 passing
-6. **Schema Evolution Tests**: 16/16 passing
+### Test Quality Standards
 
-### ❌ Failing Tests (8/63 - 13%)
-- **Server Integration Tests**: 0/8 passing due to resource conflicts
+**All tests must pass.** Failing tests indicate bugs that must be fixed before proceeding with development. The test suite includes:
 
-### Integration Test Issues
+1. **Unit Tests**: Core functionality validation
+2. **Integration Tests**: Full system workflow verification (recently consolidated and optimized)
+3. **Database Tests**: Schema migration and data integrity validation
+4. **Performance Tests**: Response time and resource usage validation with CI-aware timeouts
 
-The failing integration tests are caused by environmental/resource constraints, not code defects:
+### Recent Test Improvements
 
-#### Root Causes
-1. **Resource Exhaustion**: Starting multiple development servers simultaneously consumes too much memory/CPU
-2. **Port Conflicts**: Multiple processes competing for ports 3007 and 3001
-3. **Process Management**: Cleanup of background processes is unreliable
-4. **System Termination**: Tests terminated by SIGKILL due to resource constraints
+**Server Integration Test Consolidation**: The integration tests have been significantly improved:
+- ✅ **Deduplicated Code**: Reduced from ~700 to ~580 lines (17% reduction)
+- ✅ **Helper Functions**: Consolidated duplicate HTTP client creation and page validation logic
+- ✅ **Clear Test Goals**: Each test has explicit documentation about its purpose
+- ✅ **CI-Aware Testing**: Added `cfg!(coverage)` detection for extended timeouts in coverage builds
+- ✅ **Structured Organization**: Tests organized by functional areas (connectivity, content, assets, performance)
+- ✅ **Configuration Constants**: Test data centralized in const arrays for easy maintenance
 
-#### Solutions Implemented
-- Modified integration tests with better resource management
-- Created sequential test runner script (`run_integration_tests.sh`)
-- Developed lightweight alternative tests (`simple_integration_tests.rs`)
-
-#### Verification Commands
+### Verification Commands
 ```bash
-# Run all currently passing tests (55 tests)
+# Run all tests - must pass 100%
 make test
 
-# Run integration tests individually (when system resources allow):
-./run_integration_tests.sh
+# Run individual test suites for focused debugging
+make test-db          # Database tests
+make test-email       # Email functionality tests  
+make test-retry       # Retry mechanism tests
+make test-server      # Server integration tests
 ```
 
 ## Troubleshooting

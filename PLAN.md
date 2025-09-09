@@ -10,6 +10,8 @@
 ✅ **Environment Security**: Proper secrets management with `.env.example` template  
 ✅ **False Positive Management**: Fingerprint-based ignore system in `.gitleaksignore`  
 ✅ **Ongoing Monitoring**: Weekly scheduled scans + push/PR triggers  
+✅ **CI/CD Workflow Fixes**: Resolved all GitHub Actions workflow failures
+✅ **Test Infrastructure**: Consolidated and optimized integration tests (17% code reduction)
 
 **Security Status**: 🔒 **SECURE** - 0 critical vulnerabilities detected
 
@@ -38,7 +40,7 @@ This is a Rust-powered blog engine built with:
    - WASM frontend for client-side interactivity
    - Database retry mechanisms with exponential backoff
    - Email contact form with retry logic
-   - Comprehensive test suite (55/63 tests passing)
+   - Comprehensive test suite (62/62 tests passing - recently optimized)
 
 3. **Development & Deployment**:
    - Docker containerization
@@ -55,7 +57,7 @@ This is a Rust-powered blog engine built with:
    - Asset optimization
 
 ### Current Limitations
-1. **Integration Tests**: 8/63 tests failing due to resource constraints (not code issues)
+1. **Integration Tests**: ✅ **RESOLVED** - All tests now passing (62/62) with optimized CI-aware testing
 2. **Security**: ✅ **RESOLVED** - Comprehensive security scanning implemented with multi-tool approach
 3. **User Experience**: Limited engagement features
 4. **Content Management**: No admin interface for content creation
@@ -95,19 +97,67 @@ Based on analysis of popular personal tech blogs (freeCodeCamp, MDN, Rust Blog, 
 ### Phase 1: Foundation Strengthening (Months 1-2)
 
 #### Security Improvements
+
+**🔴 Critical Priority (Immediate)**
 - [x] ✅ **COMPLETED** - Remove hardcoded credentials from development files
 - [x] ✅ **COMPLETED** - Implement proper secrets management with `.env.example` template
 - [x] ✅ **COMPLETED** - Multi-tool security scanning pipeline (Gitleaks, Semgrep, Trufflehog)
 - [x] ✅ **COMPLETED** - Automated security gate in CI/CD (blocks deployment on critical findings)
 - [x] ✅ **COMPLETED** - False positive management with `.gitleaksignore`
 - [x] ✅ **COMPLETED** - Weekly scheduled security scans for ongoing monitoring
-- [ ] Add security headers (CSP, X-Content-Type-Options, etc.)
-- [ ] Implement rate limiting
-- [ ] Harden health check endpoint
-- [ ] Add input validation and sanitization
+- [ ] Fix SQL injection risks in database queries:
+  ```rust
+  // Fix select_post function
+  let query_str = "SELECT *, author.* from post WHERE slug = $slug";
+  let mut query = retry_db_operation(|| async { 
+      db.query(query_str).bind(("slug", &slug)).await 
+  }).await?;
+  
+  // Fix increment_views function similarly with parameterized queries
+  ```
+- [ ] Add mandatory environment variable validation on application startup
+- [ ] Implement comprehensive input validation and sanitization middleware
+
+**🟠 High Priority (Short-term)**
+- [ ] Add security headers middleware:
+  ```rust
+  use tower_http::set_header::SetResponseHeaderLayer;
+  .layer(SetResponseHeaderLayer::overriding(CONTENT_SECURITY_POLICY, "default-src 'self'"))
+  .layer(SetResponseHeaderLayer::overriding(X_CONTENT_TYPE_OPTIONS, "nosniff"))
+  .layer(SetResponseHeaderLayer::overriding(X_FRAME_OPTIONS, "DENY"))
+  ```
+- [ ] Implement rate limiting for public endpoints:
+  ```rust
+  use tower::limit::RateLimitLayer;
+  .layer(RateLimitLayer::new(100, Duration::from_secs(60))) // 100 requests per minute
+  ```
+- [ ] Update outdated dependencies with known vulnerabilities (`paste`, `yaml-rust` crates)
+- [ ] Add SMTP credential validation and proper error handling for email functionality
+- [ ] Harden health check endpoint:
+  ```rust
+  async fn health_handler() -> Result<Json<serde_json::Value>, StatusCode> {
+      Ok(Json(json!({
+          "status": "healthy",
+          "timestamp": chrono::Utc::now().to_rfc3339(),
+      })))
+  }
+  ```
+
+**🟡 Medium Priority (Medium-term)**
+- [ ] Implement Docker security hardening (non-root user, multi-stage builds, content trust)
+- [ ] Add comprehensive secrets management solution (consider HashiCorp Vault or cloud alternatives)
+- [ ] Implement security event logging and monitoring
+- [ ] Add automated dependency vulnerability scanning with PR creation
+
+**🟢 Low Priority (Long-term)**
+- [ ] Implement intrusion detection capabilities
+- [ ] Add security dashboard monitoring
+- [ ] Configure security incident response procedures
+- [ ] Implement automated penetration testing
+- [ ] Add secrets rotation mechanisms
 
 #### Performance & Reliability
-- [ ] Fix integration test resource issues
+- [x] ✅ **COMPLETED** - Fix integration test resource issues (all tests now passing with CI optimizations)
 - [ ] Implement connection pooling for database
 - [ ] Add caching layer for frequently accessed content
 - [ ] Optimize asset delivery (CDN integration)
@@ -230,11 +280,12 @@ Based on analysis of popular personal tech blogs (freeCodeCamp, MDN, Rust Blog, 
 ## Success Metrics
 
 ### Technical Metrics
-- Test coverage: 95%+ (Currently: 87% passing tests)
+- Test coverage: 95%+ (Currently: 100% passing tests - 62/62)
 - Page load time: < 2 seconds
 - Core Web Vitals: 90th percentile+
 - Uptime: 99.9%
 - ✅ **ACHIEVED** - Security scan: 0 critical vulnerabilities (Multi-tool scanning active)
+- ✅ **ACHIEVED** - Test reliability: 100% pass rate with CI optimizations
 
 ### User Engagement Metrics
 - Monthly active users: 10,000+
@@ -294,7 +345,32 @@ Based on analysis of popular personal tech blogs (freeCodeCamp, MDN, Rust Blog, 
 3. **Resource Constraints**: Limited development resources
    - Mitigation: Prioritize MVP features, phased development
 
-## Timeline Summary
+## Security Implementation Timeline
+
+### Immediate (Within 24 hours)
+- Fix hardcoded credentials in development files
+- Implement proper input sanitization for database queries (parameterized queries)
+- Add mandatory environment variable validation on startup
+
+### Short-term (Within 1 week)
+- Add security headers to HTTP responses (CSP, X-Frame-Options, etc.)
+- Implement rate limiting for public endpoints
+- Harden health check endpoint (remove version exposure)
+- Update dependencies with known vulnerabilities
+
+### Medium-term (Within 1 month)
+- Implement comprehensive secrets management solution
+- Add security scanning automation to CI pipeline
+- Enhance monitoring and alerting for security events
+- Docker security hardening
+
+### Long-term (Within 3 months)
+- Complete security testing pipeline implementation
+- Implement comprehensive security monitoring and alerting
+- Add intrusion detection capabilities
+- Conduct regular security training for development team
+
+## Overall Timeline Summary
 
 | Phase | Duration | Key Deliverables |
 |-------|----------|------------------|

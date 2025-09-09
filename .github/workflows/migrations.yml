@@ -98,7 +98,7 @@ jobs:
     
     - name: Run migration integration tests
       timeout-minutes: 15
-      run: make test-migrations
+      run: cargo nextest run --workspace -- migration
     
     - name: Upload migration test results
       if: always()

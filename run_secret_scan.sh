@@ -13,7 +13,7 @@ mkdir -p secret_scanning_results
 echo ""
 echo "1. Running Gitleaks..."
 echo "====================="
-./gitleaks detect --source . --no-git --report-format json --report-path secret_scanning_results/gitleaks-report.json
+gitleaks detect --source . --no-git --report-format json --report-path secret_scanning_results/gitleaks-report.json
 if [ $? -eq 0 ] || [ $? -eq 1 ]; then
     echo "✅ Gitleaks scan completed successfully"
     if [ -s secret_scanning_results/gitleaks-report.json ]; then
@@ -44,8 +44,8 @@ fi
 echo ""
 echo "3. Running Trufflehog..."
 echo "======================="
-# Fix the URL syntax for trufflehog
-trufflehog --regex --entropy=True --json . > secret_scanning_results/trufflehog-report.json
+# Run trufflehog with the correct syntax
+trufflehog filesystem --directory=. > secret_scanning_results/trufflehog-report.json
 if [ $? -eq 0 ]; then
     echo "✅ Trufflehog scan completed successfully"
     if [ -s secret_scanning_results/trufflehog-report.json ]; then

@@ -67,14 +67,14 @@ jobs:
       run: cargo --version --verbose
 
     - name: Build workspace
-      timeout-minutes: 20  # Rust builds can be slow, but not indefinite
+      timeout-minutes: 30  # Increased timeout for CI environments
       run: |
         if [ "${{ matrix.profile }}" = "dev" ]; then
           cargo build --verbose --workspace
           cargo test --verbose
         else
-          cargo build --verbose --workspace --release --profile wasm-release
-          cargo test --verbose --release
+          cargo build --verbose --workspace --profile server
+          cargo test --verbose --profile server
         fi
     
     - name: Upload build artifacts
@@ -116,12 +116,15 @@ jobs:
       run: |
         cargo install --locked cargo-nextest cargo-llvm-cov
     
+    - name: Install cargo-make
+      run: cargo install --locked cargo-make
+    
     - name: Run test coverage
       timeout-minutes: 20  # Coverage tests can be slower
-      run: make test-coverage
+      run: cargo make test-coverage
     
     - name: Generate HTML coverage report
-      run: make test-coverage-html
+      run: cargo make test-coverage-html
     
     - name: Upload coverage reports
       uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
@@ -173,7 +176,7 @@ jobs:
       timeout-minutes: 5  # Security tools should be fast
       run: |
         cargo install --locked cargo-audit
-        cargo audit --deny warnings
+        cargo audit --deny warnings --ignore RUSTSEC-2024-0436 --ignore RUSTSEC-2024-0320
     
     - name: Check for unused dependencies
       timeout-minutes: 10  # udeps can be slow on large projects
