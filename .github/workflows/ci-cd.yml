@@ -16,6 +16,8 @@ jobs:
     steps:
     - name: Pipeline Information
       run: |
+        set -euo pipefail  # Exit on error, undefined vars, and pipe failures
+        
         echo "## CI/CD Pipeline Overview" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "This commit will trigger the following workflows in sequence:" >> $GITHUB_STEP_SUMMARY

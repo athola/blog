@@ -19,11 +19,10 @@ on:
       - "db.sh"
 
 jobs:
-  # Security check for external PRs - no database access
+  # Syntax validation for all migration changes - no database access required
   migration-syntax-check:
     runs-on: ubuntu-latest
     timeout-minutes: 10  # Syntax checks should be quick
-    if: github.event.pull_request.head.repo.full_name != github.repository
     steps:
     - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
       with:
@@ -46,6 +45,8 @@ jobs:
     - name: Install SurrealDB CLI
       timeout-minutes: 5  # Downloads should be quick
       run: |
+        set -euo pipefail  # Exit on error, undefined vars, and pipe failures
+        
         if [ ! -f "$HOME/.surrealdb/surreal" ]; then
           # Use specific version with checksum verification
           SURREAL_VERSION="v2.0.2"
@@ -64,7 +65,9 @@ jobs:
     - name: Validate migration syntax
       timeout-minutes: 5  # Syntax validation should be fast
       run: |
-        echo "::notice::Validating migration syntax for external PR (no database access)"
+        set -euo pipefail  # Exit on error, undefined vars, and pipe failures
+        
+        echo "::notice::Validating migration syntax (no database access required)"
         find migrations/ -name "*.surql" -type f | while read -r file; do
           echo "Checking syntax: $file"
           timeout 30 surreal sql --file "$file" --dry-run || {
@@ -94,6 +97,8 @@ jobs:
     
     - name: Install test tools
       run: |
+        set -euo pipefail  # Exit on error, undefined vars, and pipe failures
+        
         cargo install --locked cargo-nextest cargo-llvm-cov
     
     - name: Run migration integration tests
@@ -113,8 +118,9 @@ jobs:
   migration-check:
     runs-on: ubuntu-latest
     timeout-minutes: 15  # Database connectivity + migration validation
+    # Temporarily disabled until DigitalOcean database is properly configured
     # Only run for PRs from the same repository (trusted context)
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: false  # Disabled until DigitalOcean setup is complete
     environment: migration-validation
     steps:
     - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
@@ -131,6 +137,8 @@ jobs:
       id: connectivity-check
       timeout-minutes: 8  # 5 attempts with backoff should complete within 8 minutes
       run: |
+        set -euo pipefail  # Exit on error, undefined vars, and pipe failures
+        
         echo "Testing SurrealDB connectivity with retry logic..."
         
         # Retry function with exponential backoff
@@ -189,6 +197,8 @@ jobs:
     - name: Handle connectivity failure
       if: steps.connectivity-check.outputs.connectivity == 'failed'
       run: |
+        set -euo pipefail  # Exit on error, undefined vars, and pipe failures
+        
         echo "::error title=SurrealDB Unreachable::Cannot connect to SurrealDB at ${{ secrets.SURREAL_ADDRESS }}. Please check:"
         echo "::error::1. Database server is running"
         echo "::error::2. Network connectivity is available"

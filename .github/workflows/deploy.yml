@@ -22,11 +22,29 @@ jobs:
     - name: Check DigitalOcean configuration
       id: check-config
       run: |
+        set -euo pipefail  # Exit on error, undefined vars, and pipe failures
+        
         echo "Checking DigitalOcean deployment prerequisites..."
         
-        # Check if required secrets are set
+        # Security note: Never echo secrets directly to avoid log exposure
+        # Check if required secrets are set and validate basic format
         if [ -z "${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}" ]; then
           echo "❌ DIGITALOCEAN_ACCESS_TOKEN secret not configured"
+          echo "enabled=false" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        
+        # Validate DigitalOcean token format (should be 64 hex characters) - avoid logging secret
+        DO_TOKEN_LENGTH=$(echo -n "${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}" | wc -c)
+        if [ "$DO_TOKEN_LENGTH" -ne 64 ]; then
+          echo "❌ DIGITALOCEAN_ACCESS_TOKEN has invalid length (expected: 64 characters)"
+          echo "enabled=false" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        
+        # Check if token contains only valid hex characters (without logging the token)
+        if ! echo "${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}" | grep -q '^[a-f0-9]*$'; then
+          echo "❌ DIGITALOCEAN_ACCESS_TOKEN contains invalid characters (expected: hex only)"
           echo "enabled=false" >> $GITHUB_OUTPUT
           exit 0
         fi
@@ -37,27 +55,94 @@ jobs:
           exit 0
         fi
         
+        # Validate SurrealDB address format (should be URL-like) - avoid logging sensitive URL
+        if ! echo "${{ secrets.SURREAL_ADDRESS }}" | grep -q '^https\?://[a-zA-Z0-9.-]\+\(:[0-9]\+\)\?.*$'; then
+          echo "❌ SURREAL_ADDRESS has invalid URL format (expected: http(s)://host[:port])"
+          echo "enabled=false" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        
         if [ -z "${{ secrets.SURREAL_PASSWORD }}" ]; then
           echo "❌ SURREAL_PASSWORD secret not configured"
           echo "enabled=false" >> $GITHUB_OUTPUT
           exit 0
         fi
         
-        echo "✅ All required secrets are configured"
+        # Validate password strength (minimum 8 characters) - avoid logging password
+        PASSWORD_LENGTH=$(echo -n "${{ secrets.SURREAL_PASSWORD }}" | wc -c)
+        if [ "$PASSWORD_LENGTH" -lt 8 ]; then
+          echo "❌ SURREAL_PASSWORD is too weak (minimum 8 characters required, current: $PASSWORD_LENGTH)"
+          echo "enabled=false" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        
+        # Validate additional SurrealDB configuration secrets
+        if [ -z "${{ secrets.SURREAL_NS }}" ]; then
+          echo "❌ SURREAL_NS secret not configured"
+          echo "enabled=false" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        
+        if [ -z "${{ secrets.SURREAL_DB }}" ]; then
+          echo "❌ SURREAL_DB secret not configured"
+          echo "enabled=false" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        
+        if [ -z "${{ secrets.SURREAL_USERNAME }}" ]; then
+          echo "❌ SURREAL_USERNAME secret not configured"
+          echo "enabled=false" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        
+        # Basic validation for namespace and database names (should be alphanumeric)
+        if ! echo "${{ secrets.SURREAL_NS }}" | grep -q '^[a-zA-Z][a-zA-Z0-9_-]*$'; then
+          echo "❌ SURREAL_NS has invalid format (expected: alphanumeric starting with letter)"
+          echo "enabled=false" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        
+        if ! echo "${{ secrets.SURREAL_DB }}" | grep -q '^[a-zA-Z][a-zA-Z0-9_-]*$'; then
+          echo "❌ SURREAL_DB has invalid format (expected: alphanumeric starting with letter)"
+          echo "enabled=false" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        
+        echo "✅ All required secrets are configured and validated"
         echo "enabled=true" >> $GITHUB_OUTPUT
     
     - name: Test domain accessibility
       id: check-domain
       timeout-minutes: 2  # Network tests should be quick
       run: |
+        set -euo pipefail  # Exit on error, undefined vars, and pipe failures
+        
         echo "Testing domain accessibility for alexthola.com..."
         
-        # Check if domain resolves and is reachable (with timeout)
-        if timeout 30 ping -c 1 alexthola.com > /dev/null 2>&1; then
-          echo "✅ Domain alexthola.com is reachable"
+        # Check if domain is accessible via HTTPS (more reliable than ping for web services)
+        # Try both the main domain and any health endpoint that might exist
+        DOMAIN_ACCESSIBLE=false
+        
+        # First try a basic HTTPS connection to the root domain
+        if timeout 15 curl -f -s --max-time 10 --connect-timeout 5 "https://alexthola.com/" > /dev/null 2>&1; then
+          echo "✅ Domain alexthola.com is accessible via HTTPS"
+          DOMAIN_ACCESSIBLE=true
+        elif timeout 15 curl -f -s --max-time 10 --connect-timeout 5 "http://alexthola.com/" > /dev/null 2>&1; then
+          echo "✅ Domain alexthola.com is accessible via HTTP"
+          DOMAIN_ACCESSIBLE=true  
+        else
+          # Try alternative endpoints that might respond even if main site is down
+          if timeout 10 curl -s --max-time 5 --connect-timeout 3 "https://alexthola.com/health" > /dev/null 2>&1; then
+            echo "✅ Domain alexthola.com is accessible via health endpoint"
+            DOMAIN_ACCESSIBLE=true
+          else
+            echo "⚠️ Domain alexthola.com is not yet accessible via HTTP(S) - DNS may not be configured"
+          fi
+        fi
+        
+        if [ "$DOMAIN_ACCESSIBLE" = "true" ]; then
           echo "accessible=true" >> $GITHUB_OUTPUT
         else
-          echo "⚠️ Domain alexthola.com is not yet accessible (DNS may not be configured)"
           echo "accessible=false" >> $GITHUB_OUTPUT
         fi
         
@@ -71,7 +156,7 @@ jobs:
   # Deploy to DigitalOcean App Platform
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 25  # DigitalOcean deployments can take time, but not indefinite
+    timeout-minutes: 15  # Optimized: broken into smaller steps with individual timeouts
     needs: deployment-check
     if: needs.deployment-check.outputs.deploy-enabled == 'true'
     environment: production
@@ -98,6 +183,7 @@ jobs:
     
     - name: Deploy to DigitalOcean
       id: deploy
+      timeout-minutes: 8  # Most deployments complete in 3-5 minutes
       uses: digitalocean/app_action@v1 # NOTE: Cannot pin to SHA - v1 tags removed, v2 is complete rewrite. Switch to v2 after https://github.com/digitalocean/app_action/issues/123
       with:
         app_name: blog
@@ -106,20 +192,24 @@ jobs:
     - name: Wait for deployment propagation
       timeout-minutes: 2  # Simple wait shouldn't exceed this
       run: |
+        set -euo pipefail  # Exit on error, undefined vars, and pipe failures
+        
         echo "Waiting for deployment to propagate..."
         sleep 60  # Give DigitalOcean time to deploy and start the application
     
     - name: Post-deployment health check
-      timeout-minutes: 15  # Health checks with retries
+      timeout-minutes: 10  # Optimized: health checks with exponential backoff
       run: |
+        set -euo pipefail  # Exit on error, undefined vars, and pipe failures
+        
         echo "Starting comprehensive health checks..."
         
         # Function to check multiple endpoints with retry
         comprehensive_health_check() {
-          local max_attempts=12  # Reduced from 15 to control total time
+          local max_attempts=10  # Optimized: reduced attempts with better timing
           local timeout=10
           local attempt=1
-          local max_wait=45  # Cap individual wait times
+          local max_wait=30  # Optimized: reduced max wait time
           local endpoints=(
             "https://alexthola.com/health"
             "https://blog-web.ondigitalocean.app/health"
@@ -163,6 +253,8 @@ jobs:
     - name: Validate core functionality
       timeout-minutes: 5  # Functional tests should be quick
       run: |
+        set -euo pipefail  # Exit on error, undefined vars, and pipe failures
+        
         echo "Validating core application functionality..."
         
         # Test main page
@@ -189,6 +281,8 @@ jobs:
     - name: Performance and security validation
       timeout-minutes: 3  # Performance checks should be fast
       run: |
+        set -euo pipefail  # Exit on error, undefined vars, and pipe failures
+        
         echo "Running performance and security checks..."
         
         # Check response time (with timeout)
@@ -240,6 +334,8 @@ jobs:
     steps:
     - name: Deployment Summary
       run: |
+        set -euo pipefail  # Exit on error, undefined vars, and pipe failures
+        
         echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         

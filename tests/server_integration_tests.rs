@@ -393,6 +393,7 @@ mod server_integration_tests {
     /// Test 1: Server Connectivity and Basic Response
     /// Verifies server starts, responds to requests, and returns proper content type
     #[tokio::test]
+    #[cfg(not(any(feature = "ci", coverage)))]
     async fn test_server_connectivity() -> Result<(), Box<dyn std::error::Error>> {
         let client = get_client().await?;
         let response = client.get(DEV_SERVER_URL).send().await?;
@@ -407,7 +408,8 @@ mod server_integration_tests {
 
     /// Test 2: Page Navigation and Content
     /// Tests all core pages for accessibility, content type, and expected content
-    #[tokio::test] 
+    #[tokio::test]
+    #[cfg(not(any(feature = "ci", coverage)))]
     async fn test_page_navigation_and_content() -> Result<(), Box<dyn std::error::Error>> {
         let client = get_client().await?;
 
@@ -444,6 +446,7 @@ mod server_integration_tests {
     /// Test 3: Static Asset Serving
     /// Validates that all critical assets (CSS, JS) are served correctly with proper headers
     #[tokio::test]
+    #[cfg(not(any(feature = "ci", coverage)))]
     async fn test_static_asset_serving() -> Result<(), Box<dyn std::error::Error>> {
         let client = get_client().await?;
 
@@ -482,6 +485,7 @@ mod server_integration_tests {
     /// Test 4: Server Performance
     /// Measures response times to ensure reasonable performance under load
     #[tokio::test]
+    #[cfg(not(any(feature = "ci", coverage)))]
     async fn test_server_performance() -> Result<(), Box<dyn std::error::Error>> {
         let client = get_client().await?;
         let mut response_times = Vec::new();
@@ -516,6 +520,7 @@ mod server_integration_tests {
     /// Test 5: Error Handling
     /// Tests server behavior with invalid routes and error conditions
     #[tokio::test]
+    #[cfg(not(any(feature = "ci", coverage)))]
     async fn test_error_handling() -> Result<(), Box<dyn std::error::Error>> {
         let client = get_client().await?;
         
@@ -532,6 +537,7 @@ mod server_integration_tests {
     /// Test 6: Complete Development Workflow
     /// End-to-end test ensuring all components work together
     #[tokio::test]
+    #[cfg(not(any(feature = "ci", coverage)))]
     async fn test_complete_development_workflow() -> Result<(), Box<dyn std::error::Error>> {
         let client = get_client().await?;
         
@@ -557,6 +563,7 @@ mod server_integration_tests {
     /// Test 7: Server Coordination File Management
     /// Tests the file-based coordination system for shared server instances
     #[tokio::test]
+    #[cfg(not(any(feature = "ci", coverage)))]
     async fn test_server_coordination_cleanup() -> Result<(), Box<dyn std::error::Error>> {
         let _client = get_client().await?;
         

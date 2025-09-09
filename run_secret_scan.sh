@@ -29,7 +29,7 @@ echo ""
 echo "2. Running Semgrep..."
 echo "===================="
 # Use our custom secrets rules from semgrep
-semgrep --config=.semgrep.yml --json --output=secret_scanning_results/semgrep-report.json . 2>/dev/null
+semgrep --config=.semgrep.yml --json --output=secret_scanning_results/semgrep-report.json --exclude=secret_scanning_results/ --exclude=target/ --exclude=.git/ . 2>/dev/null
 if [ $? -eq 0 ]; then
     echo "✅ Semgrep scan completed successfully"
     if [ -s secret_scanning_results/semgrep-report.json ]; then
@@ -45,7 +45,7 @@ echo ""
 echo "3. Running Trufflehog..."
 echo "======================="
 # Run trufflehog with the correct syntax
-trufflehog filesystem --directory=. > secret_scanning_results/trufflehog-report.json
+trufflehog filesystem . --exclude-paths=secret_scanning_results/,target/,.git/ > secret_scanning_results/trufflehog-report.json
 if [ $? -eq 0 ]; then
     echo "✅ Trufflehog scan completed successfully"
     if [ -s secret_scanning_results/trufflehog-report.json ]; then
