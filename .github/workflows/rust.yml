@@ -173,7 +173,7 @@ jobs:
         cache-targets: "true"
         cache-on-failure: "true"
         # Save cache more aggressively for faster subsequent runs
-        save-if: ${{ success() }}
+        save-if: ${{ github.ref == 'refs/heads/master' }}
         workspaces: |
           .
         cache-all-crates: "true"
@@ -237,7 +237,7 @@ jobs:
         shared-key: "coverage-${{ needs.detect-changes.outputs.rust-code }}"
         cache-targets: "true"
         cache-on-failure: "true"
-        save-if: ${{ success() }}
+        save-if: ${{ github.ref == 'refs/heads/master' }}
         workspaces: |
           .
         cache-all-crates: "true"
@@ -309,7 +309,7 @@ jobs:
         shared-key: "clippy-${{ needs.detect-changes.outputs.rust-code }}"
         cache-targets: "true"
         cache-on-failure: "true"
-        save-if: ${{ success() }}
+        save-if: ${{ github.ref == 'refs/heads/master' }}
         workspaces: |
           .
         cache-all-crates: "true"

@@ -255,7 +255,7 @@ if ! DIFF_OUTPUT=$(get_diff_with_fallback); then
     exit 1
 fi
 
-# Calculate total lines changed (additions + deletions)
+# Initialize counters
 ADDITIONS=0
 DELETIONS=0
 CHANGED_FILES=0
@@ -304,7 +304,7 @@ process_diff_streaming() {
     echo "Processing diff with streaming approach for memory efficiency..."
     
     # Process in batches to avoid memory issues
-    while IFS=$'\t' read -r added deleted filename; do
+    while IFS=$'\t' read -r added deleted filename || [[ -n "$filename" ]]; do
         # Skip empty lines
         [[ -n "$filename" ]] || continue
         ((file_count++))
@@ -368,7 +368,7 @@ process_diff_streaming() {
 
 # Process diff output with memory-efficient streaming
 if [[ -n "$DIFF_OUTPUT" ]]; then
-    process_diff_streaming <<< "$DIFF_OUTPUT"
+    echo "$DIFF_OUTPUT" | process_diff_streaming
 else
     echo "No changes detected in diff"
 fi
