@@ -1062,3 +1062,4 @@ error: methods `apply_migrations`, `create_test_posts`, and `create_custom_post`
 - Use `#[allow(dead_code)]` sparingly and only when necessary
 - Run both linting and tests after making changes
 - Document the reasoning for any suppressed warnings in comments
+- before adding and committing any code, please ensure the SHAs for the workflows are all updated
