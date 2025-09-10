@@ -88,7 +88,7 @@ jobs:
       config-files: ${{ steps.changes.outputs.config-files }}
       test-profiles: ${{ steps.strategy.outputs.profiles }}
     steps:
-    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+    - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       with:
         fetch-depth: 0  # Need history to detect changes
     
@@ -151,12 +151,12 @@ jobs:
         profile: ${{ fromJson(needs.detect-changes.outputs.test-profiles) }}
       fail-fast: false  # Allow both profiles to complete for better debugging
     steps:
-    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+    - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
     - uses: dtolnay/rust-toolchain@55d80eb3c5a4228eec5390a083c092095115c6f1 # nightly
     
     # More aggressive dependency caching
     - name: Cache cargo registry
-      uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+      uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
       with:
         path: |
           ~/.cargo/registry/index/
@@ -173,7 +173,7 @@ jobs:
         cache-targets: "true"
         cache-on-failure: "true"
         # Save cache more aggressively for faster subsequent runs
-        save-if: ${{ !cancelled() }}
+        save-if: ${{ always() }}
         workspaces: |
           .
         cache-all-crates: "true"
@@ -215,14 +215,14 @@ jobs:
     # Only run coverage on substantial Rust code changes to save CI resources
     if: needs.detect-changes.outputs.rust-code == 'true' || github.event_name == 'push'
     steps:
-    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+    - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
     - uses: dtolnay/rust-toolchain@55d80eb3c5a4228eec5390a083c092095115c6f1 # nightly
       with:
         components: llvm-tools-preview
     
     # Reuse registry cache from test job
     - name: Cache cargo registry
-      uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+      uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
       with:
         path: |
           ~/.cargo/registry/index/
@@ -237,7 +237,7 @@ jobs:
         shared-key: "coverage-${{ needs.detect-changes.outputs.rust-code }}"
         cache-targets: "true"
         cache-on-failure: "true"
-        save-if: ${{ !cancelled() }}
+        save-if: ${{ always() }}
         workspaces: |
           .
         cache-all-crates: "true"
@@ -287,14 +287,14 @@ jobs:
     # Skip clippy for non-code changes (documentation, assets only)
     if: needs.detect-changes.outputs.rust-code == 'true' || needs.detect-changes.outputs.config-files == 'true' || github.event_name == 'push'
     steps:
-    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+    - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
     - uses: dtolnay/rust-toolchain@55d80eb3c5a4228eec5390a083c092095115c6f1 # nightly
       with:
         components: clippy
     
     # Reuse registry cache from test job
     - name: Cache cargo registry
-      uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+      uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
       with:
         path: |
           ~/.cargo/registry/index/
@@ -309,7 +309,7 @@ jobs:
         shared-key: "clippy-${{ needs.detect-changes.outputs.rust-code }}"
         cache-targets: "true"
         cache-on-failure: "true"
-        save-if: ${{ !cancelled() }}
+        save-if: ${{ always() }}
         workspaces: |
           .
         cache-all-crates: "true"

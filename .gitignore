@@ -4,6 +4,9 @@
 *.png
 *.db
 
+# Node.js
+node_modules/
+
 # Test artifacts
 /test-results/
 *.profraw

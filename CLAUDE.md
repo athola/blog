@@ -100,7 +100,12 @@ The project uses a comprehensive security-first GitHub Actions pipeline with the
 🔒 secrets-scan.yml (Security Gate)
     ├── 🦀 rust.yml (Build & Test)
     ├── 🗄️ migrations.yml (Database)
+    ├── 📏 pr-size-check.yml (PR Size Validation)
     └── 🚀 deploy.yml (Production - main branch only)
+
+📊 PR Size Management (Parallel)
+    ├── 📈 pr-size-metrics.yml (Metrics Collection - on PR merge)
+    └── 📋 pr-size-trend-report.yml (Daily Trend Analysis)
 ```
 
 ### Workflow Files
@@ -129,6 +134,24 @@ The project uses a comprehensive security-first GitHub Actions pipeline with the
 5. **`.github/workflows/ci-cd.yml`**
    - **Purpose**: Pipeline orchestration and status reporting
    - **Features**: Workflow dependency visualization, status summaries
+
+6. **`.github/workflows/pr-size-check.yml`**
+   - **Purpose**: PR size validation and enforcement
+   - **Triggers**: Pull requests to master branch
+   - **Features**: 2000 line limit enforcement, auto-generated file exclusion, size categorization
+   - **Blocking**: Prevents merge of PRs exceeding size limits
+
+7. **`.github/workflows/pr-size-metrics.yml`**
+   - **Purpose**: PR size metrics collection and tracking
+   - **Triggers**: Merged pull requests to master branch
+   - **Features**: GPG-signed commits, CSV metrics storage, historical data tracking
+   - **Security**: Uses GPG signing for automated commits
+
+8. **`.github/workflows/pr-size-trend-report.yml`**
+   - **Purpose**: Daily trend analysis and visualization generation
+   - **Triggers**: Daily schedule (1 AM UTC), manual dispatch
+   - **Features**: Python-based trend analysis, cached dependencies, GitHub issue reports
+   - **Artifacts**: Trend visualizations with 30-day retention
 
 ### Security-First Design
 - **Multi-layer scanning**: Pattern-based (Gitleaks), static analysis (Semgrep), entropy-based (Trufflehog)

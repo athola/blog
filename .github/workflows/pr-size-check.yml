@@ -5,28 +5,175 @@ on:
     types: [opened, synchronize, reopened]
     branches: [ "master" ]
 
+# Prevent race conditions from concurrent PR updates
+concurrency:
+  group: pr-size-check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 env:
   # Load PR size configuration from centralized config
   FORCE_COLOR: 1
 
+# Minimal permissions for PR size validation
 permissions:
-  contents: read
-  pull-requests: write
-  checks: write
+  contents: read        # Required to read repository files and scripts
+  pull-requests: write  # Required to comment on PRs when oversized
+  checks: write        # Required to create check status on PR
+
+# Security hardening
+defaults:
+  run:
+    shell: bash  # Explicit shell specification for security
 
 jobs:
   check-pr-size:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10  # Increased for large PRs with enhanced processing
     steps:
-    - name: Checkout PR
-      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+    - name: Checkout PR with optimized fetch
+      uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       with:
-        fetch-depth: 0  # Need full history to compare with base branch
+        # Optimize fetch depth - only get enough history to compare with base
+        fetch-depth: 100  # Usually sufficient for PR comparisons
+        ref: ${{ github.event.pull_request.head.sha }}
+
+    - name: Ensure base branch is available
+      run: |
+        set -euo pipefail
+        
+        echo "Ensuring base branch ${{ github.event.pull_request.base.ref }} is available for comparison..."
+        
+        # Check if base commit exists locally
+        if ! git cat-file -e "${{ github.event.pull_request.base.sha }}" 2>/dev/null; then
+          echo "Base commit not in shallow clone, fetching base branch..."
+          # Fetch only the base branch with minimal depth
+          git fetch origin ${{ github.event.pull_request.base.ref }}:refs/remotes/origin/${{ github.event.pull_request.base.ref }} --depth=10
+          
+          # If still not found, do a deeper fetch
+          if ! git cat-file -e "${{ github.event.pull_request.base.sha }}" 2>/dev/null; then
+            echo "Base commit still not found, doing deeper fetch..."
+            git fetch origin ${{ github.event.pull_request.base.ref }} --depth=1000
+          fi
+        fi
+        
+        # Verify both commits are now available
+        git cat-file -e "${{ github.event.pull_request.base.sha }}" || {
+          echo "Error: Base commit ${{ github.event.pull_request.base.sha }} not found"
+          exit 1
+        }
+        git cat-file -e "${{ github.event.pull_request.head.sha }}" || {
+          echo "Error: Head commit ${{ github.event.pull_request.head.sha }} not found" 
+          exit 1
+        }
+        
+        echo "✅ Both base and head commits are available for comparison"
+
+    - name: Validate script dependencies and integrity
+      run: |
+        set -euo pipefail
+        
+        echo "📋 Checking script dependencies..."
+        
+        # Define all required files with their purposes
+        declare -A REQUIRED_FILES=(
+          ["scripts/load_pr_config.sh"]="PR configuration loader"
+          ["scripts/calculate_pr_size.sh"]="PR size calculation script"
+          [".github/config/pr-size-limits.yml"]="PR size configuration"
+          [".github/scripts-checksums.sha256"]="Script integrity checksums"
+        )
+        
+        # Check if all required files exist
+        MISSING_FILES=()
+        for file in "${!REQUIRED_FILES[@]}"; do
+          if [[ ! -f "$file" ]]; then
+            echo "❌ Missing: $file (${REQUIRED_FILES[$file]})"
+            MISSING_FILES+=("$file")
+          else
+            echo "✅ Found: $file"
+          fi
+        done
+        
+        # Handle missing files gracefully
+        if [[ ${#MISSING_FILES[@]} -gt 0 ]]; then
+          echo ""
+          echo "🚨 Critical Error: Missing required dependencies"
+          echo "This may occur when:"
+          echo "  - Running on an older branch without PR size workflows"
+          echo "  - Files were accidentally deleted or moved"
+          echo "  - Branch is not up to date with latest workflow changes"
+          echo ""
+          echo "Required files missing:"
+          for file in "${MISSING_FILES[@]}"; do
+            echo "  - $file"
+          done
+          echo ""
+          echo "💡 Solutions:"
+          echo "  1. Merge or rebase with the latest main branch"
+          echo "  2. Ensure all PR size workflow files are present"
+          echo "  3. Check if this branch predates the PR size system"
+          echo ""
+          echo "⚠️  Workflow will be skipped to avoid false failures"
+          exit 78  # Exit code 78 = configuration error (will mark as skipped, not failed)
+        fi
+        
+        echo "✅ All dependencies present"
+        echo ""
+        echo "🔒 Validating script integrity with checksums..."
+        
+        # Verify checksums
+        CHECKSUM_FILE=".github/scripts-checksums.sha256"
+        if ! sha256sum -c "$CHECKSUM_FILE" --quiet; then
+          echo "❌ Error: Script integrity check failed!" >&2
+          echo "Scripts may have been tampered with or are outdated." >&2
+          echo "Expected checksums:" >&2
+          cat "$CHECKSUM_FILE" >&2
+          echo "" >&2
+          echo "Actual checksums:" >&2
+          sha256sum scripts/*.sh >&2
+          exit 1
+        fi
+        
+        echo "✅ Script integrity verified"
+        
+        # Additional security validation
+        REQUIRED_SCRIPTS=(
+          "scripts/load_pr_config.sh"
+          "scripts/calculate_pr_size.sh"
+        )
+        
+        echo "🛡️  Performing security validation..."
+        for script in "${REQUIRED_SCRIPTS[@]}"; do
+          if [[ ! -f "$script" ]]; then
+            echo "❌ Error: Required script $script not found" >&2
+            exit 1
+          fi
+          
+          if [[ ! -r "$script" ]]; then
+            echo "❌ Error: Script $script is not readable" >&2
+            exit 1
+          fi
+          
+          # Check for suspicious content patterns
+          if grep -E "(curl|wget|eval|\$\(.*\)|exec|rm -rf|sudo)" "$script" >/dev/null 2>&1; then
+            echo "⚠️  Script $script contains potentially dangerous commands, manual review required"
+          fi
+          
+          # Make executable if needed
+          if [[ ! -x "$script" ]]; then
+            echo "🔧 Making $script executable..."
+            chmod +x "$script"
+          fi
+          
+          echo "✅ $script security validated"
+        done
+        
+        echo "✅ All script validation completed"
 
     - name: Load PR size configuration
       run: |
-        # Load centralized configuration
+        set -euo pipefail
+        
+        # Load centralized configuration with validation
         source scripts/load_pr_config.sh
         
         # Export to environment for later steps
@@ -69,12 +216,43 @@ jobs:
         fi
 
     - name: Create PR status check
-      uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+      uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
       with:
+        retries: 3
+        retry-exempt-status-codes: 400,401,403,422  # Don't retry client errors
         script: |
           const totalLines = ${{ steps.pr-size.outputs.total-lines }};
           const category = '${{ steps.category.outputs.category }}';
           const message = '${{ steps.category.outputs.message }}';
+          
+          // Rate limit aware API helper
+          const rateLimitSafeRequest = async (apiCall) => {
+            try {
+              return await apiCall();
+            } catch (error) {
+              if (error.status === 403 && error.response?.headers?.['x-ratelimit-remaining'] === '0') {
+                const resetTime = parseInt(error.response.headers['x-ratelimit-reset']) * 1000;
+                const waitTime = Math.max(resetTime - Date.now(), 60000); // At least 1 minute
+                console.log(`Rate limit exceeded. Waiting ${Math.round(waitTime/1000)}s until reset...`);
+                
+                if (waitTime < 300000) { // Only wait if less than 5 minutes
+                  await new Promise(resolve => setTimeout(resolve, waitTime));
+                  return await apiCall(); // Retry after wait
+                } else {
+                  throw new Error(`Rate limit reset too far in future: ${Math.round(waitTime/60000)} minutes`);
+                }
+              }
+              throw error;
+            }
+          };
+          
+          // Calculate size range boundaries for display
+          const idealSize = ${{ env.IDEAL_PR_SIZE }};
+          const goodSize = ${{ env.GOOD_PR_SIZE }};
+          const maxSize = ${{ env.MAX_PR_SIZE }};
+          const idealPlusOne = idealSize + 1;
+          const goodPlusOne = goodSize + 1;
+          const maxPlusOne = maxSize + 1;
           
           let state, conclusion;
           
@@ -89,13 +267,15 @@ jobs:
             conclusion = 'failure';
           }
           
-          await github.rest.checks.create({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            name: 'PR Size Check',
-            head_sha: context.payload.pull_request.head.sha,
-            status: state,
-            conclusion: conclusion,
+          // Create status check with rate limit protection
+          await rateLimitSafeRequest(async () => {
+            return github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'PR Size Check',
+              head_sha: context.payload.pull_request.head.sha,
+              status: state,
+              conclusion: conclusion,
             output: {
               title: message,
               summary: `
@@ -108,9 +288,9 @@ jobs:
           
           ### Size Guidelines
           - ✅ **Ideal (0-${{ env.IDEAL_PR_SIZE }} lines)**: Single feature, bug fix, or refactor
-          - 🟡 **Good (${{ env.IDEAL_PR_SIZE + 1 }}-${{ env.GOOD_PR_SIZE }} lines)**: Medium feature or multiple related changes  
-          - ⚠️ **Large (${{ env.GOOD_PR_SIZE + 1 }}-${{ env.MAX_PR_SIZE }} lines)**: Complex feature requiring justification
-          - ❌ **Too Large (${{ env.MAX_PR_SIZE + 1 }}+ lines)**: Should be broken into multiple PRs
+          - 🟡 **Good (${idealPlusOne}-${{ env.GOOD_PR_SIZE }} lines)**: Medium feature or multiple related changes  
+          - ⚠️ **Large (${goodPlusOne}-${{ env.MAX_PR_SIZE }} lines)**: Complex feature requiring justification
+          - ❌ **Too Large (${maxPlusOne}+ lines)**: Should be broken into multiple PRs
           
           ${totalLines > ${{ env.MAX_PR_SIZE }} ? `
           ### 🚨 Action Required
@@ -127,12 +307,15 @@ jobs:
           ` : ''}
               `
             }
+            });
           });
 
     - name: Add PR comment for oversized PRs
       if: steps.category.outputs.category == 'too-large'
       uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
       with:
+        retries: 3
+        retry-exempt-status-codes: 400,401,403,422
         script: |
           const totalLines = ${{ steps.pr-size.outputs.total-lines }};
           

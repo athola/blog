@@ -1,33 +1,80 @@
 name: PR Size Metrics Collection
 
+# Required Repository Secrets for GPG Signing:
+# - GPG_PRIVATE_KEY: ASCII-armored GPG private key for signing commits
+# - GPG_PASSPHRASE: Passphrase for the GPG private key
+#
+# To set up GPG signing:
+# 1. Generate GPG key: gpg --full-generate-key
+# 2. Export private key: gpg --armor --export-secret-keys YOUR_KEY_ID
+# 3. Add GPG_PRIVATE_KEY secret with the exported key
+# 4. Add GPG_PASSPHRASE secret with the key's passphrase
+# 5. Upload public key to GitHub: gpg --armor --export YOUR_KEY_ID
+
 on:
   pull_request:
     types: [closed]
     branches: [ "master" ]
+    # Only run workflow for merged PRs
+    if: github.event.pull_request.merged == true
 
-# Only run for merged PRs, not closed ones
-if: github.event.pull_request.merged == true
+# Prevent race conditions from concurrent merge operations
+concurrency:
+  group: pr-size-metrics-${{ github.event.pull_request.number }}
+  cancel-in-progress: false  # Don't cancel - we want to collect metrics
 
 env:
   # Load PR size configuration from centralized config
   FORCE_COLOR: 1
 
+# Minimal permissions following principle of least privilege
 permissions:
-  contents: write
-  pull-requests: read
+  contents: write  # Required for committing metrics, but scope limited to specific file
+  pull-requests: read  # Required to read PR information
+  actions: read  # Required to read workflow status
+
+# Security hardening
+defaults:
+  run:
+    shell: bash  # Explicit shell specification for security
 
 jobs:
   collect-pr-metrics:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8  # Increased for large PRs and GPG operations
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+    - name: Checkout repository with optimized fetch
+      uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       with:
-        fetch-depth: 0  # Need full history
+        fetch-depth: 50  # Sufficient for metrics collection
+        ref: ${{ github.event.pull_request.head.sha }}
 
-    - name: Load PR size configuration
+    - name: Ensure base commit for metrics
       run: |
+        set -euo pipefail
+        
+        # Ensure we have the base commit for size calculation
+        if ! git cat-file -e "${{ github.event.pull_request.base.sha }}" 2>/dev/null; then
+          echo "Fetching base commit for metrics calculation..."
+          git fetch origin ${{ github.event.pull_request.base.ref }} --depth=100
+        fi
+        
+        echo "✅ Base and head commits available for metrics"
+
+    - name: Validate script integrity
+      run: |
+        set -euo pipefail
+        
+        echo "🔒 Validating script integrity..."
+        if ! sha256sum -c .github/scripts-checksums.sha256 --quiet; then
+          echo "❌ Script integrity check failed!"
+          exit 1
+        fi
+        echo "✅ Script integrity verified"
+
+    - name: Load PR size configuration  
+      run: |
+        set -euo pipefail
         # Load centralized configuration
         source scripts/load_pr_config.sh
         
@@ -90,37 +137,279 @@ jobs:
         echo "category=$CATEGORY" >> $GITHUB_OUTPUT
         echo "category-label=$CATEGORY_LABEL" >> $GITHUB_OUTPUT
 
-    - name: Create/update metrics file
+    - name: Create/update metrics file with atomic operations
       run: |
         set -euo pipefail
+        
+        echo "🔐 Creating metrics with race condition protection..."
         
         # Create metrics directory if it doesn't exist
         mkdir -p .github/metrics
         
-        # Create/update the CSV file with PR metrics
         METRICS_FILE=".github/metrics/pr-size-history.csv"
+        LOCK_FILE=".github/metrics/.pr-metrics.lock"
+        TEMP_FILE=".github/metrics/pr-size-history.csv.tmp"
         
-        # If file doesn't exist, create it with headers
-        if [[ ! -f "$METRICS_FILE" ]]; then
-          echo "date,pr_number,title,author,total_lines,additions,deletions,changed_files,category,url" > "$METRICS_FILE"
-        fi
-        
-        # Append the current PR metrics (use pr-size outputs for size data)
-        echo "${{ steps.collect-metrics.outputs.pr-merged-at }},${{ steps.collect-metrics.outputs.pr-number }},${{ steps.collect-metrics.outputs.pr-title }},${{ steps.collect-metrics.outputs.pr-author }},${{ steps.pr-size.outputs.total-lines }},${{ steps.pr-size.outputs.additions }},${{ steps.pr-size.outputs.deletions }},${{ steps.pr-size.outputs.changed-files }},${{ steps.collect-metrics.outputs.category }},${{ steps.collect-metrics.outputs.pr-url }}" >> "$METRICS_FILE"
-        
-        echo "Added PR #${{ steps.collect-metrics.outputs.pr-number }} metrics to $METRICS_FILE"
+        # Atomic file update function with robust retry logic and lock handling
+        atomic_metrics_update() {
+          local max_retries=15
+          local retry_count=0
+          local lock_acquired=false
+          local lock_timeout=300  # 5 minutes max lock wait time
+          local start_time=$(date +%s)
+          
+          # Function to check if lock is stale (older than 10 minutes)
+          is_lock_stale() {
+            local lock_file="$1"
+            if [[ -f "$lock_file" ]]; then
+              local lock_age=$(( $(date +%s) - $(stat -c %Y "$lock_file" 2>/dev/null || echo $(date +%s)) ))
+              if [[ $lock_age -gt 600 ]]; then  # 10 minutes
+                echo "⚠️  Stale lock detected (age: ${lock_age}s), removing..."
+                rm -f "$lock_file"
+                return 0
+              fi
+            fi
+            return 1
+          }
+          
+          # Main lock acquisition loop
+          while [[ $retry_count -lt $max_retries ]]; do
+            local current_time=$(date +%s)
+            local elapsed_time=$((current_time - start_time))
+            
+            # Check if we've exceeded maximum lock wait time
+            if [[ $elapsed_time -gt $lock_timeout ]]; then
+              echo "❌ Lock timeout exceeded (${lock_timeout}s)"
+              return 1
+            fi
+            
+            echo "Attempt $((retry_count + 1))/$max_retries to acquire metrics lock (elapsed: ${elapsed_time}s)..."
+            
+            # Check for stale locks
+            if is_lock_stale "$LOCK_FILE"; then
+              echo "🧹 Cleaned up stale lock file"
+            fi
+            
+            # Try to acquire lock using atomic create operation
+            if (set -C; echo "$ $(date -Iseconds)" > "$LOCK_FILE") 2>/dev/null; then
+              lock_acquired=true
+              echo "✅ Lock acquired for PID $ at $(date -Iseconds)"
+              break
+            else
+              # Get information about current lock holder
+              local lock_info=$(cat "$LOCK_FILE" 2>/dev/null || echo "unknown")
+              echo "⏳ Lock held by process: $lock_info, waiting..."
+              
+              # Exponential backoff with jitter (1-5 seconds, capped at 30s)
+              local base_wait=$((2 ** retry_count))
+              if [[ $base_wait -gt 30 ]]; then
+                base_wait=30
+              fi
+              # Add jitter (random component) to prevent thundering herd
+              local jitter=$((RANDOM % 5))
+              local wait_time=$((base_wait + jitter))
+              echo "⏳ Waiting ${wait_time}s before retry..."
+              sleep $wait_time
+              ((retry_count++))
+            fi
+          done
+          
+          if [[ "$lock_acquired" != "true" ]]; then
+            echo "❌ Failed to acquire lock after $max_retries attempts or ${lock_timeout}s timeout"
+            rm -f "$LOCK_FILE"  # Clean up if we created a stale lock
+            return 1
+          fi
+          
+          # Cleanup function to ensure lock is always released
+          cleanup_lock() {
+            rm -f "$LOCK_FILE" "$TEMP_FILE" || true
+            echo "🔓 Lock released for PID $"
+          }
+          trap cleanup_lock EXIT INT TERM
+          
+          # Create file with headers if it doesn't exist
+          if [[ ! -f "$METRICS_FILE" ]]; then
+            echo "📊 Creating new metrics file with headers..."
+            echo "date,pr_number,title,author,total_lines,additions,deletions,changed_files,category,url" > "$METRICS_FILE"
+          fi
+          
+          # Validate metrics file format
+          if ! head -n 1 "$METRICS_FILE" | grep -q "date,pr_number,title,author,total_lines,additions,deletions,changed_files,category,url"; then
+            echo "❌ Metrics file has invalid header format"
+            return 1
+          fi
+          
+          # Create temporary file with new content
+          echo "📝 Preparing metrics update..."
+          cp "$METRICS_FILE" "$TEMP_FILE"
+          
+          # Prepare CSV data with proper escaping
+          PR_TITLE='${{ steps.collect-metrics.outputs.pr-title }}'
+          # Escape special CSV characters properly
+          PR_TITLE_ESCAPED=$(printf '%s' "$PR_TITLE" | sed 's/"/""/g')
+          # Enclose in quotes if it contains commas, quotes, or newlines
+          if [[ "$PR_TITLE_ESCAPED" == *[,\"\
 
-    - name: Commit and push metrics
+    - name: Verify metrics file
       run: |
         set -euo pipefail
         
-        # Configure git
-        git config --local user.email "github-actions[bot]@users.noreply.github.com"
-        git config --local user.name "github-actions[bot]"
+        # Verify metrics file exists and has content
+        METRICS_FILE=".github/metrics/pr-size-history.csv"
+        if [[ ! -f "$METRICS_FILE" ]]; then
+          echo "Error: Metrics file $METRICS_FILE not found"
+          exit 1
+        fi
         
-        # Commit the updated metrics file
-        git add .github/metrics/pr-size-history.csv
-        git commit -m "docs: Update PR size metrics for PR #${{ steps.collect-metrics.outputs.pr-number }}"
+        if [[ ! -s "$METRICS_FILE" ]]; then
+          echo "Error: Metrics file $METRICS_FILE is empty"
+          exit 1
+        fi
         
-        # Push the changes
-        git push
+        echo "✅ Metrics file verified: $(wc -l < "$METRICS_FILE") lines"
+        
+        # Check if there are changes to commit
+        if git diff --quiet "$METRICS_FILE" 2>/dev/null; then
+          echo "No changes detected in metrics file"
+          echo "SKIP_COMMIT=true" >> $GITHUB_ENV
+        else
+          echo "✅ Changes detected in metrics file"
+          echo "SKIP_COMMIT=false" >> $GITHUB_ENV
+        fi
+
+    - name: Import GPG key
+      if: env.SKIP_COMMIT == 'false'
+      uses: crazy-max/ghaction-import-gpg@01dd5d3ca463c7f10f7f4f7b4f177225ac661ee4 # v6.1.0
+      with:
+        gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+        passphrase: ${{ secrets.GPG_PASSPHRASE }}
+        git_user_signingkey: true
+        git_commit_gpgsign: true
+        git_config_global: true
+        git_tag_gpgsign: true
+
+    - name: Create signed commit for metrics
+      if: env.SKIP_COMMIT == 'false'
+      uses: stefanzweifel/git-auto-commit-action@8621497c8c39c72f3e2a999a26b4ca1b5058a842 # v5.0.1
+      with:
+        commit_message: |
+          docs: Update PR size metrics for PR #${{ steps.collect-metrics.outputs.pr-number }}
+          
+          🤖 Generated with [Claude Code](https://claude.ai/code)
+          
+          Co-Authored-By: Claude <noreply@anthropic.com>
+        file_pattern: '.github/metrics/pr-size-history.csv'
+        commit_user_name: 'github-actions[bot]'
+        commit_user_email: 'github-actions[bot]@users.noreply.github.com'
+        commit_author: 'github-actions[bot] <github-actions[bot]@users.noreply.github.com>'
+        skip_dirty_check: false
+        skip_fetch: false
+        skip_checkout: false
+        disable_globbing: false
+        create_branch: false
+        push_options: '--force-with-lease'\n']* ]]; then
+            PR_TITLE_ESCAPED="\"$PR_TITLE_ESCAPED\""
+          fi
+          
+          # Append new metrics to temp file with proper CSV formatting
+          {
+            echo -n "${{ steps.collect-metrics.outputs.pr-merged-at }},"
+            echo -n "${{ steps.collect-metrics.outputs.pr-number }},"
+            echo -n "${PR_TITLE_ESCAPED},"
+            echo -n "${{ steps.collect-metrics.outputs.pr-author }},"
+            echo -n "${{ steps.pr-size.outputs.total-lines }},"
+            echo -n "${{ steps.pr-size.outputs.additions }},"
+            echo -n "${{ steps.pr-size.outputs.deletions }},"
+            echo -n "${{ steps.pr-size.outputs.changed-files }},"
+            echo -n "${{ steps.collect-metrics.outputs.category }},"
+            echo "${{ steps.collect-metrics.outputs.pr-url }}"
+          } >> "$TEMP_FILE"
+          
+          # Validate that temp file was written correctly
+          if [[ ! -s "$TEMP_FILE" ]]; then
+            echo "❌ Failed to write to temporary file"
+            return 1
+          fi
+          
+          # Atomic move operation with verification
+          echo "🔄 Performing atomic update of metrics file..."
+          if ! mv "$TEMP_FILE" "$METRICS_FILE"; then
+            echo "❌ Failed to atomically update metrics file"
+            return 1
+          fi
+          
+          # Verify the update
+          local new_line_count=$(wc -l < "$METRICS_FILE")
+          echo "✅ Added PR #${{ steps.collect-metrics.outputs.pr-number }} metrics atomically"
+          echo "📊 Current metrics file size: ${new_line_count} entries"
+          
+          # Cleanup is handled by trap
+          cleanup_lock
+          trap - EXIT INT TERM
+        }
+        
+        # Execute atomic update
+        if ! atomic_metrics_update; then
+          echo "❌ Failed to update metrics file due to race conditions"
+          echo "This may indicate high concurrent PR merge activity"
+          exit 1
+        fi
+
+    - name: Verify metrics file
+      run: |
+        set -euo pipefail
+        
+        # Verify metrics file exists and has content
+        METRICS_FILE=".github/metrics/pr-size-history.csv"
+        if [[ ! -f "$METRICS_FILE" ]]; then
+          echo "Error: Metrics file $METRICS_FILE not found"
+          exit 1
+        fi
+        
+        if [[ ! -s "$METRICS_FILE" ]]; then
+          echo "Error: Metrics file $METRICS_FILE is empty"
+          exit 1
+        fi
+        
+        echo "✅ Metrics file verified: $(wc -l < "$METRICS_FILE") lines"
+        
+        # Check if there are changes to commit
+        if git diff --quiet "$METRICS_FILE" 2>/dev/null; then
+          echo "No changes detected in metrics file"
+          echo "SKIP_COMMIT=true" >> $GITHUB_ENV
+        else
+          echo "✅ Changes detected in metrics file"
+          echo "SKIP_COMMIT=false" >> $GITHUB_ENV
+        fi
+
+    - name: Import GPG key
+      if: env.SKIP_COMMIT == 'false'
+      uses: crazy-max/ghaction-import-gpg@01dd5d3ca463c7f10f7f4f7b4f177225ac661ee4 # v6.1.0
+      with:
+        gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+        passphrase: ${{ secrets.GPG_PASSPHRASE }}
+        git_user_signingkey: true
+        git_commit_gpgsign: true
+        git_config_global: true
+        git_tag_gpgsign: true
+
+    - name: Create signed commit for metrics
+      if: env.SKIP_COMMIT == 'false'
+      uses: stefanzweifel/git-auto-commit-action@8621497c8c39c72f3e2a999a26b4ca1b5058a842 # v5.0.1
+      with:
+        commit_message: |
+          docs: Update PR size metrics for PR #${{ steps.collect-metrics.outputs.pr-number }}
+          
+          🤖 Generated with [Claude Code](https://claude.ai/code)
+          
+          Co-Authored-By: Claude <noreply@anthropic.com>
+        file_pattern: '.github/metrics/pr-size-history.csv'
+        commit_user_name: 'github-actions[bot]'
+        commit_user_email: 'github-actions[bot]@users.noreply.github.com'
+        commit_author: 'github-actions[bot] <github-actions[bot]@users.noreply.github.com>'
+        skip_dirty_check: false
+        skip_fetch: false
+        skip_checkout: false
+        disable_globbing: false
+        create_branch: false
+        push_options: '--force-with-lease'

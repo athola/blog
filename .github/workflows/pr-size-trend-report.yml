@@ -6,9 +6,20 @@ on:
     - cron: '0 1 * * *'
   workflow_dispatch:  # Allow manual trigger
 
+# Prevent overlapping trend report generation
+concurrency:
+  group: pr-size-trend-report
+  cancel-in-progress: true
+
+# Minimal permissions for trend report generation
 permissions:
-  contents: write
-  issues: write
+  contents: write  # Required for committing trend reports to repository
+  issues: write    # Required for creating/updating trend report GitHub issues
+
+# Security hardening
+defaults:
+  run:
+    shell: bash  # Explicit shell specification for security
 
 jobs:
   generate-trend-report:
@@ -16,7 +27,7 @@ jobs:
     timeout-minutes: 15
     steps:
     - name: Checkout repository
-      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
 
     - name: Check if metrics file exists
       id: check-metrics
@@ -32,6 +43,9 @@ jobs:
     - name: Install uv
       if: steps.check-metrics.outputs.metrics-exists == 'true'
       uses: astral-sh/setup-uv@v5
+      with:
+        enable-cache: true
+        cache-dependency-glob: "scripts/requirements.txt"
 
     - name: Set up Python
       if: steps.check-metrics.outputs.metrics-exists == 'true'
@@ -39,16 +53,40 @@ jobs:
       with:
         python-version: '3.11'
 
+    - name: Cache Python dependencies
+      if: steps.check-metrics.outputs.metrics-exists == 'true'
+      uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+      with:
+        path: |
+          ~/.cache/uv
+          ~/.cache/pip
+        key: ${{ runner.os }}-python-${{ hashFiles('scripts/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-python-
+
+    - name: Install Python dependencies
+      if: steps.check-metrics.outputs.metrics-exists == 'true'
+      run: |
+        set -euo pipefail
+        
+        echo "Installing Python dependencies with caching..."
+        # Install dependencies using uv with system-wide installation
+        uv pip install --system --no-deps --requirement scripts/requirements.txt || \
+        uv pip install --system --requirement scripts/requirements.txt
+        
+        # Verify installations
+        python3 -c "import pandas, numpy, matplotlib, seaborn; print('✅ All dependencies installed successfully')"
+
     - name: Generate trend visualizations and report
       if: steps.check-metrics.outputs.metrics-exists == 'true'
       run: |
         set -euo pipefail
         
-        # Install Python dependencies using uv
-        uv pip install --system -r scripts/requirements.txt
-        
+        echo "Generating PR size trend analysis..."
         # Run the Python visualization script
         python3 scripts/visualize_pr_trends.py .github/metrics/pr-size-history.csv
+        
+        echo "✅ Trend analysis completed"
 
     - name: Commit and push reports (excluding visualizations)
       if: steps.check-metrics.outputs.metrics-exists == 'true'
@@ -117,7 +155,7 @@ jobs:
 
     - name: Upload visualization artifacts
       if: steps.check-metrics.outputs.metrics-exists == 'true'
-      uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
         name: pr-size-trend-visualizations
         path: .github/reports/visualizations/
