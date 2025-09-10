@@ -9,6 +9,7 @@ node_modules/
 
 # Test artifacts
 /test-results/
+
 *.profraw
 *.profdata
 
@@ -23,3 +24,12 @@ secret_scanning_results/
 
 # PR size trend visualization artifacts
 .github/reports/visualizations/
+
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.coverage

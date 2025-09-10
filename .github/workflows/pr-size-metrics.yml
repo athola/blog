@@ -248,66 +248,7 @@ jobs:
           # Escape special CSV characters properly
           PR_TITLE_ESCAPED=$(printf '%s' "$PR_TITLE" | sed 's/"/""/g')
           # Enclose in quotes if it contains commas, quotes, or newlines
-          if [[ "$PR_TITLE_ESCAPED" == *[,\"\
-
-    - name: Verify metrics file
-      run: |
-        set -euo pipefail
-        
-        # Verify metrics file exists and has content
-        METRICS_FILE=".github/metrics/pr-size-history.csv"
-        if [[ ! -f "$METRICS_FILE" ]]; then
-          echo "Error: Metrics file $METRICS_FILE not found"
-          exit 1
-        fi
-        
-        if [[ ! -s "$METRICS_FILE" ]]; then
-          echo "Error: Metrics file $METRICS_FILE is empty"
-          exit 1
-        fi
-        
-        echo "✅ Metrics file verified: $(wc -l < "$METRICS_FILE") lines"
-        
-        # Check if there are changes to commit
-        if git diff --quiet "$METRICS_FILE" 2>/dev/null; then
-          echo "No changes detected in metrics file"
-          echo "SKIP_COMMIT=true" >> $GITHUB_ENV
-        else
-          echo "✅ Changes detected in metrics file"
-          echo "SKIP_COMMIT=false" >> $GITHUB_ENV
-        fi
-
-    - name: Import GPG key
-      if: env.SKIP_COMMIT == 'false'
-      uses: crazy-max/ghaction-import-gpg@01dd5d3ca463c7f10f7f4f7b4f177225ac661ee4 # v6.1.0
-      with:
-        gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
-        passphrase: ${{ secrets.GPG_PASSPHRASE }}
-        git_user_signingkey: true
-        git_commit_gpgsign: true
-        git_config_global: true
-        git_tag_gpgsign: true
-
-    - name: Create signed commit for metrics
-      if: env.SKIP_COMMIT == 'false'
-      uses: stefanzweifel/git-auto-commit-action@8621497c8c39c72f3e2a999a26b4ca1b5058a842 # v5.0.1
-      with:
-        commit_message: |
-          docs: Update PR size metrics for PR #${{ steps.collect-metrics.outputs.pr-number }}
-          
-          🤖 Generated with [Claude Code](https://claude.ai/code)
-          
-          Co-Authored-By: Claude <noreply@anthropic.com>
-        file_pattern: '.github/metrics/pr-size-history.csv'
-        commit_user_name: 'github-actions[bot]'
-        commit_user_email: 'github-actions[bot]@users.noreply.github.com'
-        commit_author: 'github-actions[bot] <github-actions[bot]@users.noreply.github.com>'
-        skip_dirty_check: false
-        skip_fetch: false
-        skip_checkout: false
-        disable_globbing: false
-        create_branch: false
-        push_options: '--force-with-lease'\n']* ]]; then
+          if [[ "$PR_TITLE_ESCAPED" == *[,\"\n]* ]]; then
             PR_TITLE_ESCAPED="\"$PR_TITLE_ESCAPED\""
           fi
           
