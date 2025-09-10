@@ -22,16 +22,15 @@ on:
       # Configuration files that affect builds
       - ".config/**"
       - "audit.toml"
-    paths-ignore:
       # Exclude documentation changes from triggering CI
-      - "**/*.md"
-      - "LICENSE"
-      - "docs/**"
-      - ".github/**/*.md"
+      - "!**/*.md"
+      - "!LICENSE"
+      - "!docs/**"
+      - "!.github/**/*.md"
       # Exclude non-essential configuration
-      - ".gitleaksignore"
-      - ".semgrep.yml"
-      - "run_secret_scan.sh"
+      - "!.gitleaksignore"
+      - "!.semgrep.yml"
+      - "!run_secret_scan.sh"
   pull_request:
     types: [opened, synchronize]
     branches: [ "master" ]
@@ -54,16 +53,15 @@ on:
       # Configuration files that affect builds
       - ".config/**"
       - "audit.toml"
-    paths-ignore:
       # Exclude documentation changes from triggering CI
-      - "**/*.md"
-      - "LICENSE"
-      - "docs/**"
-      - ".github/**/*.md"
+      - "!**/*.md"
+      - "!LICENSE"
+      - "!docs/**"
+      - "!.github/**/*.md"
       # Exclude non-essential configuration
-      - ".gitleaksignore"
-      - ".semgrep.yml"
-      - "run_secret_scan.sh"
+      - "!.gitleaksignore"
+      - "!.semgrep.yml"
+      - "!run_secret_scan.sh"
 
 env:
   CARGO_TERM_COLOR: always
