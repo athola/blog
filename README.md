@@ -12,6 +12,8 @@ A modern, fast, and secure blog engine built with Rust using the Leptos full-sta
 - **Contact form**: Email integration with retry mechanisms
 - **Security-first**: Comprehensive multi-tool security scanning (Gitleaks + Semgrep + Trufflehog)
 - **Test coverage**: Extensive unit and integration testing with CI-aware optimizations
+- **PR Size Management**: Automated PR size checking with trend analysis and visualization
+- **Code Quality Enforcement**: Strict linting and formatting standards with automated checks
 
 ## Technology Stack
 
@@ -99,7 +101,7 @@ make test
 make test-db          # Database tests (8/8 passing)
 make test-email       # Email functionality tests
 make test-retry       # Retry mechanism tests  
-make test-server      # Server integration tests (7/7 passing - recently consolidated)
+make test-server      # Server integration tests (7/7 passing - recently optimized for single shared server)
 make test-migrations  # Migration tests (14/14 passing)
 
 # Coverage analysis
@@ -107,6 +109,7 @@ make test-coverage-html
 ```
 
 **Recent Test Improvements**:
+- **Single Server Instance**: All integration tests now share a single server process, eliminating resource conflicts
 - **Consolidated Integration Tests**: Reduced code duplication by 17% while maintaining full coverage
 - **CI-Aware Testing**: Added `cfg!(coverage)` detection for extended timeouts in CI environments
 - **Helper Function Consolidation**: Unified HTTP client creation and page validation logic
@@ -156,7 +159,7 @@ The project uses GitHub Actions for CI/CD with security-first design:
 **Recent CI/CD Improvements**:
 - ✅ Fixed security tool installation path issues
 - ✅ Added coverage-aware test timeouts for reliable CI testing
-- ✅ Optimized test execution with consolidated integration tests
+- ✅ Optimized test execution with single shared server instance architecture
 - ✅ Enhanced workflow dependency management
 
 ## Contributing

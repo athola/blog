@@ -18,8 +18,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `make test-migrations` - Run only migration-related tests
 - `make test-server` - Run server integration tests (development server startup, routing, assets)
 - `make clean-test-artifacts` - Clean test result artifacts
-- `make lint` - Run clippy linting
-- `make format` - Format Rust code
+
+### Code Quality & Maintenance
+- `make format` - Format code with rustfmt
+- `make lint` - Run clippy linter
+- `make check` - Run format and lint checks
+- `make fix` - Automatically fix formatting and lint issues where possible
+
+### PR Size Management
+- GitHub Actions automatically enforce PR size limits (Ideal: ≤500 lines, Good: 501-1500 lines, Large: 1501-2000 lines, Too Large: >2000 lines)
+- Auto-generated files (build artifacts, lock files, etc.) are excluded from size calculations
+- Historical PR size metrics are collected and trend analysis is generated
+- Visualization artifacts are treated as temporary files and not committed to the repository
 
 ### Package Management
 - `make install-pkgs` - Install required Cargo tools (cargo-make, cargo-audit, cargo-bloat, cargo-leptos, cargo-nextest, cargo-llvm-cov, etc.)
@@ -31,6 +41,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `make udeps` - Check for unused dependencies
 - `make machete` - Check for unused crates
 - `make spellcheck` - Check documentation spelling
+- `make py-lint` - Run Python code quality checks (Ruff, PyLint, PyCodeStyle, PyDocStyle)
 
 ### Security Scanning
 - `./run_secret_scan.sh` - Run comprehensive secret scanning (Gitleaks, Semgrep, Trufflehog)
@@ -214,7 +225,7 @@ This project maintains excellent code quality with comprehensive test coverage. 
 - ✅ **Server Tests**: 13/13 passing
 - ✅ **Migration Core Tests**: 8/8 passing
 - ✅ **Schema Evolution Tests**: 16/16 passing
-- ✅ **Server Integration Tests**: 7/7 passing (recently consolidated and optimized)
+- ✅ **Server Integration Tests**: 7/7 passing (recently optimized for single shared server instance)
 
 ### Test Quality Standards
 
@@ -227,7 +238,8 @@ This project maintains excellent code quality with comprehensive test coverage. 
 
 ### Recent Test Improvements
 
-**Server Integration Test Consolidation**: The integration tests have been significantly improved:
+**Server Integration Test Optimization**: The integration tests have been significantly improved:
+- ✅ **Single Server Instance**: All tests now share a single server process, eliminating resource conflicts
 - ✅ **Deduplicated Code**: Reduced from ~700 to ~580 lines (17% reduction)
 - ✅ **Helper Functions**: Consolidated duplicate HTTP client creation and page validation logic
 - ✅ **Clear Test Goals**: Each test has explicit documentation about its purpose

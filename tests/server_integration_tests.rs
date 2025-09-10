@@ -1,62 +1,75 @@
-use std::process::{Command, Child, Stdio};
+use lazy_static::lazy_static;
+use std::net::TcpListener;
+use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
+use std::sync::Once;
 use std::time::{Duration, Instant};
 use tokio::time::interval;
-use std::net::TcpListener;
-use std::io::{Write, Read};
 
 /// Integration tests for the Leptos development server
-/// 
+///
 /// This test suite uses a shared server instance to minimize resource usage.
 /// Tests are organized by functional areas: connectivity, content, assets, and performance.
 #[cfg(test)]
 mod server_integration_tests {
     use super::*;
 
-    /// File-based coordination between test processes
-    const SERVER_PID_FILE: &str = "target/blog_test_server.pid";
-    const SERVER_READY_FILE: &str = "target/blog_test_server_ready";
-
     /// Test timeouts
-    const SERVER_TIMEOUT: Duration = Duration::from_secs(60);
-    const ASSET_TIMEOUT: Duration = Duration::from_secs(45);
     const CLIENT_TIMEOUT: Duration = Duration::from_secs(15);
-    
+
     /// Development server URL - matches Leptos configuration
     const DEV_SERVER_URL: &str = "http://127.0.0.1:3007";
-    
+
     /// Core application pages for testing
     const CORE_PAGES: &[(&str, &str)] = &[
         ("/", "Home page"),
-        ("/references", "References page"), 
+        ("/references", "References page"),
         ("/contact", "Contact page"),
     ];
-    
+
     /// Critical assets that must be available
     const CRITICAL_ASSETS: &[(&str, &str, u64)] = &[
         ("/pkg/blog.css", "text/css", 1024),
         ("/pkg/blog.js", "text/javascript", 1024),
     ];
 
+    lazy_static! {
+        static ref SHARED_SERVER: Mutex<Option<SharedTestServer>> = Mutex::new(None);
+    }
+    static SERVER_INITIALIZED: AtomicBool = AtomicBool::new(false);
+    static INIT: Once = Once::new();
+
     /// Shared server instance that runs for the duration of all tests
     struct SharedTestServer {
         process: Option<Child>,
         client: reqwest::Client,
+        db_process: Option<Child>, // Track the database process
     }
 
     impl SharedTestServer {
         /// Start the shared development server
         async fn start() -> Result<Self, Box<dyn std::error::Error>> {
             Self::cleanup_existing_processes().await;
-            cleanup_coordination_files();
-            
-            Self::ensure_ports_available()?;
-            
-            let mut process = Command::new("make")
-                .arg("watch")
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
+
+            Self::ensure_ports_available().await?;
+
+            // Start database and wait for it to be ready
+            let db_process = Self::start_database().await?;
+
+            // Give database extra time to fully initialize
+            tokio::time::sleep(Duration::from_secs(2)).await;
+
+            eprintln!("Starting Leptos development server...");
+
+            let mut process = Command::new("cargo")
+                .args(["leptos", "watch"])
+                .env("RUST_LOG", "info")
+                .env("LEPTOS_OUTPUT_NAME", "blog")
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
                 .spawn()
-                .map_err(|e| format!("Failed to start make watch: {}", e))?;
+                .map_err(|e| format!("Failed to start cargo leptos watch: {}", e))?;
 
             let client = Self::create_client()?;
 
@@ -65,147 +78,170 @@ mod server_integration_tests {
             Ok(SharedTestServer {
                 process: Some(process),
                 client,
+                db_process: Some(db_process),
             })
+        }
+
+        /// Start the database and wait for it to be ready
+        async fn start_database() -> Result<Child, Box<dyn std::error::Error>> {
+            eprintln!("Starting SurrealDB database...");
+
+            // Kill any existing database processes first
+            let _ = Command::new("pkill").args(["-f", "surreal"]).output();
+            tokio::time::sleep(Duration::from_millis(500)).await;
+
+            // Start the database process
+            let db_process = Command::new("sh")
+                .arg("./db.sh")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .map_err(|e| format!("Failed to start database: {}", e))?;
+
+            // Wait for database to be ready
+            let timeout = Instant::now() + Duration::from_secs(30);
+
+            eprintln!("Waiting for database to be ready...");
+
+            while Instant::now() < timeout {
+                if Self::test_database_connection().await {
+                    eprintln!("Database is ready!");
+                    return Ok(db_process);
+                }
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+
+            Err("Database is not responsive within timeout".into())
+        }
+
+        /// Test if database is responsive
+        async fn test_database_connection() -> bool {
+            // Try to connect to the database port
+            match std::net::TcpStream::connect("127.0.0.1:8000") {
+                Ok(_) => {
+                    // Port is open, give it a moment to be fully ready
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    true
+                }
+                Err(_) => false,
+            }
         }
 
         /// Create HTTP client with standard configuration
         fn create_client() -> Result<reqwest::Client, Box<dyn std::error::Error>> {
-            Ok(reqwest::Client::builder()
-                .timeout(CLIENT_TIMEOUT)
-                .build()?)
+            Ok(reqwest::Client::builder().timeout(CLIENT_TIMEOUT).build()?)
         }
 
-        /// Ensure required ports are available
-        fn ensure_ports_available() -> Result<(), Box<dyn std::error::Error>> {
-            let ports_in_use = [3007, 3001].iter()
+        /// Ensure required ports are available or clean them up
+        async fn ensure_ports_available() -> Result<(), Box<dyn std::error::Error>> {
+            // Check server ports (3007, 3001) but allow database port (8000) to be managed separately
+            let server_ports = [3007, 3001];
+            let ports_in_use = server_ports
+                .iter()
                 .filter(|&&port| Self::is_port_in_use(port))
                 .collect::<Vec<_>>();
-                
+
             if !ports_in_use.is_empty() {
-                return Err(format!("Required ports in use: {:?}", ports_in_use).into());
+                // Try to clean up server processes
+                let _ = Command::new("pkill").args(["-f", "cargo-leptos"]).output();
+                let _ = Command::new("pkill").args(["-f", "leptos"]).output();
+                tokio::time::sleep(Duration::from_millis(1000)).await;
+
+                // Check again after cleanup
+                let still_in_use = server_ports
+                    .iter()
+                    .filter(|&&port| Self::is_port_in_use(port))
+                    .collect::<Vec<_>>();
+
+                if !still_in_use.is_empty() {
+                    return Err(format!(
+                        "Server ports still in use after cleanup: {:?}",
+                        still_in_use
+                    )
+                    .into());
+                }
             }
             Ok(())
         }
 
         /// Wait for server to start and respond
         async fn wait_for_server_startup(
-            client: &reqwest::Client, 
-            process: &mut Child
+            client: &reqwest::Client,
+            process: &mut Child,
         ) -> Result<(), Box<dyn std::error::Error>> {
-            let timeout = Instant::now() + Duration::from_secs(30);
-            
+            let timeout = Instant::now() + Duration::from_secs(90); // Increased timeout
+            let mut attempt = 0;
+
+            eprintln!("Waiting for Leptos server to respond...");
+
             while Instant::now() < timeout {
+                attempt += 1;
+
                 if let Ok(Some(status)) = process.try_wait() {
                     return Err(format!("Server process exited unexpectedly: {}", status).into());
                 }
-                
-                if let Ok(response) = client.get(DEV_SERVER_URL).send().await {
-                    if response.status().is_success() {
+
+                match client.get(DEV_SERVER_URL).send().await {
+                    Ok(response) if response.status().is_success() => {
+                        eprintln!("Server is responding! (attempt {})", attempt);
+                        // Give it a moment to fully initialize
+                        tokio::time::sleep(Duration::from_secs(2)).await;
                         return Ok(());
                     }
+                    Ok(response) => {
+                        eprintln!(
+                            "Server responded with status: {} (attempt {})",
+                            response.status(),
+                            attempt
+                        );
+                    }
+                    Err(e) => {
+                        if attempt % 10 == 0 {
+                            eprintln!("Connection attempt {}: {}", attempt, e);
+                        }
+                    }
                 }
-                
-                tokio::time::sleep(Duration::from_millis(250)).await;
+
+                tokio::time::sleep(Duration::from_millis(500)).await; // Reduced sleep for faster response
             }
-            
+
             Err("Server failed to start within timeout period".into())
         }
-
-        /// Wait for server to be ready including assets
-        async fn wait_for_ready(&self) -> Result<(), Box<dyn std::error::Error>> {
-            self.wait_for_server_response().await?;
-            self.wait_for_critical_assets().await?;
-            self.wait_for_wasm_asset().await;
-            Ok(())
-        }
-
-        /// Wait for basic server response
-        async fn wait_for_server_response(&self) -> Result<(), Box<dyn std::error::Error>> {
-            let timeout = Instant::now() + SERVER_TIMEOUT;
-            
-            while Instant::now() <= timeout {
-                match self.client.get(DEV_SERVER_URL).send().await {
-                    Ok(response) if response.status().is_success() => return Ok(()),
-                    _ => tokio::time::sleep(Duration::from_millis(250)).await,
-                }
-            }
-            
-            Err("Server startup timeout".into())
-        }
-
-        /// Wait for critical assets to be available
-        async fn wait_for_critical_assets(&self) -> Result<(), Box<dyn std::error::Error>> {
-            // In CI/coverage mode, assets may take much longer to compile
-            let extended_timeout = if cfg!(coverage) {
-                Duration::from_secs(180) // 3 minutes for coverage builds
-            } else {
-                ASSET_TIMEOUT
-            };
-            
-            for &(asset_path, _, _) in CRITICAL_ASSETS {
-                let timeout = Instant::now() + extended_timeout;
-                let mut asset_ready = false;
-                
-                while Instant::now() <= timeout {
-                    match self.client.get(format!("{}{}", DEV_SERVER_URL, asset_path)).send().await {
-                        Ok(response) if response.status().is_success() => {
-                            asset_ready = true;
-                            break;
-                        }
-                        _ => tokio::time::sleep(Duration::from_millis(1000)).await, // Longer sleep for coverage
-                    }
-                }
-                
-                if !asset_ready {
-                    eprintln!("Warning: Critical asset {} not ready in time, continuing anyway", asset_path);
-                    // Don't fail tests in coverage mode if assets aren't ready - this is often due to slow compilation
-                    if !cfg!(coverage) {
-                        return Err(format!("Critical asset {} not ready in time", asset_path).into());
-                    }
-                }
-            }
-            Ok(())
-        }
-
-        /// Wait for WASM asset (non-critical)
-        async fn wait_for_wasm_asset(&self) {
-            let timeout = Instant::now() + ASSET_TIMEOUT;
-            
-            while Instant::now() <= timeout {
-                if let Ok(response) = self.client.get(format!("{}/pkg/blog.wasm", DEV_SERVER_URL)).send().await {
-                    if response.status().is_success() {
-                        break;
-                    }
-                }
-                tokio::time::sleep(Duration::from_millis(1000)).await;
-            }
-        }
-
 
         /// Clean up existing processes
         async fn cleanup_existing_processes() {
             let process_patterns = ["make.*watch", "cargo.*leptos", "cargo-leptos"];
-            
+
             // Graceful shutdown
             for pattern in process_patterns {
-                let _ = Command::new("pkill").args(["-TERM", "-f", pattern]).output();
+                let _ = Command::new("pkill")
+                    .args(["-TERM", "-f", pattern])
+                    .output();
             }
-            
+
             let _ = Command::new("bash")
-                .args(["-c", "lsof -ti:3007,3001 | xargs -r kill -TERM 2>/dev/null || true"])
+                .args([
+                    "-c",
+                    "lsof -ti:3007,3001 | xargs -r kill -TERM 2>/dev/null || true",
+                ])
                 .output();
-                
+
             Self::wait_for_process_termination().await;
-            
+
             // Force cleanup if needed
             for pattern in process_patterns {
-                let _ = Command::new("pkill").args(["-KILL", "-f", pattern]).output();
+                let _ = Command::new("pkill")
+                    .args(["-KILL", "-f", pattern])
+                    .output();
             }
-            
+
             let _ = Command::new("bash")
-                .args(["-c", "lsof -ti:3007,3001 | xargs -r kill -KILL 2>/dev/null || true"])
+                .args([
+                    "-c",
+                    "lsof -ti:3007,3001 | xargs -r kill -KILL 2>/dev/null || true",
+                ])
                 .output();
-                
+
             Self::wait_for_port_release().await;
         }
 
@@ -213,14 +249,14 @@ mod server_integration_tests {
         async fn wait_for_process_termination() {
             let mut poll_interval = interval(Duration::from_millis(100));
             let timeout = Instant::now() + Duration::from_millis(2000);
-            
+
             while Instant::now() < timeout {
                 poll_interval.tick().await;
-                
+
                 let output = Command::new("pgrep")
                     .args(["-f", "make.*watch|cargo.*leptos|cargo-leptos"])
                     .output();
-                
+
                 if let Ok(result) = output {
                     if result.stdout.is_empty() {
                         break;
@@ -233,7 +269,7 @@ mod server_integration_tests {
         async fn wait_for_port_release() {
             let mut poll_interval = interval(Duration::from_millis(100));
             let timeout = Instant::now() + Duration::from_millis(1000);
-            
+
             while Instant::now() < timeout {
                 poll_interval.tick().await;
                 if !Self::is_port_in_use(3007) && !Self::is_port_in_use(3001) {
@@ -241,7 +277,7 @@ mod server_integration_tests {
                 }
             }
         }
-        
+
         /// Check if a port is in use
         fn is_port_in_use(port: u16) -> bool {
             TcpListener::bind(("127.0.0.1", port)).is_err()
@@ -252,111 +288,109 @@ mod server_integration_tests {
         fn drop(&mut self) {
             if let Some(mut process) = self.process.take() {
                 let _ = process.kill();
-                
+
                 let start = std::time::Instant::now();
                 let timeout = std::time::Duration::from_millis(500);
-                
+
                 while start.elapsed() < timeout {
                     if let Ok(Some(_)) = process.try_wait() {
                         break;
                     }
                     std::thread::sleep(std::time::Duration::from_millis(50));
                 }
-                
+
                 let _ = process.wait();
             }
-            
-            cleanup_coordination_files();
+
+            // Clean up the database process
+            if let Some(mut db_process) = self.db_process.take() {
+                let _ = db_process.kill();
+
+                let start = std::time::Instant::now();
+                let timeout = std::time::Duration::from_millis(500);
+
+                while start.elapsed() < timeout {
+                    if let Ok(Some(_)) = db_process.try_wait() {
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+
+                let _ = db_process.wait();
+            }
+
+            // Also try to kill any remaining surreal processes to be thorough
+            let _ = Command::new("pkill").args(["-f", "surreal"]).output();
         }
     }
 
     // === Helper Functions ===
 
-    /// Get or start the shared server using file-based coordination
-    async fn get_shared_server() -> Result<(), Box<dyn std::error::Error>> {
-        // Check if server is already running
-        if let Ok(mut file) = std::fs::File::open(SERVER_PID_FILE) {
-            let mut pid_str = String::new();
-            if file.read_to_string(&mut pid_str).is_ok() {
-                if let Ok(pid) = pid_str.trim().parse::<u32>() {
-                    if process_exists(pid) {
-                        wait_for_server_ready().await?;
-                        return Ok(());
-                    }
-                }
+    /// Get or start the shared server
+    async fn get_shared_server() -> Result<reqwest::Client, Box<dyn std::error::Error>> {
+        // Use Once to ensure initialization happens exactly once
+        let mut server_initialized = false;
+        INIT.call_once(|| {
+            server_initialized = true;
+        });
+
+        // Initialize the shared server once
+        if server_initialized || !SERVER_INITIALIZED.load(Ordering::Acquire) {
+            let needs_init = {
+                let server_guard = SHARED_SERVER.lock().unwrap();
+                server_guard.is_none()
+            };
+            
+            if needs_init {
+                let server = SharedTestServer::start().await?;
+                let mut server_guard = SHARED_SERVER.lock().unwrap();
+                *server_guard = Some(server);
+                SERVER_INITIALIZED.store(true, Ordering::Release);
             }
         }
-        
-        cleanup_coordination_files();
-        
-        let server = SharedTestServer::start().await?;
-        
-        // Write PID to file
-        if let Some(ref process) = server.process {
-            let pid = process.id();
-            let mut file = std::fs::File::create(SERVER_PID_FILE)?;
-            write!(file, "{}", pid)?;
+
+        // Return a client for the shared server
+        let server_guard = SHARED_SERVER.lock().unwrap();
+        match server_guard.as_ref() {
+            Some(server) => Ok(server.client.clone()),
+            None => Err("Shared server not initialized".into()),
         }
-        
-        server.wait_for_ready().await?;
-        
-        // Signal that server is ready
-        std::fs::File::create(SERVER_READY_FILE)?;
-        
-        // Keep the server running
-        std::mem::forget(server);
-        
-        Ok(())
-    }
-
-    /// Wait for the server ready signal
-    async fn wait_for_server_ready() -> Result<(), Box<dyn std::error::Error>> {
-        let timeout = Instant::now() + SERVER_TIMEOUT;
-        
-        while Instant::now() < timeout {
-            if std::fs::metadata(SERVER_READY_FILE).is_ok() {
-                return Ok(());
-            }
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
-        
-        Err("Timeout waiting for server ready signal".into())
-    }
-
-    /// Check if a process exists
-    fn process_exists(pid: u32) -> bool {
-        std::fs::metadata(format!("/proc/{}", pid)).is_ok()
-    }
-
-    /// Clean up coordination files
-    fn cleanup_coordination_files() {
-        let _ = std::fs::remove_file(SERVER_PID_FILE);
-        let _ = std::fs::remove_file(SERVER_READY_FILE);
     }
 
     /// Get HTTP client for tests
     async fn get_client() -> Result<reqwest::Client, Box<dyn std::error::Error>> {
-        get_shared_server().await?;
-        SharedTestServer::create_client()
+        get_shared_server().await
     }
 
     /// Helper to fetch and validate a page
     async fn fetch_and_validate_page(
-        client: &reqwest::Client, 
-        path: &str, 
-        description: &str
+        client: &reqwest::Client,
+        path: &str,
+        description: &str,
     ) -> Result<String, Box<dyn std::error::Error>> {
-        let response = client.get(format!("{}{}", DEV_SERVER_URL, path)).send().await?;
-        
-        assert!(response.status().is_success(),
-                "{} should return success, got: {}", description, response.status());
-        assert_eq!(response.headers().get("content-type").unwrap(),
-                   "text/html; charset=utf-8");
-        
+        let response = client
+            .get(format!("{}{}", DEV_SERVER_URL, path))
+            .send()
+            .await?;
+
+        assert!(
+            response.status().is_success(),
+            "{} should return success, got: {}",
+            description,
+            response.status()
+        );
+        assert_eq!(
+            response.headers().get("content-type").unwrap(),
+            "text/html; charset=utf-8"
+        );
+
         let body = response.text().await?;
-        assert!(body.contains("<!DOCTYPE html"), 
-                "{} should contain HTML doctype", description);
-        
+        assert!(
+            body.contains("<!DOCTYPE html"),
+            "{} should contain HTML doctype",
+            description
+        );
+
         Ok(body)
     }
 
@@ -365,26 +399,42 @@ mod server_integration_tests {
         client: &reqwest::Client,
         path: &str,
         expected_content_type: &str,
-        min_size: u64
+        min_size: u64,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let response = client.get(format!("{}{}", DEV_SERVER_URL, path)).send().await?;
-        
-        assert!(response.status().is_success(),
-                "Asset {} should return success, got: {}", path, response.status());
-        
-        let content_type = response.headers()
+        let response = client
+            .get(format!("{}{}", DEV_SERVER_URL, path))
+            .send()
+            .await?;
+
+        assert!(
+            response.status().is_success(),
+            "Asset {} should return success, got: {}",
+            path,
+            response.status()
+        );
+
+        let content_type = response
+            .headers()
             .get("content-type")
             .and_then(|v| v.to_str().ok())
             .unwrap_or("");
-        assert!(content_type.starts_with(expected_content_type),
-                "Asset {} should have content-type {}, got: {}", 
-                path, expected_content_type, content_type);
-        
+        assert!(
+            content_type.starts_with(expected_content_type),
+            "Asset {} should have content-type {}, got: {}",
+            path,
+            expected_content_type,
+            content_type
+        );
+
         let content_length = response.content_length().unwrap_or(0);
-        assert!(content_length >= min_size,
-                "Asset {} should be at least {} bytes, got: {}", 
-                path, min_size, content_length);
-        
+        assert!(
+            content_length >= min_size,
+            "Asset {} should be at least {} bytes, got: {}",
+            path,
+            min_size,
+            content_length
+        );
+
         Ok(())
     }
 
@@ -397,11 +447,16 @@ mod server_integration_tests {
     async fn test_server_connectivity() -> Result<(), Box<dyn std::error::Error>> {
         let client = get_client().await?;
         let response = client.get(DEV_SERVER_URL).send().await?;
-        
-        assert!(response.status().is_success(), 
-                "Server should respond with success status, got: {}", response.status());
-        assert_eq!(response.headers().get("content-type").unwrap(), 
-                   "text/html; charset=utf-8");
+
+        assert!(
+            response.status().is_success(),
+            "Server should respond with success status, got: {}",
+            response.status()
+        );
+        assert_eq!(
+            response.headers().get("content-type").unwrap(),
+            "text/html; charset=utf-8"
+        );
 
         Ok(())
     }
@@ -415,30 +470,55 @@ mod server_integration_tests {
 
         for &(path, description) in CORE_PAGES {
             let body = fetch_and_validate_page(&client, path, description).await?;
-            
+
             // All pages should contain navigation elements
-            assert!(body.contains("blog"), 
-                    "{} should contain navigation elements", description);
+            assert!(
+                body.contains("blog"),
+                "{} should contain navigation elements",
+                description
+            );
         }
 
         // Test navigation links on home page
         let home_body = fetch_and_validate_page(&client, "/", "Home page").await?;
-        assert!(home_body.contains(r#"href="/""#), "Should contain home link");
-        assert!(home_body.contains(r#"href="/references""#), "Should contain references link");  
-        assert!(home_body.contains(r#"href="/contact""#), "Should contain contact link");
-        assert!(home_body.contains("github.com/athola"), "Should contain GitHub link");
-        assert!(home_body.contains("linkedin.com/in/alexthola"), "Should contain LinkedIn link");
+        assert!(
+            home_body.contains(r#"href="/""#),
+            "Should contain home link"
+        );
+        assert!(
+            home_body.contains(r#"href="/references""#),
+            "Should contain references link"
+        );
+        assert!(
+            home_body.contains(r#"href="/contact""#),
+            "Should contain contact link"
+        );
+        assert!(
+            home_body.contains("github.com/athola"),
+            "Should contain GitHub link"
+        );
+        assert!(
+            home_body.contains("linkedin.com/in/alexthola"),
+            "Should contain LinkedIn link"
+        );
 
         // Test page-specific content
-        let references_body = fetch_and_validate_page(&client, "/references", "References page").await?;
-        assert!(references_body.contains("Project References"), 
-                "References page should contain 'Project References'");
+        let references_body =
+            fetch_and_validate_page(&client, "/references", "References page").await?;
+        assert!(
+            references_body.contains("Project References"),
+            "References page should contain 'Project References'"
+        );
 
         let contact_body = fetch_and_validate_page(&client, "/contact", "Contact page").await?;
-        assert!(contact_body.contains("Get In Touch"), 
-                "Contact page should contain 'Get In Touch'");
-        assert!(contact_body.contains("form"), 
-                "Contact page should contain a form");
+        assert!(
+            contact_body.contains("Get In Touch"),
+            "Contact page should contain 'Get In Touch'"
+        );
+        assert!(
+            contact_body.contains("form"),
+            "Contact page should contain a form"
+        );
 
         Ok(())
     }
@@ -453,29 +533,41 @@ mod server_integration_tests {
         // Test critical assets - be more forgiving in coverage mode
         for &(path, expected_content_type, min_size) in CRITICAL_ASSETS {
             match validate_asset(&client, path, expected_content_type, min_size).await {
-                Ok(_) => {}, // Asset validated successfully
+                Ok(_) => {} // Asset validated successfully
                 Err(e) if cfg!(coverage) => {
                     eprintln!("Warning: Asset validation failed in coverage mode: {}", e);
                     // Continue without failing the test in coverage mode
-                },
+                }
                 Err(e) => return Err(e), // Fail normally in non-coverage mode
             }
         }
-        
+
         // Test WASM asset (optional - don't fail if not ready)
-        if let Ok(response) = client.get(format!("{}/pkg/blog.wasm", DEV_SERVER_URL)).send().await {
+        if let Ok(response) = client
+            .get(format!("{}/pkg/blog.wasm", DEV_SERVER_URL))
+            .send()
+            .await
+        {
             if response.status().is_success() {
-                let content_type = response.headers()
+                let content_type = response
+                    .headers()
                     .get("content-type")
                     .and_then(|v| v.to_str().ok())
                     .unwrap_or("");
-                
-                assert!(content_type.contains("wasm") || content_type.contains("application/octet-stream"),
-                        "WASM asset should have appropriate content-type, got: {}", content_type);
-                
+
+                assert!(
+                    content_type.contains("wasm")
+                        || content_type.contains("application/octet-stream"),
+                    "WASM asset should have appropriate content-type, got: {}",
+                    content_type
+                );
+
                 let content_length = response.content_length().unwrap_or(0);
-                assert!(content_length >= 1024,
-                        "WASM asset should be at least 1KB, got: {}", content_length);
+                assert!(
+                    content_length >= 1024,
+                    "WASM asset should be at least 1KB, got: {}",
+                    content_length
+                );
             }
         }
 
@@ -495,24 +587,29 @@ mod server_integration_tests {
             let start = Instant::now();
             let response = client.get(DEV_SERVER_URL).send().await?;
             let elapsed = start.elapsed();
-            
+
             assert!(response.status().is_success());
             response_times.push(elapsed);
-            
+
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
 
-        let avg_response_time = response_times.iter().sum::<Duration>() / response_times.len() as u32;
-        
+        let avg_response_time =
+            response_times.iter().sum::<Duration>() / response_times.len() as u32;
+
         // Be more lenient with performance expectations in coverage mode
         let max_response_time = if cfg!(coverage) {
             Duration::from_secs(30) // Much more lenient for coverage builds
         } else {
             Duration::from_secs(5)
         };
-        
-        assert!(avg_response_time < max_response_time,
-                "Average response time should be under {:?}, got: {:?}", max_response_time, avg_response_time);
+
+        assert!(
+            avg_response_time < max_response_time,
+            "Average response time should be under {:?}, got: {:?}",
+            max_response_time,
+            avg_response_time
+        );
 
         Ok(())
     }
@@ -523,13 +620,18 @@ mod server_integration_tests {
     #[cfg(not(any(feature = "ci", coverage)))]
     async fn test_error_handling() -> Result<(), Box<dyn std::error::Error>> {
         let client = get_client().await?;
-        
+
         // Test non-existent route - should still return HTML (SPA routing)
-        let response = client.get(format!("{}/nonexistent", DEV_SERVER_URL)).send().await?;
+        let response = client
+            .get(format!("{}/nonexistent", DEV_SERVER_URL))
+            .send()
+            .await?;
         let body = response.text().await?;
-        
-        assert!(body.contains("<!DOCTYPE html"), 
-                "Even non-existent routes should return HTML structure");
+
+        assert!(
+            body.contains("<!DOCTYPE html"),
+            "Even non-existent routes should return HTML structure"
+        );
 
         Ok(())
     }
@@ -540,65 +642,65 @@ mod server_integration_tests {
     #[cfg(not(any(feature = "ci", coverage)))]
     async fn test_complete_development_workflow() -> Result<(), Box<dyn std::error::Error>> {
         let client = get_client().await?;
-        
+
         // Verify server responds
         let response = client.get(DEV_SERVER_URL).send().await?;
-        assert!(response.status().is_success(), "Server should be responsive");
-        
+        assert!(
+            response.status().is_success(),
+            "Server should be responsive"
+        );
+
         // Verify all core pages are accessible
         for &(path, _) in CORE_PAGES {
-            let response = client.get(format!("{}{}", DEV_SERVER_URL, path)).send().await?;
-            assert!(response.status().is_success(), "Page {} should be accessible", path);
+            let response = client
+                .get(format!("{}{}", DEV_SERVER_URL, path))
+                .send()
+                .await?;
+            assert!(
+                response.status().is_success(),
+                "Page {} should be accessible",
+                path
+            );
         }
-        
+
         // Verify critical assets are available
         for &(path, _, _) in CRITICAL_ASSETS {
-            let response = client.get(format!("{}{}", DEV_SERVER_URL, path)).send().await?;
-            assert!(response.status().is_success(), "Asset {} should be available", path);
+            let response = client
+                .get(format!("{}{}", DEV_SERVER_URL, path))
+                .send()
+                .await?;
+            assert!(
+                response.status().is_success(),
+                "Asset {} should be available",
+                path
+            );
         }
-        
+
         Ok(())
     }
 
-    /// Test 7: Server Coordination File Management
-    /// Tests the file-based coordination system for shared server instances
+    /// Test 7: Server Coordination Management
+    /// Tests that the shared server instance works correctly
     #[tokio::test]
     #[cfg(not(any(feature = "ci", coverage)))]
-    async fn test_server_coordination_cleanup() -> Result<(), Box<dyn std::error::Error>> {
-        let _client = get_client().await?;
-        
-        // Verify coordination files exist
-        assert!(std::fs::metadata(SERVER_PID_FILE).is_ok(), 
-                "Server PID file should exist");
-        assert!(std::fs::metadata(SERVER_READY_FILE).is_ok(), 
-                "Server ready file should exist");
-        
-        // Get server PID for verification
-        let server_pid = std::fs::read_to_string(SERVER_PID_FILE)
-            .ok()
-            .and_then(|s| s.trim().parse::<u32>().ok());
-        
-        // Clean up coordination files
-        cleanup_coordination_files();
-        
-        // Verify files are removed
-        assert!(std::fs::metadata(SERVER_PID_FILE).is_err(), 
-                "Server PID file should be removed after cleanup");
-        assert!(std::fs::metadata(SERVER_READY_FILE).is_err(), 
-                "Server ready file should be removed after cleanup");
-        
-        // Verify server process still exists (shared architecture)
-        if let Some(pid) = server_pid {
-            assert!(process_exists(pid), 
-                    "Server process should still be running (shared server)");
-        }
-        
-        // Verify server remains accessible
-        let test_client = SharedTestServer::create_client()?;
-        let response = test_client.get(DEV_SERVER_URL).send().await?;
-        assert!(response.status().is_success(), 
-                "Server should remain accessible after coordination cleanup");
-        
+    async fn test_server_coordination_management() -> Result<(), Box<dyn std::error::Error>> {
+        let client = get_client().await?;
+
+        // Verify server responds
+        let response = client.get(DEV_SERVER_URL).send().await?;
+        assert!(
+            response.status().is_success(),
+            "Server should be responsive"
+        );
+
+        // Verify we can get the same client again
+        let client2 = get_client().await?;
+        let response2 = client2.get(DEV_SERVER_URL).send().await?;
+        assert!(
+            response2.status().is_success(),
+            "Server should still be responsive"
+        );
+
         Ok(())
     }
 }

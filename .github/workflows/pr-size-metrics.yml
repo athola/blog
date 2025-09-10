@@ -1,0 +1,126 @@
+name: PR Size Metrics Collection
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [ "master" ]
+
+# Only run for merged PRs, not closed ones
+if: github.event.pull_request.merged == true
+
+env:
+  # Load PR size configuration from centralized config
+  FORCE_COLOR: 1
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  collect-pr-metrics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@08eba0b78193d1b7a89e4e5b0c3c2c6c2b8df11e # v4.3.0
+      with:
+        fetch-depth: 0  # Need full history
+
+    - name: Load PR size configuration
+      run: |
+        # Load centralized configuration
+        source scripts/load_pr_config.sh
+        
+        # Export to environment for later steps
+        echo "MAX_PR_SIZE=$MAX_PR_SIZE" >> $GITHUB_ENV
+        echo "IDEAL_PR_SIZE=$IDEAL_PR_SIZE" >> $GITHUB_ENV
+        echo "GOOD_PR_SIZE=$GOOD_PR_SIZE" >> $GITHUB_ENV
+
+    - name: Calculate PR size
+      id: pr-size
+      run: |
+        # Use shared calculation script
+        chmod +x scripts/calculate_pr_size.sh
+        ./scripts/calculate_pr_size.sh "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" env
+
+    - name: Collect PR size metrics
+      id: collect-metrics
+      run: |
+        set -euo pipefail
+        
+        # Get PR information
+        PR_NUMBER="${{ github.event.pull_request.number }}"
+        PR_TITLE="${{ github.event.pull_request.title }}"
+        PR_AUTHOR="${{ github.event.pull_request.user.login }}"
+        PR_MERGED_AT="${{ github.event.pull_request.merged_at }}"
+        PR_URL="${{ github.event.pull_request.html_url }}"
+        
+        echo "Collecting metrics for PR #$PR_NUMBER: $PR_TITLE"
+        echo "Merged at: $PR_MERGED_AT"
+        
+        # Get size metrics from previous step
+        TOTAL_LINES=${{ steps.pr-size.outputs.total-lines }}
+        ADDITIONS=${{ steps.pr-size.outputs.additions }}
+        DELETIONS=${{ steps.pr-size.outputs.deletions }}
+        CHANGED_FILES=${{ steps.pr-size.outputs.changed-files }}
+        
+        # Determine PR size category using environment variables
+        if [ "$TOTAL_LINES" -le "$IDEAL_PR_SIZE" ]; then
+          CATEGORY="ideal"
+          CATEGORY_LABEL="✅ Ideal"
+        elif [ "$TOTAL_LINES" -le "$GOOD_PR_SIZE" ]; then
+          CATEGORY="good"
+          CATEGORY_LABEL="🟡 Good"
+        elif [ "$TOTAL_LINES" -le "$MAX_PR_SIZE" ]; then
+          CATEGORY="large"
+          CATEGORY_LABEL="⚠️ Large"
+        else
+          CATEGORY="too-large"
+          CATEGORY_LABEL="❌ Too Large"
+        fi
+        
+        echo "PR size category: $CATEGORY"
+        
+        # Set outputs for later steps (size data comes from pr-size step)
+        echo "pr-number=$PR_NUMBER" >> $GITHUB_OUTPUT
+        echo "pr-title=$PR_TITLE" >> $GITHUB_OUTPUT
+        echo "pr-author=$PR_AUTHOR" >> $GITHUB_OUTPUT
+        echo "pr-merged-at=$PR_MERGED_AT" >> $GITHUB_OUTPUT
+        echo "pr-url=$PR_URL" >> $GITHUB_OUTPUT
+        echo "category=$CATEGORY" >> $GITHUB_OUTPUT
+        echo "category-label=$CATEGORY_LABEL" >> $GITHUB_OUTPUT
+
+    - name: Create/update metrics file
+      run: |
+        set -euo pipefail
+        
+        # Create metrics directory if it doesn't exist
+        mkdir -p .github/metrics
+        
+        # Create/update the CSV file with PR metrics
+        METRICS_FILE=".github/metrics/pr-size-history.csv"
+        
+        # If file doesn't exist, create it with headers
+        if [[ ! -f "$METRICS_FILE" ]]; then
+          echo "date,pr_number,title,author,total_lines,additions,deletions,changed_files,category,url" > "$METRICS_FILE"
+        fi
+        
+        # Append the current PR metrics (use pr-size outputs for size data)
+        echo "${{ steps.collect-metrics.outputs.pr-merged-at }},${{ steps.collect-metrics.outputs.pr-number }},${{ steps.collect-metrics.outputs.pr-title }},${{ steps.collect-metrics.outputs.pr-author }},${{ steps.pr-size.outputs.total-lines }},${{ steps.pr-size.outputs.additions }},${{ steps.pr-size.outputs.deletions }},${{ steps.pr-size.outputs.changed-files }},${{ steps.collect-metrics.outputs.category }},${{ steps.collect-metrics.outputs.pr-url }}" >> "$METRICS_FILE"
+        
+        echo "Added PR #${{ steps.collect-metrics.outputs.pr-number }} metrics to $METRICS_FILE"
+
+    - name: Commit and push metrics
+      run: |
+        set -euo pipefail
+        
+        # Configure git
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        
+        # Commit the updated metrics file
+        git add .github/metrics/pr-size-history.csv
+        git commit -m "docs: Update PR size metrics for PR #${{ steps.collect-metrics.outputs.pr-number }}"
+        
+        # Push the changes
+        git push

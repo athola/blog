@@ -17,3 +17,6 @@
 
 # Secret scanning
 secret_scanning_results/
+
+# PR size trend visualization artifacts
+.github/reports/visualizations/

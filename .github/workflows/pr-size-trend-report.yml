@@ -1,0 +1,124 @@
+name: PR Size Trend Report
+
+on:
+  schedule:
+    # Run daily at 1 AM UTC
+    - cron: '0 1 * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  generate-trend-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@08eba0b78193d1b7a89e4e5b0c3c2c6c2b8df11e # v4.3.0
+
+    - name: Check if metrics file exists
+      id: check-metrics
+      run: |
+        if [[ -f ".github/metrics/pr-size-history.csv" ]]; then
+          echo "metrics-exists=true" >> $GITHUB_OUTPUT
+          echo "Found metrics file with $(wc -l < .github/metrics/pr-size-history.csv) entries"
+        else
+          echo "metrics-exists=false" >> $GITHUB_OUTPUT
+          echo "No metrics file found"
+        fi
+
+    - name: Install uv
+      if: steps.check-metrics.outputs.metrics-exists == 'true'
+      uses: astral-sh/setup-uv@v5
+
+    - name: Set up Python
+      if: steps.check-metrics.outputs.metrics-exists == 'true'
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Generate trend visualizations and report
+      if: steps.check-metrics.outputs.metrics-exists == 'true'
+      run: |
+        set -euo pipefail
+        
+        # Install Python dependencies using uv
+        uv pip install --system -r scripts/requirements.txt
+        
+        # Run the Python visualization script
+        python3 scripts/visualize_pr_trends.py .github/metrics/pr-size-history.csv
+
+    - name: Commit and push reports (excluding visualizations)
+      if: steps.check-metrics.outputs.metrics-exists == 'true'
+      run: |
+        set -euo pipefail
+        
+        # Configure git
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        
+        # Commit only the report and metrics (not the visualizations)
+        git add .github/reports/pr_size_trend.md
+        git commit -m "docs: Update PR size trend report"
+        
+        # Push the changes
+        git push
+
+    - name: Create/update GitHub issue with report
+      if: steps.check-metrics.outputs.metrics-exists == 'true'
+      uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+      with:
+        script: |
+          const fs = require('fs');
+          
+          // Read the report content
+          const reportPath = '.github/reports/pr_size_trend.md';
+          if (!fs.existsSync(reportPath)) {
+            console.log('No trend report found');
+            return;
+          }
+          
+          const reportContent = fs.readFileSync(reportPath, 'utf8');
+          
+          // Search for existing issue
+          const issues = await github.rest.issues.listForRepo({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            state: 'open',
+            labels: 'pr-size-report'
+          });
+          
+          const reportIssue = issues.data.find(issue => 
+            issue.title === 'PR Size Trend Report'
+          );
+          
+          if (reportIssue) {
+            // Update existing issue
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: reportIssue.number,
+              body: reportContent
+            });
+            console.log(`Updated PR size trend report issue #${reportIssue.number}`);
+          } else {
+            // Create new issue
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: 'PR Size Trend Report',
+              body: reportContent,
+              labels: ['pr-size-report', 'documentation']
+            });
+            console.log('Created new PR size trend report issue');
+          }
+
+    - name: Upload visualization artifacts
+      if: steps.check-metrics.outputs.metrics-exists == 'true'
+      uses: actions/upload-artifact@ea165f8e3437f3bbf9a4e69b46f5b56a8b4ec86c # v4.6.2
+      with:
+        name: pr-size-trend-visualizations
+        path: .github/reports/visualizations/
+        retention-days: 30
