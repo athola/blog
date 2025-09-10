@@ -88,16 +88,20 @@ is_excluded_file() {
     
     # Check directory exclusions
     for pattern in "${DIRECTORY_EXCLUSIONS[@]}"; do
-        if [[ "$filename" == $pattern ]]; then
-            return 0
-        fi
+        case "$filename" in
+            $pattern)
+                return 0
+                ;;
+        esac
     done
     
     # Check file exclusions
     for pattern in "${FILE_EXCLUSIONS[@]}"; do
-        if [[ "$filename" == $pattern ]]; then
-            return 0
-        fi
+        case "$filename" in
+            $pattern)
+                return 0
+                ;;
+        esac
     done
     
     return 1
