@@ -25,12 +25,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `make check` - Run format and lint checks
 - `make fix` - Automatically fix formatting and lint issues where possible
 
-### PR Size Management
-- GitHub Actions automatically enforce PR size limits (Ideal: ≤500 lines, Good: 501-1500 lines, Large: 1501-2000 lines, Too Large: >2000 lines)
-- Auto-generated files (build artifacts, lock files, etc.) are excluded from size calculations
-- Historical PR size metrics are collected and trend analysis is generated
-- Visualization artifacts are treated as temporary files and not committed to the repository
-
 ### Package Management
 - `make install-pkgs` - Install required Cargo tools (cargo-make, cargo-audit, cargo-bloat, cargo-leptos, cargo-nextest, cargo-llvm-cov, etc.)
 - `make upgrade` - Update all dependencies
@@ -100,12 +94,7 @@ The project uses a comprehensive security-first GitHub Actions pipeline with the
 🔒 secrets-scan.yml (Security Gate)
     ├── 🦀 rust.yml (Build & Test)
     ├── 🗄️ migrations.yml (Database)
-    ├── 📏 pr-size-check.yml (PR Size Validation)
     └── 🚀 deploy.yml (Production - main branch only)
-
-📊 PR Size Management (Parallel)
-    ├── 📈 pr-size-metrics.yml (Metrics Collection - on PR merge)
-    └── 📋 pr-size-trend-report.yml (Daily Trend Analysis)
 ```
 
 ### Workflow Files
@@ -136,22 +125,10 @@ The project uses a comprehensive security-first GitHub Actions pipeline with the
    - **Features**: Workflow dependency visualization, status summaries
 
 6. **`.github/workflows/pr-size-check.yml`**
-   - **Purpose**: PR size validation and enforcement
+   - **Purpose**: Simple PR size validation and commenting
    - **Triggers**: Pull requests to master branch
-   - **Features**: 2000 line limit enforcement, auto-generated file exclusion, size categorization
-   - **Blocking**: Prevents merge of PRs exceeding size limits
-
-7. **`.github/workflows/pr-size-metrics.yml`**
-   - **Purpose**: PR size metrics collection and tracking
-   - **Triggers**: Merged pull requests to master branch
-   - **Features**: GPG-signed commits, CSV metrics storage, historical data tracking
-   - **Security**: Uses GPG signing for automated commits
-
-8. **`.github/workflows/pr-size-trend-report.yml`**
-   - **Purpose**: Daily trend analysis and visualization generation
-   - **Triggers**: Daily schedule (1 AM UTC), manual dispatch
-   - **Features**: Python-based trend analysis, cached dependencies, GitHub issue reports
-   - **Artifacts**: Trend visualizations with 30-day retention
+   - **Features**: Comments on PRs with 2000+ lines changed
+   - **Non-blocking**: Provides feedback without preventing merges
 
 ### Security-First Design
 - **Multi-layer scanning**: Pattern-based (Gitleaks), static analysis (Semgrep), entropy-based (Trufflehog)
@@ -160,6 +137,11 @@ The project uses a comprehensive security-first GitHub Actions pipeline with the
 - **Audit trail**: All security results retained for 90 days
 - **Regular scans**: Weekly scheduled scans for ongoing security monitoring
 - ✅ **Recent Fixes**: Resolved tool installation path issues in CI workflows
+
+### PR Size Management
+- GitHub Actions automatically comments on PRs with 2000+ lines changed
+- Provides gentle feedback to encourage smaller, more manageable PRs
+- Non-blocking approach that doesn't prevent merges
 
 ### Integration with Development
 - **Local scanning**: Use `./run_secret_scan.sh` before committing
@@ -174,70 +156,7 @@ The project uses a comprehensive security-first GitHub Actions pipeline with the
 - **Environment protection**: `.env.example` provides secure template
 - **False positive management**: `.gitleaksignore` with fingerprint-based exclusions
 
-## Pull Request Guidelines
 
-### Size Limits and Best Practices
-
-**Target Size**: Pull requests should contain **2000 total lines of code changes or less** (additions + deletions combined).
-
-#### Why Size Matters
-- **Faster reviews**: Smaller PRs are reviewed more quickly and thoroughly
-- **Reduced bugs**: Easier to spot issues in focused changes
-- **Better discussion**: Reviewers can provide more meaningful feedback
-- **Easier rollbacks**: Smaller changes are simpler to revert if needed
-- **CI/CD efficiency**: Faster builds and tests with smaller changesets
-
-#### Size Guidelines
-- **✅ Ideal (0-500 lines)**: Single feature, bug fix, or refactor
-- **🟡 Good (500-1500 lines)**: Medium feature or multiple related changes
-- **⚠️ Large (1500-2000 lines)**: Complex feature requiring justification
-- **❌ Too Large (2000+ lines)**: Should be broken into multiple PRs
-
-#### Automated Enforcement
-The project includes GitHub Actions workflow checks that:
-- **Calculate total lines changed** (additions + deletions)
-- **Block PRs exceeding 2000 lines** from merging
-- **Provide size feedback** in PR status checks
-- **Allow emergency overrides** for critical fixes (maintainer approval required)
-
-#### Breaking Down Large Changes
-
-**Strategies for splitting large PRs**:
-
-1. **Feature Stages**: Break features into logical phases
-   ```
-   PR 1: Database schema changes
-   PR 2: Backend API implementation  
-   PR 3: Frontend UI components
-   PR 4: Integration and testing
-   ```
-
-2. **Component Separation**: Split by architectural layers
-   ```
-   PR 1: Data models and types
-   PR 2: Business logic functions
-   PR 3: Server endpoints
-   PR 4: Client-side integration
-   ```
-
-3. **Preparatory PRs**: Infrastructure first, features second
-   ```
-   PR 1: Dependencies and configuration
-   PR 2: Helper utilities and shared code
-   PR 3: Main feature implementation
-   ```
-
-#### Exception Process
-For PRs that must exceed 2000 lines:
-1. **Add justification** in PR description explaining why the change cannot be split
-2. **Request maintainer review** for size limit override
-3. **Provide detailed testing plan** showing comprehensive validation
-4. **Include migration/rollback strategy** for large changes
-
-#### Monitoring and Metrics
-- PR size is tracked in CI/CD pipeline
-- Regular reports on average PR size trends
-- Recognition for consistently well-sized PRs
 
 ## Test Status Summary
 

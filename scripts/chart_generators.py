@@ -61,7 +61,7 @@ class ChartGenerator:
         # Add size category column
         self.metrics.df["size_category"] = self.metrics.df[
             "total_lines"
-        ].apply(self.metrics.categorize_pr_size)
+        ].apply(lambda x: "N/A")
 
         # Count categories
         category_counts = self.metrics.df["size_category"].value_counts()
@@ -244,38 +244,8 @@ class ChartGenerator:
         plt.savefig(output_file, dpi=300, bbox_inches="tight")
         plt.close()
 
-    def generate_all_charts(self, output_dir: str) -> Dict:
-        """Generate all visualization charts.
-
-        Args:
-            output_dir: Directory where charts will be saved
-
-        Returns:
-            Dict: Information about generated charts
-        """
-        if not self.metrics.is_loaded:
-            return {}
-
-        os.makedirs(output_dir, exist_ok=True)
-        chart_info = {}
-
-        try:
-            # Size distribution pie chart
-            pie_chart_file = os.path.join(
-                output_dir, "pr_size_distribution.png"
-            )
-            category_counts = self.create_size_distribution_chart(
-                pie_chart_file
-            )
-            chart_info["pie_chart"] = pie_chart_file
-            chart_info["category_counts"] = category_counts
-            print(f"Created size distribution chart: {pie_chart_file}")
-
-            # Trend line chart
-            trend_chart_file = os.path.join(output_dir, "pr_size_trend.png")
-            self.create_trend_line_chart(trend_chart_file)
-            chart_info["trend_chart"] = trend_chart_file
-            print(f"Created trend line chart: {trend_chart_file}")
+    try:
+            chart_info = {}
 
             # Contributor chart
             contributor_chart_file = os.path.join(
@@ -284,12 +254,6 @@ class ChartGenerator:
             self.create_contributor_chart(contributor_chart_file)
             chart_info["contributor_chart"] = contributor_chart_file
             print(f"Created contributor chart: {contributor_chart_file}")
-
-            # Size histogram
-            histogram_file = os.path.join(output_dir, "pr_size_histogram.png")
-            self.create_size_histogram(histogram_file)
-            chart_info["histogram"] = histogram_file
-            print(f"Created size histogram: {histogram_file}")
 
             return chart_info
 
