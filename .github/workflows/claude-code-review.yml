@@ -3,37 +3,61 @@ name: Claude Code Review
 on:
   pull_request:
     types: [opened, synchronize]
-    # Optional: Only run on specific file changes
-    # paths:
-    #   - "src/**/*.ts"
-    #   - "src/**/*.tsx"
-    #   - "src/**/*.js"
-    #   - "src/**/*.jsx"
+    branches: [ "master" ]
+    # Run on all relevant code changes
+    paths:
+      # Rust source code changes
+      - "**/*.rs"
+      - "**/Cargo.toml"
+      - "Cargo.lock"
+      # Build configuration changes
+      - "Makefile"
+      - "Makefile.toml"
+      - "leptosfmt.toml"
+      - "Dockerfile"
+      # Frontend assets and styling (affects build output)
+      - "style/**/*.css"
+      - "style/**/*.js"
+      - "public/**"
+      # Configuration files that affect builds
+      - ".config/**"
+      - "audit.toml"
+      # Exclude documentation changes from triggering review
+      - "!**/*.md"
+      - "!LICENSE"
+      - "!docs/**"
+      - "!.github/**/*.md"
+      # Exclude non-essential configuration
+      - "!.gitleaksignore"
+      - "!.semgrep.yml"
+      - "!run_secret_scan.sh"
 
 jobs:
   claude-review:
-    # Optional: Filter by PR author
-    # if: |
-    #   github.event.pull_request.user.login == 'external-contributor' ||
-    #   github.event.pull_request.user.login == 'new-developer' ||
-    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
+    # Only run review for external contributors or first-time contributors
+    if: |
+      github.event.pull_request.user.login != 'athola' &&
+      (github.event.pull_request.author_association == 'CONTRIBUTOR' ||
+       github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR')
     
     runs-on: ubuntu-latest
+    timeout-minutes: 10  # Optimized: Set timeout for faster feedback
     permissions:
       contents: read
-      pull-requests: read
+      pull-requests: write  # Changed to write for commenting
       issues: read
       id-token: write
     
     steps:
       - name: Checkout repository
-        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 1
 
       - name: Run Claude Code Review
         id: claude-review
         uses: anthropics/claude-code-action@v1
+        timeout-minutes: 8  # Optimized: Set specific timeout for the action
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
@@ -45,7 +69,14 @@ jobs:
             - Test coverage
             
             Use the repository's CLAUDE.md for guidance on style and conventions. Be constructive and helpful in your feedback.
-
+            
+            Focus particularly on:
+            1. Rust best practices and idioms
+            2. Leptos framework usage
+            3. Security considerations for web applications
+            4. Test coverage for new functionality
+            5. Performance implications of changes
+            
             Use `gh pr comment` with your Bash tool to leave your review as a comment on the PR.
           
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
