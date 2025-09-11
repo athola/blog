@@ -22,9 +22,6 @@ node_modules/
 # Secret scanning
 secret_scanning_results/
 
-# PR size trend visualization artifacts
-.github/reports/visualizations/
-
 # Python cache files
 __pycache__/
 *.pyc

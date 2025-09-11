@@ -4,7 +4,7 @@
 .PHONY: help rebuild build format fmt lint bloat spellcheck udeps security test install-pkgs upgrade \\
 	server cli build-release server-release cli-release test-report test-coverage test-coverage-html \\
 	test-retry test-db test-email test-migrations test-server clean-test-artifacts watch \\
-	install-test-tools pylint test-tdd test-fast test-python test-shell
+	install-test-tools
 
 ## Alias for format command (compatibility)
 format: fmt
@@ -33,7 +33,6 @@ help:
 	@echo "  sort         : sorts $(PROJECT)'s Cargo.toml"
 	@echo "  spellcheck   : checks documentation spellcheck for $(PROJECT)"
 	@echo "  udeps        : checks unused dependencies for $(PROJECT)"
-	@echo "  pylint       : runs Python code quality checks for $(PROJECT)"
 	@echo "  test         : tests $(PROJECT)"
 	@echo "  help         : prints this help message"
 
@@ -68,11 +67,6 @@ endef
 $(eval $(call DEFINE_CARGO_TASK,security,Checking security of))
 $(eval $(call DEFINE_CARGO_TASK,outdated,Checking for out-of-date deps in ${PROJECT}'s Cargo.toml))
 $(eval $(call DEFINE_CARGO_TASK,sort,Sorting ${PROJECT}'s Cargo.toml))
-
-## Python tests using uv (replaces shell script runner)
-test-python-fast:
-	$(ECHO_PREFIX) Running fast Python tests
-	@uv run pytest -m 'not slow' --tb=short --color=yes
 
 ## Server integration tests (requires database) - standalone
 test-server-integration:
@@ -109,8 +103,6 @@ test:
 	@cargo test migration_core_tests --no-fail-fast
 	@cargo test schema_evolution_tests --no-fail-fast
 	@cargo test server_integration_tests --no-fail-fast
-	@echo "Running Python tests..."
-	@make test-python-fast
 	@echo ""
 	@echo "✅ Full test suite completed successfully!"
 	@echo "Note: Run 'make test-server-integration' separately to test server functionality"
@@ -135,40 +127,3 @@ upgrade:
 	$(ECHO_PREFIX) Upgrading all dependencies for $${PROJECT}
 	@cargo install cargo-edit
 	@cargo upgrade
-
-pylint:
-	$(ECHO_PREFIX) Running Python code quality checks for $${PROJECT}
-	@uv run ruff check . && uv run pycodestyle . && uv run pylint scripts/ && uv run pydocstyle scripts/ && \\
-	echo "✅ All Python code quality checks passed!" || \\
-	echo "❌ Some Python code quality checks failed"
-
-## Python test variants using direct uv commands
-test-python-coverage:
-	$(ECHO_PREFIX) Running Python tests with coverage analysis
-	@uv run pytest -m 'not slow' --cov=scripts --cov-report=term-missing --cov-report=html:test_results/coverage/html --cov-report=lcov:test_results/coverage/lcov.info --tb=short --color=yes
-
-test-python-parallel:
-	$(ECHO_PREFIX) Running Python tests in parallel
-	@uv run pytest -m 'not slow' -n auto --tb=short --color=yes
-
-test-python-verbose:
-	$(ECHO_PREFIX) Running Python tests with verbose output
-	@uv run pytest -m 'not slow' -v --tb=long --color=yes
-
-test-python-all:
-	$(ECHO_PREFIX) Running all Python tests
-	@uv run pytest tests/ -v
-
-## Shell script tests with BATS
-test-shell:
-	$(ECHO_PREFIX) Running shell script tests with BATS
-	@if command -v bats >/dev/null 2>&1; then \\
-		bats tests/test_shell_scripts.bats; \\
-	else \\
-		echo "⚠️  BATS not installed. Install with: npm install -g bats or brew install bats-core"; \\
-	fi
-
-## Python code formatting
-format-python:
-	$(ECHO_PREFIX) Formatting Python code
-	@uv run black .

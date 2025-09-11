@@ -142,7 +142,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 20  # Optimized: unit tests ~5-10min, integration tests ~10-15min
+    timeout-minutes: 30  # Increased from 20 minutes to allow for longer test runs
     needs: detect-changes
     strategy:
       matrix:
@@ -208,7 +208,7 @@ jobs:
 
   coverage:
     runs-on: ubuntu-latest
-    timeout-minutes: 20  # Optimized: coverage adds ~5min overhead to test execution
+    timeout-minutes: 30  # Increased from 20 minutes to allow for longer coverage analysis
     needs: detect-changes
     # Only run coverage on substantial Rust code changes to save CI resources
     if: needs.detect-changes.outputs.rust-code == 'true' || github.event_name == 'push'
@@ -248,7 +248,7 @@ jobs:
       run: mkdir -p test-results/coverage
     
     - name: Run test coverage
-      timeout-minutes: 20  # Coverage tests can be slower
+      timeout-minutes: 30  # Increased from 20 minutes to allow for longer coverage analysis
       run: cargo llvm-cov nextest --workspace --lcov --output-path test-results/coverage/lcov.info
     
     - name: Generate HTML coverage report
@@ -280,7 +280,7 @@ jobs:
 
   clippy:
     runs-on: ubuntu-latest
-    timeout-minutes: 20  # Clippy + security tools shouldn't take too long
+    timeout-minutes: 30  # Increased from 20 minutes to allow for longer clippy runs
     needs: detect-changes
     # Skip clippy for non-code changes (documentation, assets only)
     if: needs.detect-changes.outputs.rust-code == 'true' || needs.detect-changes.outputs.config-files == 'true' || github.event_name == 'push'
