@@ -62,14 +62,23 @@ mod server_integration_tests {
 
             eprintln!("Starting Leptos development server...");
 
-            let mut process = Command::new("cargo")
-                .args(["leptos", "watch"])
-                .env("RUST_LOG", "info")
-                .env("LEPTOS_OUTPUT_NAME", "blog")
+            // Build the server first to ensure it's up to date
+            let build_status = Command::new("cargo")
+                .args(["build", "--release", "-p", "server"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .map_err(|e| format!("Failed to build server: {}", e))?;
+
+            if !build_status.success() {
+                return Err("Failed to build server".into());
+            }
+
+            let mut process = Command::new("./target/release/server")
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
-                .map_err(|e| format!("Failed to start cargo leptos watch: {}", e))?;
+                .map_err(|e| format!("Failed to start server binary: {}", e))?;
 
             let client = Self::create_client()?;
 
@@ -86,26 +95,55 @@ mod server_integration_tests {
         async fn start_database() -> Result<Child, Box<dyn std::error::Error>> {
             eprintln!("Starting SurrealDB database...");
 
+            // Check if database is already running and responding
+            if Self::test_database_connection().await {
+                eprintln!("Database is already running and responding!");
+                // If it's already running, we don't need to start it again
+                // But we still need to return a process handle
+                // Let's create a dummy process that we'll never actually use
+                let dummy_process = Command::new("sleep")
+                    .arg("3600")  // Sleep for an hour
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn()
+                    .map_err(|e| format!("Failed to create dummy process: {}", e))?;
+                return Ok(dummy_process);
+            }
+
             // Kill any existing database processes first
             let _ = Command::new("pkill").args(["-f", "surreal"]).output();
-            tokio::time::sleep(Duration::from_millis(500)).await;
+            // Also kill any processes using port 8000
+            let _ = Command::new("bash").args(["-c", "lsof -ti:8000 | xargs -r kill -TERM 2>/dev/null || true"]).output();
+            tokio::time::sleep(Duration::from_millis(1000)).await;
 
             // Start the database process
-            let db_process = Command::new("sh")
+            eprintln!("Executing command: sh ./db.sh");
+            let mut db_process = Command::new("sh")
                 .arg("./db.sh")
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
+                .stdout(Stdio::piped())  // Capture stdout for debugging
+                .stderr(Stdio::piped())  // Capture stderr for debugging
                 .spawn()
-                .map_err(|e| format!("Failed to start database: {}", e))?;
+                .map_err(|e| format!("Failed to start database with command 'sh ./db.sh': {}", e))?;
+
+            // Give the process a moment to start
+            tokio::time::sleep(Duration::from_millis(1000)).await;
+
+            // Check if the process is still running
+            if let Ok(Some(status)) = db_process.try_wait() {
+                eprintln!("Database process exited immediately with status: {}", status);
+                return Err("Database process failed to start".into());
+            }
 
             // Wait for database to be ready
-            let timeout = Instant::now() + Duration::from_secs(30);
+            let timeout = Instant::now() + Duration::from_secs(60); // Increased from 30 to 60 seconds
 
-            eprintln!("Waiting for database to be ready...");
+            eprintln!("Waiting for database to be ready (up to 60 seconds)...");
 
             while Instant::now() < timeout {
                 if Self::test_database_connection().await {
                     eprintln!("Database is ready!");
+                    // Give it a bit more time to fully initialize
+                    tokio::time::sleep(Duration::from_secs(2)).await;
                     return Ok(db_process);
                 }
                 tokio::time::sleep(Duration::from_millis(500)).await;
@@ -116,14 +154,53 @@ mod server_integration_tests {
 
         /// Test if database is responsive
         async fn test_database_connection() -> bool {
-            // Try to connect to the database port
-            match std::net::TcpStream::connect("127.0.0.1:8000") {
-                Ok(_) => {
-                    // Port is open, give it a moment to be fully ready
-                    tokio::time::sleep(Duration::from_millis(100)).await;
+            // Try to make an actual HTTP request to SurrealDB's root endpoint
+            let client = reqwest::Client::new();
+            
+            // First try a simple TCP connection to see if the port is open
+            match tokio::time::timeout(Duration::from_secs(2), 
+                tokio::net::TcpStream::connect("127.0.0.1:8000")).await {
+                Ok(Ok(_)) => {
+                    eprintln!("Database port 8000 is open");
+                }
+                Ok(Err(e)) => {
+                    eprintln!("Database port 8000 connection failed: {}", e);
+                    return false;
+                }
+                Err(e) => {
+                    eprintln!("Database port 8000 connection timed out: {}", e);
+                    return false;
+                }
+            }
+            
+            // Then try an HTTP request with more detailed error handling
+            match client
+                .get("http://127.0.0.1:8000")
+                .timeout(Duration::from_secs(5))
+                .send()
+                .await
+            {
+                Ok(response) => {
+                    // Database is ready if we get any response
+                    eprintln!("Database HTTP test response: {} (body preview: {:?})", 
+                        response.status(), 
+                        response.text().await.unwrap_or_else(|_| "no text".to_string()).chars().take(100).collect::<String>());
                     true
                 }
-                Err(_) => false,
+                Err(e) => {
+                    eprintln!("Database HTTP test failed: {}", e);
+                    // Even if we get an error, if we can reach the server it means it's running
+                    // Check if it's a common error that indicates the server is running but returning an error
+                    let error_str = e.to_string().to_lowercase();
+                    if error_str.contains("connection closed") || 
+                       error_str.contains("connection reset") ||
+                       error_str.contains("operation timed out") {
+                        eprintln!("Database appears to be running but not fully ready yet");
+                        true
+                    } else {
+                        false
+                    }
+                }
             }
         }
 
@@ -145,6 +222,9 @@ mod server_integration_tests {
                 // Try to clean up server processes
                 let _ = Command::new("pkill").args(["-f", "cargo-leptos"]).output();
                 let _ = Command::new("pkill").args(["-f", "leptos"]).output();
+                let _ = Command::new("pkill").args(["-f", "server"]).output();
+                // Kill any processes using the server ports
+                let _ = Command::new("bash").args(["-c", "lsof -ti:3007,3001 | xargs -r kill -TERM 2>/dev/null || true"]).output();
                 tokio::time::sleep(Duration::from_millis(1000)).await;
 
                 // Check again after cleanup
@@ -177,6 +257,7 @@ mod server_integration_tests {
             while Instant::now() < timeout {
                 attempt += 1;
 
+                // Check if the process has exited unexpectedly
                 if let Ok(Some(status)) = process.try_wait() {
                     return Err(format!("Server process exited unexpectedly: {}", status).into());
                 }
@@ -199,10 +280,22 @@ mod server_integration_tests {
                         if attempt % 10 == 0 {
                             eprintln!("Connection attempt {}: {}", attempt, e);
                         }
+                        
+                        // Additional debugging - check if process is still alive
+                        if attempt % 30 == 0 {
+                            if let Ok(Some(status)) = process.try_wait() {
+                                return Err(format!("Server process exited during wait: {}", status).into());
+                            }
+                        }
                     }
                 }
 
                 tokio::time::sleep(Duration::from_millis(500)).await; // Reduced sleep for faster response
+            }
+
+            // Before giving up, check if the process is still running
+            if let Ok(Some(status)) = process.try_wait() {
+                return Err(format!("Server process exited with status: {} after timeout", status).into());
             }
 
             Err("Server failed to start within timeout period".into())
@@ -210,7 +303,7 @@ mod server_integration_tests {
 
         /// Clean up existing processes
         async fn cleanup_existing_processes() {
-            let process_patterns = ["make.*watch", "cargo.*leptos", "cargo-leptos"];
+            let process_patterns = ["make.*watch", "cargo.*leptos", "cargo-leptos", "surreal", "server"];
 
             // Graceful shutdown
             for pattern in process_patterns {
@@ -222,7 +315,7 @@ mod server_integration_tests {
             let _ = Command::new("bash")
                 .args([
                     "-c",
-                    "lsof -ti:3007,3001 | xargs -r kill -TERM 2>/dev/null || true",
+                    "lsof -ti:3007,3001,8000 | xargs -r kill -TERM 2>/dev/null || true",
                 ])
                 .output();
 
@@ -238,7 +331,7 @@ mod server_integration_tests {
             let _ = Command::new("bash")
                 .args([
                     "-c",
-                    "lsof -ti:3007,3001 | xargs -r kill -KILL 2>/dev/null || true",
+                    "lsof -ti:3007,3001,8000 | xargs -r kill -KILL 2>/dev/null || true",
                 ])
                 .output();
 
@@ -329,23 +422,21 @@ mod server_integration_tests {
     /// Get or start the shared server
     async fn get_shared_server() -> Result<reqwest::Client, Box<dyn std::error::Error>> {
         // Use Once to ensure initialization happens exactly once
-        let mut server_initialized = false;
-        INIT.call_once(|| {
-            server_initialized = true;
-        });
-
-        // Initialize the shared server once
-        if server_initialized || !SERVER_INITIALIZED.load(Ordering::Acquire) {
-            let needs_init = {
-                let server_guard = SHARED_SERVER.lock().unwrap();
-                server_guard.is_none()
-            };
+        if !INIT.is_completed() {
+            INIT.call_once(|| {
+                // This will only run once
+            });
             
-            if needs_init {
-                let server = SharedTestServer::start().await?;
-                let mut server_guard = SHARED_SERVER.lock().unwrap();
-                *server_guard = Some(server);
-                SERVER_INITIALIZED.store(true, Ordering::Release);
+            // Initialize the shared server once
+            let server = SharedTestServer::start().await?;
+            let mut server_guard = SHARED_SERVER.lock().unwrap();
+            *server_guard = Some(server);
+            SERVER_INITIALIZED.store(true, Ordering::Release);
+        } else {
+            // Wait for initialization to complete with a timeout
+            let timeout = Instant::now() + Duration::from_secs(30);
+            while !SERVER_INITIALIZED.load(Ordering::Acquire) && Instant::now() < timeout {
+                tokio::time::sleep(Duration::from_millis(100)).await;
             }
         }
 

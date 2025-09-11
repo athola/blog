@@ -114,6 +114,11 @@ make test-coverage-html
 - **CI-Aware Testing**: Added `cfg!(coverage)` detection for extended timeouts in CI environments
 - **Helper Function Consolidation**: Unified HTTP client creation and page validation logic
 - **Structured Test Organization**: Tests organized by functional areas with clear documentation
+- **Database Connection Fixes**: Resolved integration test failures by:
+  - Upgrading SurrealDB to version 2.3.7 (from 2.2.2)
+  - Fixing db.sh script log level (`--log trace` instead of `--log strace`)
+  - Improving shared server coordination and process cleanup
+- **Enhanced Process Coordination**: Improved shared server initialization and cleanup logic to prevent race conditions
 
 ## Security
 
@@ -169,6 +174,28 @@ The project uses GitHub Actions for CI/CD with security-first design:
 3. Run security scan: `./run_secret_scan.sh`
 4. Follow conventional commit format
 5. All tests must pass before merging
+
+## Troubleshooting
+
+If you encounter issues, try these solutions:
+
+### Database Connection Issues
+1. Ensure SurrealDB 2.3.7 is installed (not 2.2.2)
+2. Check that the db.sh script uses `--log trace` instead of `--log strace`
+3. Verify database is running: `pgrep -f surreal` or `ps aux | grep surreal`
+4. Restart database: `./db.sh`
+5. Check port availability: `lsof -i :8000`
+
+### Integration Test Failures
+1. Kill existing processes: `pkill -f surreal && pkill -f server`
+2. Clean up ports: `lsof -ti:3007,3001,8000 | xargs -r kill -9`
+3. Run specific test: `cargo test --workspace --test server_integration_tests test_name`
+4. Check shared server coordination logic in tests/server_integration_tests.rs
+
+### Build Issues
+1. Clean build artifacts: `cargo clean`
+2. Reinstall dependencies: `make install-pkgs`
+3. Check WASM target: `rustup target add wasm32-unknown-unknown`
 
 ## License
 

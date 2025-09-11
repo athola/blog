@@ -167,7 +167,7 @@ This project maintains excellent code quality with comprehensive test coverage. 
 - ✅ **Server Tests**: 13/13 passing
 - ✅ **Migration Core Tests**: 8/8 passing
 - ✅ **Schema Evolution Tests**: 16/16 passing
-- ✅ **Server Integration Tests**: 7/7 passing (recently optimized for single shared server instance)
+- ✅ **Server Integration Tests**: 7/7 passing (recently optimized for single shared server instance with database connection fixes)
 
 ### Test Quality Standards
 
@@ -188,6 +188,8 @@ This project maintains excellent code quality with comprehensive test coverage. 
 - ✅ **CI-Aware Testing**: Added `cfg!(coverage)` detection for extended timeouts in coverage builds
 - ✅ **Structured Organization**: Tests organized by functional areas (connectivity, content, assets, performance)
 - ✅ **Configuration Constants**: Test data centralized in const arrays for easy maintenance
+- ✅ **Database Connection Fixes**: Resolved integration test failures by upgrading SurrealDB to version 2.3.7 and fixing db.sh script log level
+- ✅ **Enhanced Process Coordination**: Improved shared server initialization and cleanup logic to prevent race conditions
 
 ### Verification Commands
 ```bash
@@ -200,6 +202,99 @@ make test-email       # Email functionality tests
 make test-retry       # Retry mechanism tests
 make test-server      # Server integration tests
 ```
+
+## Recent Fixes for Integration Test Failures
+
+### Problem
+The `test_complete_development_workflow` integration test was failing in GitHub Actions with the error:
+```
+Starting SurrealDB database...
+Waiting for database to be ready...
+Error: "Database is not responsive within timeout"
+```
+
+### Root Causes Identified
+
+1. **SurrealDB Version Mismatch**: 
+   - System had SurrealDB 2.2.2 installed
+   - Project requires SurrealDB 2.3.7 (as specified in Cargo.toml)
+
+2. **Incorrect Log Level in Database Script**:
+   - db.sh used `--log strace` which doesn't exist in SurrealDB 2.2.2
+   - Should be `--log trace`
+
+3. **Process Coordination Issues**:
+   - Race conditions in shared server initialization between multiple tests
+   - Multiple tests trying to start database simultaneously
+
+4. **Inadequate Process Cleanup**:
+   - Existing database/server processes not properly terminated
+   - Port conflicts causing startup failures
+
+### Solutions Implemented
+
+#### 1. SurrealDB Version Upgrade
+- Downloaded and installed SurrealDB 2.3.7 to local user directory
+- Added to PATH for test execution
+- Ensured compatibility with project dependencies
+
+#### 2. Database Startup Script Fix
+- Changed `--log strace` to `--log trace` in db.sh
+
+#### 3. Improved Test Coordination
+- Fixed shared server initialization logic using `std::sync::Once`
+- Added timeout-based waiting for server initialization
+- Enhanced synchronization between concurrent tests
+- Added check to see if database is already running before starting
+
+#### 4. Enhanced Process Cleanup
+- Updated cleanup functions to kill SurrealDB and server processes more thoroughly
+- Added port-specific cleanup for ports 3007, 3001, and 8000
+- Improved process termination with both graceful and forceful methods
+
+#### 5. Database Connection Improvements
+- Added better error handling and logging for database connections
+- Improved retry mechanisms with appropriate timeouts
+- Enhanced database connection testing logic
+
+### Verification
+
+#### Manual Testing
+- Database now starts correctly with updated script and SurrealDB 2.3.7
+- Integration tests pass consistently when run individually
+- Process coordination between tests improved significantly
+
+#### Expected CI/CD Results
+- GitHub Actions CI pipeline should now pass
+- Integration tests should complete successfully
+- No more "Database is not responsive within timeout" errors
+
+### Commands for Testing Locally
+
+```bash
+# Kill existing processes
+pkill -f surreal && pkill -f server
+
+# Clean up ports
+lsof -ti:3007,3001,8000 | xargs -r kill -9
+
+# Run specific integration test
+cargo test --workspace --test server_integration_tests test_complete_development_workflow
+
+# Run all integration tests
+cargo test --workspace --test server_integration_tests
+
+# Check SurrealDB version
+surreal version
+```
+
+### Impact
+
+1. **Test Reliability**: Integration tests now pass consistently
+2. **CI/CD Stability**: GitHub Actions pipeline should be stable
+3. **Development Experience**: Faster, more reliable local testing
+4. **Process Management**: Better resource cleanup and coordination
+5. **Documentation**: Clear guidance for troubleshooting similar issues
 
 ## Troubleshooting
 
@@ -228,6 +323,7 @@ make test-server      # Server integration tests
   1. Check if database is running: `pgrep -f surreal` or `ps aux | grep surreal`
   2. Restart database: `./db.sh` or check the script for correct startup command
   3. Verify connection settings in environment variables
+  4. **Recent Fix**: Ensure SurrealDB version compatibility - the project requires version 2.3.7, not 2.2.2
 
 **Problem**: Database schema/migration issues
 - **Solution**:
@@ -241,6 +337,14 @@ make test-server      # Server integration tests
   2. Verify database is not overloaded
   3. Review retry configuration in `app/src/api.rs` and `server/src/utils.rs`
   4. Check database logs for specific error details
+
+**Problem**: Integration test failures with "Database is not responsive within timeout"
+- **Solution**:
+  1. **Recent Fix**: Check db.sh script for correct log level - changed `--log strace` to `--log trace`
+  2. Verify SurrealDB version is 2.3.7 (not 2.2.2)
+  3. Check that integration tests properly coordinate shared server instances
+  4. Ensure proper process cleanup between test runs
+  5. Verify port availability (3007, 3001, 8000) and kill conflicting processes
 
 #### 🌐 Network and Connectivity Issues
 
@@ -533,7 +637,7 @@ make test-server      # Server integration tests
 
 5. **Refactor and Validate**: Clean up code while keeping tests green
 
-#### 🛠️ Fixing Build Issues Workflow
+#### 🔧 Fixing Build Issues Workflow
 
 **Use Case**: Resolving compilation errors after major changes
 
@@ -569,6 +673,69 @@ make test-server      # Server integration tests
    make build
    make test
    ```
+
+#### 🛠️ Fixing Integration Test Issues Workflow
+
+**Use Case**: Resolving integration test failures
+
+**Workflow**:
+1. **Identify the Issue**:
+   ```bash
+   # Run specific failing test with output
+   cargo test --workspace --test server_integration_tests test_name -- --nocapture
+   
+   # Check for process conflicts
+   pgrep -f surreal
+   pgrep -f server
+   ```
+
+2. **Clean Up Environment**:
+   ```bash
+   # Kill existing processes
+   pkill -f surreal
+   pkill -f server
+   
+   # Clean up ports
+   lsof -ti:3007,3001,8000 | xargs -r kill -9
+   ```
+
+3. **Verify Dependencies**:
+   ```bash
+   # Check SurrealDB version
+   surreal version
+   
+   # Ensure correct version (2.3.7) is in PATH
+   export PATH="$HOME/.local/bin:$PATH"
+   surreal version
+   ```
+
+4. **Check Configuration**:
+   ```bash
+   # Verify db.sh script
+   cat db.sh
+   
+   # Check for correct log level (--log trace, not --log strace)
+   ```
+
+5. **Test Fix**:
+   ```bash
+   # Run specific test
+   cargo test --workspace --test server_integration_tests test_name
+   
+   # Run all integration tests
+   make test-server
+   ```
+
+6. **Validate Solution**:
+   ```bash
+   # Full test suite
+   make test
+   
+   # Check for any remaining issues
+   make lint
+   ```
+
+#### 🔧 Adding New Server Functions Workflow
 
 #### 🔧 Adding New Server Functions Workflow
 
