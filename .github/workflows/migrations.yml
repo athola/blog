@@ -18,6 +18,9 @@ on:
       - "**/*.surql"
       - "db.sh"
 
+permissions:
+  contents: read
+
 jobs:
   # Syntax validation for all migration changes - no database access required
   migration-syntax-check:

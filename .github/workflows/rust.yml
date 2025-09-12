@@ -31,6 +31,9 @@ on:
       - "!.gitleaksignore"
       - "!.semgrep.yml"
       - "!run_secret_scan.sh"
+
+permissions:
+  contents: read
   pull_request:
     types: [opened, synchronize]
     branches: [ "master" ]

@@ -18,6 +18,10 @@ on:
       # Frontend assets and styling (affects build output)
       - "style/**/*.css"
       - "style/**/*.js"
+
+permissions:
+  contents: read
+  pull-requests: write
       - "public/**"
       # Configuration files that affect builds
       - ".config/**"
