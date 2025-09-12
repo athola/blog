@@ -16,7 +16,7 @@ mod server_integration_tests {
     use super::*;
 
     /// Test timeouts
-    const CLIENT_TIMEOUT: Duration = Duration::from_secs(15);
+    const CLIENT_TIMEOUT: Duration = Duration::from_secs(30);
 
     /// Development server URL - matches Leptos configuration
     const DEV_SERVER_URL: &str = "http://127.0.0.1:3007";
@@ -50,6 +50,7 @@ mod server_integration_tests {
     impl SharedTestServer {
         /// Start the shared development server
         async fn start() -> Result<Self, Box<dyn std::error::Error>> {
+            eprintln!("Starting shared test server...");
             Self::cleanup_existing_processes().await;
 
             Self::ensure_ports_available().await?;
@@ -63,8 +64,9 @@ mod server_integration_tests {
             eprintln!("Starting Leptos development server...");
 
             // Build the server first to ensure it's up to date
+            eprintln!("Building server in debug mode...");
             let build_status = Command::new("cargo")
-                .args(["build", "--release", "-p", "server"])
+                .args(["build", "-p", "server"])  // Changed from --release to debug mode
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .status()
@@ -74,9 +76,10 @@ mod server_integration_tests {
                 return Err("Failed to build server".into());
             }
 
-            let mut process = Command::new("./target/release/server")
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
+            eprintln!("Starting server binary...");
+            let mut process = Command::new("./target/debug/server")  // Changed from release to debug
+                .stdout(Stdio::piped())  // Capture stdout for debugging
+                .stderr(Stdio::piped())  // Capture stderr for debugging
                 .spawn()
                 .map_err(|e| format!("Failed to start server binary: {}", e))?;
 
@@ -131,13 +134,22 @@ mod server_integration_tests {
             // Check if the process is still running
             if let Ok(Some(status)) = db_process.try_wait() {
                 eprintln!("Database process exited immediately with status: {}", status);
+                // Try to get stderr output
+                if let Some(ref mut stderr) = db_process.stderr {
+                    use std::io::Read;
+                    let mut buffer = String::new();
+                    let _ = stderr.read_to_string(&mut buffer);
+                    if !buffer.is_empty() {
+                        eprintln!("Database stderr: {}", buffer);
+                    }
+                }
                 return Err("Database process failed to start".into());
             }
 
             // Wait for database to be ready
-            let timeout = Instant::now() + Duration::from_secs(60); // Increased from 30 to 60 seconds
+            let timeout = Instant::now() + Duration::from_secs(90); // Increased from 60 to 90 seconds
 
-            eprintln!("Waiting for database to be ready (up to 60 seconds)...");
+            eprintln!("Waiting for database to be ready (up to 90 seconds)...");
 
             while Instant::now() < timeout {
                 if Self::test_database_connection().await {
@@ -182,9 +194,9 @@ mod server_integration_tests {
             {
                 Ok(response) => {
                     // Database is ready if we get any response
-                    eprintln!("Database HTTP test response: {} (body preview: {:?})", 
+                    eprintln!("Database HTTP test response: {} (status: {})", 
                         response.status(), 
-                        response.text().await.unwrap_or_else(|_| "no text".to_string()).chars().take(100).collect::<String>());
+                        response.status());
                     true
                 }
                 Err(e) => {
@@ -245,61 +257,97 @@ mod server_integration_tests {
         }
 
         /// Wait for server to start and respond
-        async fn wait_for_server_startup(
-            client: &reqwest::Client,
-            process: &mut Child,
-        ) -> Result<(), Box<dyn std::error::Error>> {
-            let timeout = Instant::now() + Duration::from_secs(90); // Increased timeout
-            let mut attempt = 0;
+    async fn wait_for_server_startup(
+        client: &reqwest::Client,
+        process: &mut Child,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let timeout = Instant::now() + Duration::from_secs(120); // Increased timeout further
+        let mut attempt = 0;
 
-            eprintln!("Waiting for Leptos server to respond...");
+        eprintln!("Waiting for Leptos server to respond...");
 
-            while Instant::now() < timeout {
-                attempt += 1;
+        while Instant::now() < timeout {
+            attempt += 1;
 
-                // Check if the process has exited unexpectedly
-                if let Ok(Some(status)) = process.try_wait() {
+            // Check if the process has exited unexpectedly
+            match process.try_wait() {
+                Ok(Some(status)) => {
+                    eprintln!("Server process exited unexpectedly with status: {}", status);
+                    // Try to get stderr output if available
+                    if let Some(ref mut stderr) = process.stderr {
+                        use std::io::Read;
+                        let mut buffer = String::new();
+                        let _ = stderr.read_to_string(&mut buffer);
+                        if !buffer.is_empty() {
+                            eprintln!("Server stderr: {}", buffer);
+                        }
+                    }
                     return Err(format!("Server process exited unexpectedly: {}", status).into());
                 }
+                Ok(None) => {
+                    // Process is still running
+                }
+                Err(e) => {
+                    eprintln!("Error checking server process status: {}", e);
+                }
+            }
 
-                match client.get(DEV_SERVER_URL).send().await {
-                    Ok(response) if response.status().is_success() => {
-                        eprintln!("Server is responding! (attempt {})", attempt);
-                        // Give it a moment to fully initialize
-                        tokio::time::sleep(Duration::from_secs(2)).await;
-                        return Ok(());
+            match client.get(DEV_SERVER_URL).send().await {
+                Ok(response) if response.status().is_success() => {
+                    eprintln!("Server is responding! (attempt {})", attempt);
+                    // Give it a moment to fully initialize
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                    return Ok(());
+                }
+                Ok(response) => {
+                    eprintln!(
+                        "Server responded with status: {} (attempt {})",
+                        response.status(),
+                        attempt
+                    );
+                }
+                Err(e) => {
+                    if attempt % 10 == 0 {
+                        eprintln!("Connection attempt {}: {}", attempt, e);
                     }
-                    Ok(response) => {
-                        eprintln!(
-                            "Server responded with status: {} (attempt {})",
-                            response.status(),
-                            attempt
-                        );
-                    }
-                    Err(e) => {
-                        if attempt % 10 == 0 {
-                            eprintln!("Connection attempt {}: {}", attempt, e);
-                        }
-                        
-                        // Additional debugging - check if process is still alive
-                        if attempt % 30 == 0 {
-                            if let Ok(Some(status)) = process.try_wait() {
+                    
+                    // Additional debugging - check if process is still alive
+                    if attempt % 30 == 0 {
+                        match process.try_wait() {
+                            Ok(Some(status)) => {
+                                eprintln!("Server process exited during wait with status: {}", status);
                                 return Err(format!("Server process exited during wait: {}", status).into());
+                            }
+                            Ok(None) => {
+                                eprintln!("Server process still running after {} attempts", attempt);
+                            }
+                            Err(e) => {
+                                eprintln!("Error checking server process during wait: {}", e);
                             }
                         }
                     }
                 }
-
-                tokio::time::sleep(Duration::from_millis(500)).await; // Reduced sleep for faster response
             }
 
-            // Before giving up, check if the process is still running
-            if let Ok(Some(status)) = process.try_wait() {
+            tokio::time::sleep(Duration::from_millis(500)).await; // Reduced sleep for faster response
+        }
+
+        // Before giving up, check if the process is still running
+        match process.try_wait() {
+            Ok(Some(status)) => {
+                eprintln!("Server process exited with status: {} after timeout", status);
                 return Err(format!("Server process exited with status: {} after timeout", status).into());
             }
-
-            Err("Server failed to start within timeout period".into())
+            Ok(None) => {
+                eprintln!("Server process still running but timed out waiting for response");
+            }
+            Err(e) => {
+                eprintln!("Error checking server process after timeout: {}", e);
+            }
         }
+
+        Err("Server failed to start within timeout period".into())
+    }
 
         /// Clean up existing processes
         async fn cleanup_existing_processes() {
@@ -379,41 +427,91 @@ mod server_integration_tests {
 
     impl Drop for SharedTestServer {
         fn drop(&mut self) {
+            eprintln!("Cleaning up SharedTestServer...");
+            
+            // Clean up the server process
             if let Some(mut process) = self.process.take() {
-                let _ = process.kill();
-
-                let start = std::time::Instant::now();
-                let timeout = std::time::Duration::from_millis(500);
-
-                while start.elapsed() < timeout {
-                    if let Ok(Some(_)) = process.try_wait() {
-                        break;
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(50));
+                eprintln!("Terminating server process...");
+                
+                // Try graceful termination first
+                match process.kill() {
+                    Ok(_) => eprintln!("Sent kill signal to server process"),
+                    Err(e) => eprintln!("Failed to send kill signal to server process: {}", e),
                 }
 
-                let _ = process.wait();
+                // Wait for process to terminate with timeout
+                let start = std::time::Instant::now();
+                let timeout = std::time::Duration::from_millis(2000);
+
+                while start.elapsed() < timeout {
+                    match process.try_wait() {
+                        Ok(Some(status)) => {
+                            eprintln!("Server process exited with status: {}", status);
+                            break;
+                        }
+                        Ok(None) => {
+                            // Still running, continue waiting
+                            std::thread::sleep(std::time::Duration::from_millis(50));
+                        }
+                        Err(e) => {
+                            eprintln!("Error checking server process status: {}", e);
+                            break;
+                        }
+                    }
+                }
+
+                // Force kill if still running
+                if let Ok(None) = process.try_wait() {
+                    eprintln!("Force killing server process...");
+                    let _ = process.kill();
+                    let _ = process.wait();
+                }
             }
 
             // Clean up the database process
             if let Some(mut db_process) = self.db_process.take() {
-                let _ = db_process.kill();
-
-                let start = std::time::Instant::now();
-                let timeout = std::time::Duration::from_millis(500);
-
-                while start.elapsed() < timeout {
-                    if let Ok(Some(_)) = db_process.try_wait() {
-                        break;
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(50));
+                eprintln!("Terminating database process...");
+                
+                // Try graceful termination first
+                match db_process.kill() {
+                    Ok(_) => eprintln!("Sent kill signal to database process"),
+                    Err(e) => eprintln!("Failed to send kill signal to database process: {}", e),
                 }
 
-                let _ = db_process.wait();
+                // Wait for process to terminate with timeout
+                let start = std::time::Instant::now();
+                let timeout = std::time::Duration::from_millis(2000);
+
+                while start.elapsed() < timeout {
+                    match db_process.try_wait() {
+                        Ok(Some(status)) => {
+                            eprintln!("Database process exited with status: {}", status);
+                            break;
+                        }
+                        Ok(None) => {
+                            // Still running, continue waiting
+                            std::thread::sleep(std::time::Duration::from_millis(50));
+                        }
+                        Err(e) => {
+                            eprintln!("Error checking database process status: {}", e);
+                            break;
+                        }
+                    }
+                }
+
+                // Force kill if still running
+                if let Ok(None) = db_process.try_wait() {
+                    eprintln!("Force killing database process...");
+                    let _ = db_process.kill();
+                    let _ = db_process.wait();
+                }
             }
 
             // Also try to kill any remaining surreal processes to be thorough
+            eprintln!("Killing any remaining surreal processes...");
             let _ = Command::new("pkill").args(["-f", "surreal"]).output();
+            
+            eprintln!("SharedTestServer cleanup completed.");
         }
     }
 
@@ -423,18 +521,17 @@ mod server_integration_tests {
     async fn get_shared_server() -> Result<reqwest::Client, Box<dyn std::error::Error>> {
         // Use Once to ensure initialization happens exactly once
         if !INIT.is_completed() {
-            INIT.call_once(|| {
-                // This will only run once
-            });
-            
-            // Initialize the shared server once
             let server = SharedTestServer::start().await?;
             let mut server_guard = SHARED_SERVER.lock().unwrap();
             *server_guard = Some(server);
             SERVER_INITIALIZED.store(true, Ordering::Release);
+            
+            INIT.call_once(|| {
+                // Mark initialization as complete
+            });
         } else {
             // Wait for initialization to complete with a timeout
-            let timeout = Instant::now() + Duration::from_secs(30);
+            let timeout = Instant::now() + Duration::from_secs(60);
             while !SERVER_INITIALIZED.load(Ordering::Acquire) && Instant::now() < timeout {
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }

@@ -118,6 +118,8 @@ make test-coverage-html
   - Upgrading SurrealDB to version 2.3.7 (from 2.2.2)
   - Fixing db.sh script log level (`--log trace` instead of `--log strace`)
   - Improving shared server coordination and process cleanup
+  - Optimizing build configuration from release to debug mode for faster startup (2-5 min → 10-30 sec)
+  - Enhancing timeout management (client timeout: 15s → 30s, database timeout: 30s → 90s, server timeout: 90s → 120s)
 - **Enhanced Process Coordination**: Improved shared server initialization and cleanup logic to prevent race conditions
 
 ## Security

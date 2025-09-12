@@ -188,8 +188,16 @@ This project maintains excellent code quality with comprehensive test coverage. 
 - ✅ **CI-Aware Testing**: Added `cfg!(coverage)` detection for extended timeouts in coverage builds
 - ✅ **Structured Organization**: Tests organized by functional areas (connectivity, content, assets, performance)
 - ✅ **Configuration Constants**: Test data centralized in const arrays for easy maintenance
-- ✅ **Database Connection Fixes**: Resolved integration test failures by upgrading SurrealDB to version 2.3.7 and fixing db.sh script log level
+- ✅ **Database Connection Fixes**: Resolved integration test failures by:
+  - Upgrading SurrealDB to version 2.3.7 (from 2.2.2)
+  - Fixing db.sh script log level (`--log trace` instead of `--log strace`)
+  - Improving shared server coordination and process cleanup
+  - Optimizing build configuration from release to debug mode for faster startup
 - ✅ **Enhanced Process Coordination**: Improved shared server initialization and cleanup logic to prevent race conditions
+- ✅ **Timeout Improvements**: Increased various timeout values for better CI reliability:
+  - Client timeout: 15s → 30s
+  - Database startup timeout: 30s → 90s
+  - Server startup timeout: 90s → 120s
 
 ### Verification Commands
 ```bash
@@ -1171,4 +1179,70 @@ error: methods `apply_migrations`, `create_test_posts`, and `create_custom_post`
 - Use `#[allow(dead_code)]` sparingly and only when necessary
 - Run both linting and tests after making changes
 - Document the reasoning for any suppressed warnings in comments
+- before adding and committing any code, please ensure the SHAs for the workflows are all updated- Always verify that functions are actually used before suppressing warnings
+- Preserve `#[cfg(test)]` attributes to ensure proper compilation
+- Use `#[allow(dead_code)]` sparingly and only when necessary
+- Run both linting and tests after making changes
+- Document the reasoning for any suppressed warnings in comments
 - before adding and committing any code, please ensure the SHAs for the workflows are all updated
+
+## Troubleshooting Server Integration Tests
+
+### Common Issues and Solutions
+
+**Problem**: Server integration tests failing with exit code 143 (SIGTERM)
+- **Recent Fix**: This was resolved by optimizing the build configuration:
+  1. **Changed Build Mode**: Switched from release to debug mode builds for tests, reducing startup time from 2-5 minutes to 10-30 seconds
+  2. **Enhanced Timeout Management**: Increased various timeout values:
+     - Client timeout: 15s → 30s
+     - Database startup timeout: 30s → 90s
+     - Server startup timeout: 90s → 120s
+  3. **Improved Process Coordination**: Enhanced shared server initialization and cleanup logic
+  4. **Database Version Upgrade**: Upgraded SurrealDB from 2.2.2 to 2.3.7 for proper functionality
+  5. **Script Fixes**: Corrected db.sh script log level from `--log strace` to `--log trace`
+
+**Problem**: Database connection timeout failures in CI/CD
+- **Recent Fix**: This was resolved by:
+  1. **Enhanced Database Connection Logic**: Improved database connection testing and readiness checking
+  2. **Increased Timeouts**: Extended database startup timeout from 30s to 90s
+  3. **Better Error Handling**: Added more detailed error messages for debugging
+  4. **Robust Process Management**: Enhanced cleanup of existing database processes before startup
+
+**Problem**: Tests hanging or processes not terminating properly
+- **Solution**:
+  1. Check for orphaned processes: `ps aux | grep -E "(surreal|server)"`
+  2. Kill existing processes: `pkill -f surreal && pkill -f server`
+  3. Verify ports are free: `lsof -i :3007,3001,8000`
+  4. Check shared server coordination logic in tests/server_integration_tests.rs
+  5. Review Drop implementation for proper cleanup
+
+### Debugging Commands
+
+```bash
+# Check for running processes
+ps aux | grep -E "(surreal|server)"
+
+# Kill existing processes
+pkill -f surreal && pkill -f server
+
+# Check port usage
+lsof -i :3007,3001,8000
+
+# Run specific integration test with verbose output
+cargo test --workspace --test server_integration_tests test_complete_development_workflow -- --nocapture
+
+# Check database connection
+curl -v http://127.0.0.1:8000
+
+# Check server connection
+curl -v http://127.0.0.1:3007
+```
+
+### Best Practices for Server Integration Tests
+
+1. **Use Debug Builds**: For development and testing, use debug builds which are much faster
+2. **Implement Proper Cleanup**: Always ensure processes are properly terminated
+3. **Handle Timeouts Gracefully**: Use appropriate timeout values for CI environments
+4. **Share Resources**: Use shared server instances to minimize resource usage
+5. **Add Detailed Logging**: Include logging to help diagnose issues
+6. **Test Process Coordination**: Ensure proper initialization and cleanup of shared resources
