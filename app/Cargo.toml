@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.1.0"
+
 authors = ["Alex Thola <alexthola@gmail.com>"]
 license = "0BSD"
 description = "A public webblog app"

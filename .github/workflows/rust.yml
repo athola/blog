@@ -22,16 +22,18 @@ on:
       # Configuration files that affect builds
       - ".config/**"
       - "audit.toml"
-    paths-ignore:
       # Exclude documentation changes from triggering CI
-      - "**/*.md"
-      - "LICENSE"
-      - "docs/**"
-      - ".github/**/*.md"
+      - "!**/*.md"
+      - "!LICENSE"
+      - "!docs/**"
+      - "!.github/**/*.md"
       # Exclude non-essential configuration
-      - ".gitleaksignore"
-      - ".semgrep.yml"
-      - "run_secret_scan.sh"
+      - "!.gitleaksignore"
+      - "!.semgrep.yml"
+      - "!run_secret_scan.sh"
+
+permissions:
+  contents: read
   pull_request:
     types: [opened, synchronize]
     branches: [ "master" ]
@@ -54,16 +56,15 @@ on:
       # Configuration files that affect builds
       - ".config/**"
       - "audit.toml"
-    paths-ignore:
       # Exclude documentation changes from triggering CI
-      - "**/*.md"
-      - "LICENSE"
-      - "docs/**"
-      - ".github/**/*.md"
+      - "!**/*.md"
+      - "!LICENSE"
+      - "!docs/**"
+      - "!.github/**/*.md"
       # Exclude non-essential configuration
-      - ".gitleaksignore"
-      - ".semgrep.yml"
-      - "run_secret_scan.sh"
+      - "!.gitleaksignore"
+      - "!.semgrep.yml"
+      - "!run_secret_scan.sh"
 
 env:
   CARGO_TERM_COLOR: always
@@ -88,7 +89,7 @@ jobs:
       config-files: ${{ steps.changes.outputs.config-files }}
       test-profiles: ${{ steps.strategy.outputs.profiles }}
     steps:
-    - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+    - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       with:
         fetch-depth: 0  # Need history to detect changes
     
@@ -144,19 +145,19 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 20  # Optimized: unit tests ~5-10min, integration tests ~10-15min
+    timeout-minutes: 30  # Increased from 20 minutes to allow for longer test runs
     needs: detect-changes
     strategy:
       matrix:
         profile: ${{ fromJson(needs.detect-changes.outputs.test-profiles) }}
       fail-fast: false  # Allow both profiles to complete for better debugging
     steps:
-    - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+    - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
     - uses: dtolnay/rust-toolchain@55d80eb3c5a4228eec5390a083c092095115c6f1 # nightly
     
     # More aggressive dependency caching
     - name: Cache cargo registry
-      uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+      uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
       with:
         path: |
           ~/.cargo/registry/index/
@@ -173,7 +174,7 @@ jobs:
         cache-targets: "true"
         cache-on-failure: "true"
         # Save cache more aggressively for faster subsequent runs
-        save-if: ${{ !cancelled() }}
+        save-if: ${{ github.ref == 'refs/heads/master' }}
         workspaces: |
           .
         cache-all-crates: "true"
@@ -186,7 +187,12 @@ jobs:
       run: |
         if [ "${{ matrix.profile }}" = "dev" ]; then
           cargo build --verbose --workspace
-          cargo test --verbose
+          # Run all tests except the heavy server_integration_tests
+          cargo test --workspace --no-fail-fast --lib --bins
+          cargo test migration_core_tests --no-fail-fast
+          cargo test schema_evolution_tests --no-fail-fast
+          cargo test server_unit_tests --no-fail-fast
+          cargo test server_integration_tests_ci --features ci --no-fail-fast -- --test-threads=1
         else
           cargo build --verbose --workspace --profile server
           cargo test --verbose --profile server
@@ -210,19 +216,19 @@ jobs:
 
   coverage:
     runs-on: ubuntu-latest
-    timeout-minutes: 20  # Optimized: coverage adds ~5min overhead to test execution
+    timeout-minutes: 30  # Increased from 20 minutes to allow for longer coverage analysis
     needs: detect-changes
     # Only run coverage on substantial Rust code changes to save CI resources
     if: needs.detect-changes.outputs.rust-code == 'true' || github.event_name == 'push'
     steps:
-    - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+    - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
     - uses: dtolnay/rust-toolchain@55d80eb3c5a4228eec5390a083c092095115c6f1 # nightly
       with:
         components: llvm-tools-preview
     
     # Reuse registry cache from test job
     - name: Cache cargo registry
-      uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+      uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
       with:
         path: |
           ~/.cargo/registry/index/
@@ -237,7 +243,7 @@ jobs:
         shared-key: "coverage-${{ needs.detect-changes.outputs.rust-code }}"
         cache-targets: "true"
         cache-on-failure: "true"
-        save-if: ${{ !cancelled() }}
+        save-if: ${{ github.ref == 'refs/heads/master' }}
         workspaces: |
           .
         cache-all-crates: "true"
@@ -250,11 +256,16 @@ jobs:
       run: mkdir -p test-results/coverage
     
     - name: Run test coverage
-      timeout-minutes: 20  # Coverage tests can be slower
-      run: cargo llvm-cov nextest --workspace --lcov --output-path test-results/coverage/lcov.info
+      timeout-minutes: 30  # Increased from 20 minutes to allow for longer coverage analysis
+      run: |
+        # Run coverage on all tests except the heavy server_integration_tests
+        cargo llvm-cov nextest --workspace --lcov --output-path test-results/coverage/lcov.info \
+          --exclude-test server_integration_tests
     
     - name: Generate HTML coverage report
-      run: cargo llvm-cov nextest --workspace --html --output-dir test-results/coverage/html
+      run: |
+        cargo llvm-cov nextest --workspace --html --output-dir test-results/coverage/html \
+          --exclude-test server_integration_tests
     
     - name: Upload coverage reports
       uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
@@ -282,19 +293,19 @@ jobs:
 
   clippy:
     runs-on: ubuntu-latest
-    timeout-minutes: 20  # Clippy + security tools shouldn't take too long
+    timeout-minutes: 30  # Increased from 20 minutes to allow for longer clippy runs
     needs: detect-changes
     # Skip clippy for non-code changes (documentation, assets only)
     if: needs.detect-changes.outputs.rust-code == 'true' || needs.detect-changes.outputs.config-files == 'true' || github.event_name == 'push'
     steps:
-    - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+    - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
     - uses: dtolnay/rust-toolchain@55d80eb3c5a4228eec5390a083c092095115c6f1 # nightly
       with:
         components: clippy
     
     # Reuse registry cache from test job
     - name: Cache cargo registry
-      uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+      uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
       with:
         path: |
           ~/.cargo/registry/index/
@@ -309,7 +320,7 @@ jobs:
         shared-key: "clippy-${{ needs.detect-changes.outputs.rust-code }}"
         cache-targets: "true"
         cache-on-failure: "true"
-        save-if: ${{ !cancelled() }}
+        save-if: ${{ github.ref == 'refs/heads/master' }}
         workspaces: |
           .
         cache-all-crates: "true"

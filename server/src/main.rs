@@ -6,6 +6,7 @@ use axum::{Router, http::StatusCode, response::Json, routing::get};
 use dotenvy::dotenv;
 use leptos::logging;
 use leptos::prelude::*;
+use leptos_config::get_configuration;
 use leptos_axum::{LeptosRoutes as _, generate_route_list};
 use redirect::redirect_www;
 use serde_json::json;

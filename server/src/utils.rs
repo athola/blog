@@ -375,7 +375,13 @@ mod tests {
         // Test that environment variable parsing works with defaults
         // This tests the connect function's environment handling without actual connections
 
-        // Clear env vars to test defaults (using unsafe block as required)
+        // Save current env vars to restore later
+        let old_protocol = std::env::var("SURREAL_PROTOCOL").ok();
+        let old_host = std::env::var("SURREAL_HOST").ok();
+        let old_username = std::env::var("SURREAL_ROOT_USER").ok();
+        let old_password = std::env::var("SURREAL_ROOT_PASS").ok();
+
+        // Clear env vars to test defaults
         unsafe {
             std::env::remove_var("SURREAL_PROTOCOL");
             std::env::remove_var("SURREAL_HOST");
@@ -388,6 +394,22 @@ mod tests {
         let host = std::env::var("SURREAL_HOST").unwrap_or_else(|_| "127.0.0.1:8000".to_owned());
         let username = std::env::var("SURREAL_ROOT_USER").unwrap_or_else(|_| "root".to_owned());
         let password = std::env::var("SURREAL_ROOT_PASS").unwrap_or_else(|_| "root".to_owned());
+
+        // Restore env vars
+        unsafe {
+            if let Some(val) = old_protocol {
+                std::env::set_var("SURREAL_PROTOCOL", val);
+            }
+            if let Some(val) = old_host {
+                std::env::set_var("SURREAL_HOST", val);
+            }
+            if let Some(val) = old_username {
+                std::env::set_var("SURREAL_ROOT_USER", val);
+            }
+            if let Some(val) = old_password {
+                std::env::set_var("SURREAL_ROOT_PASS", val);
+            }
+        }
 
         assert_eq!(protocol, "http");
         assert_eq!(host, "127.0.0.1:8000");

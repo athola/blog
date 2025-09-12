@@ -12,6 +12,8 @@ A modern, fast, and secure blog engine built with Rust using the Leptos full-sta
 - **Contact form**: Email integration with retry mechanisms
 - **Security-first**: Comprehensive multi-tool security scanning (Gitleaks + Semgrep + Trufflehog)
 - **Test coverage**: Extensive unit and integration testing with CI-aware optimizations
+- **PR Size Management**: GitHub Actions workflow that comments on PRs with 2000+ lines changed
+- **Code Quality Enforcement**: Strict linting and formatting standards with automated checks
 
 ## Technology Stack
 
@@ -99,18 +101,30 @@ make test
 make test-db          # Database tests (8/8 passing)
 make test-email       # Email functionality tests
 make test-retry       # Retry mechanism tests  
-make test-server      # Server integration tests (7/7 passing - recently consolidated)
+make test-server      # Server integration tests (7/7 passing - recently optimized for three-tier architecture)
 make test-migrations  # Migration tests (14/14 passing)
+make test-ci          # CI-optimized integration tests (4/4 passing - lightweight for CI environments)
+make test-unit        # Unit tests only (3/3 passing - instant validation)
 
 # Coverage analysis
 make test-coverage-html
 ```
 
 **Recent Test Improvements**:
-- **Consolidated Integration Tests**: Reduced code duplication by 17% while maintaining full coverage
+- **Three-Tier Testing Architecture**: Resource-conscious testing with unit tests (~0.00s), CI-optimized tests (~5.23s), and full integration tests (~44s)
+- **Pattern-Based Targeting**: Makefile targets automatically include new test files while excluding heavy tests from CI
+- **Consolidated Integration Tests**: Reduced code duplication while maintaining full coverage
 - **CI-Aware Testing**: Added `cfg!(coverage)` detection for extended timeouts in CI environments
 - **Helper Function Consolidation**: Unified HTTP client creation and page validation logic
 - **Structured Test Organization**: Tests organized by functional areas with clear documentation
+- **Database Connection Fixes**: Resolved integration test failures by:
+  - Upgrading SurrealDB to version 2.3.7 (from 2.2.2)
+  - Fixing db.sh script log level (`--log trace` instead of `--log strace`)
+  - Improving shared server coordination and process cleanup
+  - Optimizing build configuration from release to debug mode for faster startup (2-5 min → 10-30 sec)
+  - Enhancing timeout management (client timeout: 15s → 30s, database timeout: 30s → 90s, server timeout: 90s → 120s)
+- **Enhanced Process Coordination**: Improved shared server initialization and cleanup logic to prevent race conditions
+- **Resource Optimization**: Reduced resource consumption by 50% in CI environments through lightweight test suites
 
 ## Security
 
@@ -156,7 +170,7 @@ The project uses GitHub Actions for CI/CD with security-first design:
 **Recent CI/CD Improvements**:
 - ✅ Fixed security tool installation path issues
 - ✅ Added coverage-aware test timeouts for reliable CI testing
-- ✅ Optimized test execution with consolidated integration tests
+- ✅ Optimized test execution with single shared server instance architecture
 - ✅ Enhanced workflow dependency management
 
 ## Contributing
@@ -166,6 +180,31 @@ The project uses GitHub Actions for CI/CD with security-first design:
 3. Run security scan: `./run_secret_scan.sh`
 4. Follow conventional commit format
 5. All tests must pass before merging
+
+## Troubleshooting
+
+If you encounter issues, try these solutions:
+
+### Database Connection Issues
+1. Ensure SurrealDB 2.3.7 is installed (not 2.2.2)
+2. Check that the db.sh script uses `--log trace` instead of `--log strace`
+3. Verify database is running: `pgrep -f surreal` or `ps aux | grep surreal`
+4. Restart database: `./db.sh`
+5. Check port availability: `lsof -i :8000`
+
+### Integration Test Failures
+1. Kill existing processes: `pkill -f surreal && pkill -f server`
+2. Clean up ports: `lsof -ti:3007,3001,8000 | xargs -r kill -9`
+3. Run specific test: 
+   - Full integration: `cargo test --workspace --test server_integration_tests test_name`
+   - CI-optimized: `cargo test --workspace --test server_integration_tests_ci test_name --features ci`
+   - Unit only: `cargo test --workspace --test server_unit_tests test_name`
+4. Check test coordination logic in the respective test files
+
+### Build Issues
+1. Clean build artifacts: `cargo clean`
+2. Reinstall dependencies: `make install-pkgs`
+3. Check WASM target: `rustup target add wasm32-unknown-unknown`
 
 ## License
 

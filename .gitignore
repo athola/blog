@@ -4,8 +4,12 @@
 *.png
 *.db
 
+# Node.js
+node_modules/
+
 # Test artifacts
 /test-results/
+
 *.profraw
 *.profdata
 
@@ -17,3 +21,12 @@
 
 # Secret scanning
 secret_scanning_results/
+
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.coverage

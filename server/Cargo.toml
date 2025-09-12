@@ -27,6 +27,9 @@ surrealdb.workspace = true
 tracing.workspace = true
 tokio-retry.workspace = true
 
+# leptos config dependency
+leptos_config = "0.7.8"
+
 # specific dependencies
 dotenvy = "0.15.7"
 rss = "2.0.12"
