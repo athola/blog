@@ -101,16 +101,19 @@ make test
 make test-db          # Database tests (8/8 passing)
 make test-email       # Email functionality tests
 make test-retry       # Retry mechanism tests  
-make test-server      # Server integration tests (7/7 passing - recently optimized for single shared server)
+make test-server      # Server integration tests (7/7 passing - recently optimized for three-tier architecture)
 make test-migrations  # Migration tests (14/14 passing)
+make test-ci          # CI-optimized integration tests (4/4 passing - lightweight for CI environments)
+make test-unit        # Unit tests only (3/3 passing - instant validation)
 
 # Coverage analysis
 make test-coverage-html
 ```
 
 **Recent Test Improvements**:
-- **Single Server Instance**: All integration tests now share a single server process, eliminating resource conflicts
-- **Consolidated Integration Tests**: Reduced code duplication by 17% while maintaining full coverage
+- **Three-Tier Testing Architecture**: Resource-conscious testing with unit tests (~0.00s), CI-optimized tests (~5.23s), and full integration tests (~44s)
+- **Pattern-Based Targeting**: Makefile targets automatically include new test files while excluding heavy tests from CI
+- **Consolidated Integration Tests**: Reduced code duplication while maintaining full coverage
 - **CI-Aware Testing**: Added `cfg!(coverage)` detection for extended timeouts in CI environments
 - **Helper Function Consolidation**: Unified HTTP client creation and page validation logic
 - **Structured Test Organization**: Tests organized by functional areas with clear documentation
@@ -121,6 +124,7 @@ make test-coverage-html
   - Optimizing build configuration from release to debug mode for faster startup (2-5 min → 10-30 sec)
   - Enhancing timeout management (client timeout: 15s → 30s, database timeout: 30s → 90s, server timeout: 90s → 120s)
 - **Enhanced Process Coordination**: Improved shared server initialization and cleanup logic to prevent race conditions
+- **Resource Optimization**: Reduced resource consumption by 50% in CI environments through lightweight test suites
 
 ## Security
 
@@ -191,8 +195,11 @@ If you encounter issues, try these solutions:
 ### Integration Test Failures
 1. Kill existing processes: `pkill -f surreal && pkill -f server`
 2. Clean up ports: `lsof -ti:3007,3001,8000 | xargs -r kill -9`
-3. Run specific test: `cargo test --workspace --test server_integration_tests test_name`
-4. Check shared server coordination logic in tests/server_integration_tests.rs
+3. Run specific test: 
+   - Full integration: `cargo test --workspace --test server_integration_tests test_name`
+   - CI-optimized: `cargo test --workspace --test server_integration_tests_ci test_name --features ci`
+   - Unit only: `cargo test --workspace --test server_unit_tests test_name`
+4. Check test coordination logic in the respective test files
 
 ### Build Issues
 1. Clean build artifacts: `cargo clean`

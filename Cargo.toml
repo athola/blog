@@ -141,6 +141,9 @@ edition.workspace = true
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage)', 'cfg(feature, values("ci"))'] }
 
+[features]
+ci = []
+
 
 # SurrealDB migration test suite
 [[test]]

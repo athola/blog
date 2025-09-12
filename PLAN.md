@@ -80,10 +80,11 @@ This is a Rust-powered blog engine built with:
    - Asset optimization
 
 ### Current Limitations
-1. **Integration Tests**: ✅ **RESOLVED** - All tests now passing (62/62) with optimized single server instance architecture. **Recent Fix**: Resolved database connection timeout issues in integration tests by:
+1. **Integration Tests**: ✅ **RESOLVED** - All tests now passing (62/62) with optimized three-tier testing architecture. **Recent Fix**: Resolved database connection timeout issues in integration tests by:
    - Upgrading SurrealDB from 2.2.2 to 2.3.7
    - Fixing db.sh script log level from `--log strace` to `--log trace`
    - Improving shared server coordination and process cleanup
+   - Implementing resource-conscious three-tier testing strategy (unit, CI-optimized, full integration)
 2. **Security**: ✅ **RESOLVED** - Comprehensive security scanning implemented with multi-tool approach
 3. **User Experience**: Limited engagement features
 4. **Content Management**: No admin interface for content creation
@@ -378,7 +379,7 @@ Based on analysis of popular personal tech blogs (freeCodeCamp, MDN, Rust Blog, 
 - **deploy.yml**: ~33 minutes (config check + deployment + health checks)
 - **Supporting workflows**: ~7 minutes (ci-cd.yml, claude.yml)
 
-**Recent Improvements**: Test reliability significantly enhanced with single shared server instance architecture, reducing flaky test failures and improving CI/CD pipeline stability.
+**Recent Improvements**: Test reliability significantly enhanced with three-tier testing architecture, reducing resource consumption and improving CI/CD pipeline stability. Resource usage reduced by implementing pattern-based test targeting that automatically includes new test files while excluding heavy integration tests from CI environments.
 
 ### Cost Optimization Strategies
 
@@ -915,7 +916,7 @@ echo "✅ All smoke tests passed"
 ### Short-term (Next 3 months)
 1. **URGENT** - CI/CD Cost Optimization (reduce 107→58 minutes, save $235/year)
 2. Security hardening
-3. ✅ **COMPLETED** - Fix integration test issues (all tests passing)
+3. ✅ **COMPLETED** - Fix integration test issues (all tests passing with three-tier resource optimization)
 4. **NEW** - Frontend/WASM specific testing configuration
 5. **NEW** - SAST (Static Application Security Testing) implementation
 6. **NEW** - Enhanced dependency vulnerability scanning
@@ -950,7 +951,8 @@ echo "✅ All smoke tests passed"
 - Core Web Vitals: 90th percentile+
 - Uptime: 99.9%
 - ✅ **ACHIEVED** - Security scan: 0 critical vulnerabilities (Multi-tool scanning active)
-- ✅ **ACHIEVED** - Test reliability: 100% pass rate with single server instance optimization
+- ✅ **ACHIEVED** - Test reliability: 100% pass rate with three-tier testing optimization
+- **FUTURE** - CI/CD resource usage: 50% reduction in test execution time and memory consumption
 
 #### CI/CD Performance Metrics
 - **URGENT** - Pipeline duration: < 58 minutes (from current 107 minutes)

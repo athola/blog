@@ -167,7 +167,9 @@ This project maintains excellent code quality with comprehensive test coverage. 
 - ✅ **Server Tests**: 13/13 passing
 - ✅ **Migration Core Tests**: 8/8 passing
 - ✅ **Schema Evolution Tests**: 16/16 passing
-- ✅ **Server Integration Tests**: 7/7 passing (recently optimized for single shared server instance with database connection fixes)
+- ✅ **Server Integration Tests**: 7/7 passing (recently optimized with three-tier resource management)
+- ✅ **CI-Optimized Integration Tests**: 4/4 passing (new lightweight test suite for CI environments)
+- ✅ **Unit Test Suite**: 3/3 passing (new ultra-lightweight test suite for quick validation)
 
 ### Test Quality Standards
 
@@ -180,9 +182,13 @@ This project maintains excellent code quality with comprehensive test coverage. 
 
 ### Recent Test Improvements
 
-**Server Integration Test Optimization**: The integration tests have been significantly improved:
-- ✅ **Single Server Instance**: All tests now share a single server process, eliminating resource conflicts
-- ✅ **Deduplicated Code**: Reduced from ~700 to ~580 lines (17% reduction)
+**Three-Tier Testing Strategy**: The integration tests have been significantly improved with a resource-conscious approach:
+- ✅ **Three-Tier Architecture**: 
+  - Unit tests (~0.00s execution) for instant validation
+  - CI-optimized tests (~5.23s execution) for CI environments
+  - Full integration tests (~44s execution) for comprehensive validation
+- ✅ **Resource Optimization**: Reduced resource consumption across all test types
+- ✅ **Pattern-Based Targeting**: Makefile targets automatically include new test files
 - ✅ **Helper Functions**: Consolidated duplicate HTTP client creation and page validation logic
 - ✅ **Clear Test Goals**: Each test has explicit documentation about its purpose
 - ✅ **CI-Aware Testing**: Added `cfg!(coverage)` detection for extended timeouts in coverage builds
@@ -195,9 +201,9 @@ This project maintains excellent code quality with comprehensive test coverage. 
   - Optimizing build configuration from release to debug mode for faster startup
 - ✅ **Enhanced Process Coordination**: Improved shared server initialization and cleanup logic to prevent race conditions
 - ✅ **Timeout Improvements**: Increased various timeout values for better CI reliability:
-  - Client timeout: 15s → 30s
-  - Database startup timeout: 30s → 90s
-  - Server startup timeout: 90s → 120s
+  - Client timeout: 15s → 30s (full) / 10s (CI)
+  - Database startup timeout: 30s → 90s (full) / 30s (CI) / 20s (CI-light)
+  - Server startup timeout: 90s → 120s (full) / 45s (CI) / 30s (CI-light)
 
 ### Verification Commands
 ```bash

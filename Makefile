@@ -86,7 +86,7 @@ test-server-integration-embedded:
 	@pkill -f "surreal" 2>/dev/null || true
 	@sleep 2
 	@echo "  Starting fresh database instance..."
-	@./db.sh & echo $$! > /tmp/test_db_pid
+	@./db.sh & echo $! > /tmp/test_db_pid
 	@sleep 8
 	@echo "  Running server integration tests..."
 	@cargo test --test server_integration_tests --no-fail-fast -- --test-threads=1 || (echo "Server integration tests failed, cleaning up..." && kill `cat /tmp/test_db_pid` 2>/dev/null || true && rm -f /tmp/test_db_pid && false)
@@ -94,6 +94,33 @@ test-server-integration-embedded:
 	@kill `cat /tmp/test_db_pid` 2>/dev/null || true
 	@rm -f /tmp/test_db_pid
 	@echo "  Server integration tests completed successfully"
+
+## Lightweight CI tests for resource-constrained environments
+test-ci:
+	@echo "  Running lightweight CI tests..."
+	@for test in $(find . -name "*_ci*.rs" -o -name "*ci_*.rs" | sed 's/\.rs$//' | xargs basename -a); do \
+		echo "  Running CI test: $test"; \
+		cargo test --test $test --features ci --no-fail-fast -- --test-threads=1 || exit 1; \
+	done
+	@echo "  CI tests completed successfully"
+
+## Unit tests only (no integration required)
+test-unit:
+	@echo "  Running unit tests only..."
+	@for test in $(find . -name "*_unit*.rs" -o -name "*unit_*.rs" | sed 's/\.rs$//' | xargs basename -a); do \
+		echo "  Running unit test: $test"; \
+		cargo test --test $test --no-fail-fast || exit 1; \
+	done
+	@echo "  Unit tests completed successfully"
+
+## Pattern-based test runner for integration tests
+test-integration-pattern:
+	@echo "  Running integration tests matching pattern..."
+	@for test in $(find . -name "*integration*.rs" | sed 's/\.rs$//' | xargs basename -a); do \
+		echo "  Running integration test: $test"; \
+		cargo test --test $test --no-fail-fast -- --test-threads=1 || exit 1; \
+	done
+	@echo "  Integration pattern tests completed successfully"
 
 ## Enhanced test target with full integration
 test:
