@@ -28,10 +28,10 @@ tokio-retry = { workspace = true, optional = true }
 
 # specific dependencies
 http = "1"
-icondata = "0.5.0"
-leptos_icons = "0.5.0"
-leptos_meta = "0.7.8"
-leptos_router = { version = "0.7.8", features = ["nightly"] }
+icondata = "0.6.0"
+leptos_icons = "0.7.0"
+leptos_meta = "0.8.5"
+leptos_router = { version = "0.8.7", features = ["nightly"] }
 lettre = { version = "0.11.18", default-features = false, optional = true, features = [
     "builder",
     "smtp-transport",
@@ -40,7 +40,7 @@ lettre = { version = "0.11.18", default-features = false, optional = true, featu
     "tokio1-rustls-tls",
 ] }
 thiserror = "2"
-web-sys = "0.3.78"
+web-sys = "0.3.80"
 
 [dev-dependencies]
 tokio-test = "0.4.4"

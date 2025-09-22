@@ -3,6 +3,7 @@
 *.pem
 *.png
 *.db
+*.log
 
 # Node.js
 node_modules/
