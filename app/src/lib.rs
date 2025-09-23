@@ -147,9 +147,7 @@ mod tests {
     #[test]
     fn test_shell_creation() {
         // Test shell function with default options
-        let options = LeptosOptions::builder()
-            .output_name("blog")
-            .build();
+        let options = LeptosOptions::builder().output_name("blog").build();
         let shell_view = shell(options);
         // Verify the shell returns a non-null view
         // We can't easily test the rendered content without a full Leptos context,
@@ -167,9 +165,7 @@ mod tests {
         let _component_fn: fn() -> _ = component;
 
         // Test that LeptosOptions can be created (this is the testable logic)
-        let options = LeptosOptions::builder()
-            .output_name("blog")
-            .build();
+        let options = LeptosOptions::builder().output_name("blog").build();
         assert_eq!(options.site_addr.port(), 3000); // Default port
         assert_eq!(options.site_addr.ip().to_string(), "127.0.0.1"); // Default IP
     }

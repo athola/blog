@@ -10,8 +10,10 @@ use leptos_axum::{LeptosRoutes as _, generate_route_list};
 use leptos_config::get_configuration;
 use redirect::redirect_www;
 use serde_json::json;
+
 use tower_http::compression::predicate::{NotForContentType, SizeAbove};
 use tower_http::compression::{CompressionLayer, Predicate as _};
+use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
 use utils::{connect, rss_handler, sitemap_handler};
 
@@ -76,11 +78,16 @@ async fn main() {
             .route("/health", get(health_handler))
             .route("/rss", get(rss_handler))
             .route("/sitemap.xml", get(sitemap_handler))
-            .layer(axum::middleware::from_fn(redirect_www))
-            .layer(TraceLayer::new_for_http())
+            .nest_service("/static", ServeDir::new("/home/alex/blog/target/site"))
+            .layer(
+                tower::ServiceBuilder::new()
+                    .layer(TraceLayer::new_for_http())
+                    .layer(axum::middleware::from_fn(redirect_www)),
+            )
             .layer(CompressionLayer::new().compress_when(
                 NotForContentType::new("application/rss+xml").and(SizeAbove::new(1024)),
             ))
+            .fallback(leptos_axum::file_and_error_handler::<AppState, _>(shell))
             .with_state(app_state);
 
     let listener = match tokio::net::TcpListener::bind(&addr).await {
