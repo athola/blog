@@ -4,6 +4,7 @@
 *.png
 *.db
 *.log
+*.txt
 
 # Node.js
 node_modules/
