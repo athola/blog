@@ -95,6 +95,33 @@ jobs:
           .
         cache-all-crates: "true"
     
+    - name: Cache SurrealDB CLI
+      uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+      with:
+        path: ~/.surrealdb
+        key: surrealdb-cli-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          surrealdb-cli-${{ runner.os }}-
+    
+    - name: Install SurrealDB CLI
+      timeout-minutes: 5  # Downloads should be quick
+      run: |
+        set -euo pipefail  # Exit on error, undefined vars, and pipe failures
+        
+        if [ ! -f "$HOME/.surrealdb/surreal" ]; then
+          # Use latest stable version
+          SURREAL_VERSION="v2.3.7"
+          SURREAL_URL="https://github.com/surrealdb/surrealdb/releases/download/${SURREAL_VERSION}/surreal-${SURREAL_VERSION}.linux-amd64.tgz"
+          
+          mkdir -p "$HOME/.surrealdb"
+          cd "$HOME/.surrealdb"
+          timeout 120 curl -sSL "$SURREAL_URL" -o surreal.tgz  # 2 minute download limit
+          tar -xzf surreal.tgz
+          chmod +x surreal
+          rm surreal.tgz
+        fi
+        echo "$HOME/.surrealdb" >> $GITHUB_PATH
+    
     - name: Install test tools
       run: |
         set -euo pipefail  # Exit on error, undefined vars, and pipe failures
