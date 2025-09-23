@@ -104,9 +104,37 @@ jobs:
     - name: Run migration integration tests
       timeout-minutes: 15
       run: |
-        # Initialize database for tests
+        # Start database for tests
+        ./db.sh &
+        DB_PID=$!
+        
+        # Wait for database to be ready
+        echo "Waiting for database to be ready..."
+        i=1
+        while [ $i -le 30 ]; do
+            if curl -s http://127.0.0.1:8000/health >/dev/null 2>&1; then
+                echo "Database is ready"
+                break
+            fi
+            if [ $i -eq 30 ]; then
+                echo "Database did not become ready within 30 seconds"
+                kill $DB_PID 2>/dev/null || true
+                exit 1
+            fi
+            echo "Waiting for database... ($i/30)"
+            sleep 1
+            i=$((i + 1))
+        done
+        
+        # Initialize database
         make init-db
+        
+        # Run migration tests
         cargo nextest run --workspace -- migration
+        
+        # Cleanup database process
+        kill $DB_PID 2>/dev/null || true
+        wait $DB_PID 2>/dev/null || true
     
     - name: Upload migration test results
       if: always()
