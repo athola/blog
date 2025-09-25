@@ -21,6 +21,9 @@ mod references;
 pub mod types;
 
 pub fn shell(options: LeptosOptions) -> impl IntoView {
+    // Provides context that manages stylesheets, titles, meta tags, etc.
+    provide_meta_context();
+
     let html_comp = html().lang("en").child((
         head().child((
             meta().charset("utf-8"),
@@ -59,9 +62,6 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
 
 #[must_use]
 pub fn component() -> impl IntoView {
-    // Provides context that manages stylesheets, titles, meta tags, etc.
-    provide_meta_context();
-
     view! {
         <Router>
             <div class="overflow-auto text-white font-poppins">
