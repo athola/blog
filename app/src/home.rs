@@ -1,10 +1,14 @@
 extern crate alloc;
 use alloc::vec::Vec;
 use core::clone::Clone;
-use icondata as i;
-use leptos::html::{button, div, p, span};
-use leptos::{ev, prelude::*};
-use leptos_icons::{Icon, IconProps};
+use icondata::{BsCalendar, BsClock, BsEye, FiUser};
+use leptos::{
+    ev,
+    html::{button, div, p, span},
+    prelude::*,
+    svg::svg,
+};
+
 use leptos_meta::{Title, TitleProps};
 use leptos_router::components::{A, AProps};
 
@@ -53,35 +57,19 @@ pub fn component() -> impl IntoView {
                                             div().class("flex flex-row gap-3 justify-start items-center text-xxs").child(
                                                 div().class("flex flex-row gap-3").child((
                                                     div().class("flex flex-row gap-1 items-center").child((
-                                                        Icon(IconProps::builder()
-                                                            .icon(Signal::from(i::FaClockSolid))
-                                                            .width("1em")
-                                                            .height("1em")
-                                                            .build()),
+                                                        svg().attr("viewBox", BsClock.view_box).attr("innerHTML", BsClock.data).attr("style", "filter: brightness(0) invert(1);").class("size-4"),
                                                         p().child(format!("{} min read", post.read_time)),
                                                     )),
                                                     div().class("flex flex-row gap-1 items-center").child((
-                                                        Icon(IconProps::builder()
-                                                            .icon(Signal::from(i::FaEyeSolid))
-                                                            .width("1em")
-                                                            .height("1em")
-                                                            .build()),
+                                                        svg().attr("viewBox", BsEye.view_box).attr("innerHTML", BsEye.data).attr("style", "filter: brightness(0) invert(1);").class("size-4"),
                                                         p().child(format!("{} views", post.total_views)),
                                                     )),
                                                     div().class("flex flex-row gap-1 items-center").child((
-                                                        Icon(IconProps::builder()
-                                                            .icon(Signal::from(i::FaCalendarSolid))
-                                                            .width("1em")
-                                                            .height("1em")
-                                                            .build()),
+                                                        svg().attr("viewBox", BsCalendar.view_box).attr("innerHTML", BsCalendar.data).attr("style", "filter: brightness(0) invert(1);").class("size-4"),
                                                         p().child(post.created_at),
                                                     )),
                                                     div().class("flex flex-row gap-1 items-center").child((
-                                                        Icon(IconProps::builder()
-                                                            .icon(Signal::from(i::FaUserSolid))
-                                                            .width("1em")
-                                                            .height("1em")
-                                                            .build()),
+                                                        svg().attr("viewBox", FiUser.view_box).attr("innerHTML", FiUser.data).attr("style", "filter: brightness(0) invert(1);").class("size-4"),
                                                         button().on(ev::click, move |e| {
                                                             e.prevent_default();
                                                             e.stop_propagation();

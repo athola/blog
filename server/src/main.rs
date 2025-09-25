@@ -46,8 +46,24 @@ async fn main() {
         logging::warn!("There is no corresponding .env file");
     }
 
-    let Ok(conf) = get_configuration(Some("Cargo.toml")) else {
-        logging::error!("Failed to get configuration");
+    // Determine the configuration file path
+    let config_path = std::env::var("LEPTOS_CONFIG_PATH").unwrap_or_else(|_| {
+        // Try multiple possible locations for Cargo.toml
+        let possible_paths = vec![
+            "../Cargo.toml".to_string(),    // When running from server directory
+            "Cargo.toml".to_string(),       // When running from root directory
+            "./Cargo.toml".to_string(),     // Explicit current directory
+            "../../Cargo.toml".to_string(), // When running from target/debug
+        ];
+
+        possible_paths
+            .into_iter()
+            .find(|path| std::path::Path::new(path).exists())
+            .unwrap_or_else(|| "../Cargo.toml".to_string()) // Fallback to original
+    });
+
+    let Ok(conf) = get_configuration(Some(&config_path)) else {
+        logging::error!("Failed to get configuration from: {}", config_path);
         return;
     };
 
@@ -77,8 +93,11 @@ async fn main() {
             )
             .route("/health", get(health_handler))
             .route("/rss", get(rss_handler))
+            .route("/rss.xml", get(rss_handler))
             .route("/sitemap.xml", get(sitemap_handler))
-            .nest_service("/static", ServeDir::new("/home/alex/blog/target/site"))
+            .nest_service("/pkg", ServeDir::new("/home/alex/blog/target/site/pkg"))
+            .nest_service("/public", ServeDir::new("/home/alex/blog/public"))
+            .nest_service("/fonts", ServeDir::new("/home/alex/blog/public/fonts"))
             .layer(
                 tower::ServiceBuilder::new()
                     .layer(TraceLayer::new_for_http())

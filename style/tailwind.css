@@ -10,7 +10,7 @@
         font-style: normal;
         font-weight: 100;
         font-display: swap;
-        src: url(/fonts/Poppins-Thin.ttf) format("truetype");
+        src: url(/public/fonts/Poppins-Thin.ttf) format("truetype");
     }
 
     @font-face {
@@ -147,5 +147,85 @@
         font-weight: 900;
         font-display: swap;
         src: url(/fonts/Poppins-BlackItalic.ttf) format("truetype");
+    }
+}
+
+@layer utilities {
+    .icon-white {
+        fill: white !important;
+        stroke: white !important;
+        color: white !important;
+    }
+    
+    .icon-white svg {
+        fill: white !important;
+        stroke: white !important;
+        color: white !important;
+    }
+    
+    .icon-white svg path {
+        fill: white !important;
+        stroke: white !important;
+        color: white !important;
+    }
+    
+    .icon-white svg circle {
+        fill: white !important;
+        stroke: white !important;
+        color: white !important;
+    }
+    
+    .icon-white svg rect {
+        fill: white !important;
+        stroke: white !important;
+        color: white !important;
+    }
+    
+    .icon-white svg * {
+        fill: white !important;
+        stroke: white !important;
+        color: white !important;
+    }
+    
+    svg.icon-white,
+    svg.icon-white *,
+    .icon-white svg,
+    .icon-white svg *,
+    svg[class*="icon-white"] *,
+    svg[class*="icon-white"] {
+        fill: white !important;
+        stroke: white !important;
+        color: white !important;
+    }
+    
+    /* Force all SVG elements to be white */
+    svg {
+        fill: white !important;
+        stroke: white !important;
+        color: white !important;
+    }
+    
+    svg path {
+        fill: white !important;
+        stroke: white !important;
+        color: white !important;
+    }
+    
+    svg circle {
+        fill: white !important;
+        stroke: white !important;
+        color: white !important;
+    }
+    
+    svg rect {
+        fill: white !important;
+        stroke: white !important;
+        color: white !important;
+    }
+    
+    svg * {
+        fill: white !important;
+        stroke: white !important;
+        color: white !important;
     }
 }

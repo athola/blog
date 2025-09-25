@@ -1,10 +1,5 @@
-use leptos::{
-    ev,
-    html::{a, br, button, div, form, h1, h2, h3, img, input, p, section, textarea},
-    prelude::*,
-    svg::{path, svg},
-};
-use leptos_router::components::{A, AProps};
+use leptos::prelude::*;
+use leptos_router::components::A;
 
 use crate::api::{ContactRequest, contact};
 
@@ -36,12 +31,14 @@ pub fn component() -> impl IntoView {
                     <p class="mb-8 max-w-2xl text-xl text-gray-300">
                         "I work on high-performance, reliable systems with Rust. Of particular interest to me are network and OS projects utilizing cutting-edge technology."
                     </p>
-                    <A href="/references" class="inline-flex items-center text-lg font-semibold hover:underline text-[#ffef5c]">
-                        "Explore my work"
-                        <svg class="ml-2 size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"/>
-                        </svg>
-                    </A>
+                    <div class="inline-flex items-center text-lg font-semibold hover:underline text-[#ffef5c]">
+                        <A href="/references">
+                            "Explore my work"
+                            <svg class="ml-2 size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"/>
+                            </svg>
+                        </A>
+                    </div>
                 </div>
             </section>
 

@@ -67,7 +67,7 @@ docker run --rm --pull always \
   -p 8000:8000 \
   -v /path/to/data:/data \
   surrealdb/surrealdb:latest start \
-  --log trace \
+  --log info \
   --user root \
   --pass YOUR_SECURE_PASSWORD \
   file:/data/database.db

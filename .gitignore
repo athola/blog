@@ -32,3 +32,21 @@ __pycache__/
 .Python
 *.so
 .coverage
+
+# WASM build artifacts (generated in root during build)
+*.wasm
+
+# Debug and test files (development artifacts)
+debug_*.rs
+test_*.rs
+*_test.rs
+test_hydration_fix.*
+
+# Generated database and history files
+history.txt
+*.history
+
+# Temporary development files
+tmp/
+temp/
+*.tmp

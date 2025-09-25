@@ -122,7 +122,7 @@ pub async fn rss_handler(State(state): State<AppState>) -> Response<String> {
     let AppState { db, .. } = state;
     let rss = generate_rss(db).await.unwrap();
     Response::builder()
-        .header("Content-Type", "application/xml")
+        .header("Content-Type", "application/rss+xml")
         .body(rss)
         .unwrap()
 }

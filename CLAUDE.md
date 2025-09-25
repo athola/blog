@@ -103,7 +103,7 @@ make test-coverage-html      # Coverage report
 **Database Issues**:
 - Check SurrealDB version: `surreal version` (requires 2.3.7)
 - `make reset-db` for complete database reset
-- Verify db.sh uses `--log trace` not `--log strace`
+- Verify db.sh uses `--log info` not `--log strace`
 
 **Test Issues**:
 - Kill processes: `pkill -f surreal && pkill -f server`

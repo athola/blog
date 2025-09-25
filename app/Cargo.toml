@@ -21,6 +21,8 @@ axum = { workspace = true, optional = true }
 chrono.workspace = true
 leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
+leptos_meta.workspace = true
+leptos_router.workspace = true
 serde.workspace = true
 surrealdb.workspace = true
 tracing = { workspace = true, optional = true }
@@ -29,9 +31,7 @@ tokio-retry = { workspace = true, optional = true }
 # specific dependencies
 http = "1"
 icondata = "0.6.0"
-leptos_icons = "0.7.0"
-leptos_meta = "0.8.5"
-leptos_router = { version = "0.8.7", features = ["nightly"] }
+icons = "0.8.4"
 lettre = { version = "0.11.18", default-features = false, optional = true, features = [
     "builder",
     "smtp-transport",

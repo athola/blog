@@ -10,7 +10,7 @@
   - **Process Management**: Enhanced cleanup and coordination of server/database processes
   - **Error Diagnostics**: Added detailed logging throughout startup process
 ✅ **SurrealDB Version Compatibility**: Upgraded from 2.2.2 to 2.3.7 for proper functionality  
-✅ **Database Script Fixes**: Corrected log level in db.sh script (`--log trace` not `--log strace`)
+✅ **Database Script Fixes**: Corrected log level in db.sh script (`--log info` not `--log strace`)
 ✅ **Process Coordination**: Enhanced shared server initialization and cleanup logic with better resource management
 ✅ **CI/CD Stability**: Improved test reliability with single server instance architecture and optimized timeouts
 ✅ **Security Issues Resolved**: All critical secret exposures eliminated  
@@ -82,7 +82,7 @@ This is a Rust-powered blog engine built with:
 ### Current Limitations
 1. **Integration Tests**: ✅ **RESOLVED** - All tests now passing (62/62) with optimized three-tier testing architecture. **Recent Fix**: Resolved database connection timeout issues in integration tests by:
    - Upgrading SurrealDB from 2.2.2 to 2.3.7
-   - Fixing db.sh script log level from `--log strace` to `--log trace`
+   - Fixing db.sh script log level from `--log strace` to `--log info`
    - Improving shared server coordination and process cleanup
    - Implementing resource-conscious three-tier testing strategy (unit, CI-optimized, full integration)
 2. **Security**: ✅ **RESOLVED** - Comprehensive security scanning implemented with multi-tool approach

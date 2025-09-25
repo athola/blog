@@ -8,9 +8,7 @@ use leptos::{
 use leptos_meta::{MetaTags, Stylesheet, StylesheetProps, Title, TitleProps, provide_meta_context};
 use leptos_router::{
     ParamSegment, SsrMode, StaticSegment,
-    components::{
-        FlatRoutes, FlatRoutesProps, Route, RouteChildren, RouteProps, Router, RouterProps,
-    },
+    components::{FlatRoutes, Route, Router},
 };
 
 mod activity;
@@ -29,7 +27,7 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
             meta()
                 .name("viewport")
                 .content("width=device-width, initial-scale=1"),
-            AutoReload(AutoReloadProps::builder().options(options.clone()).build()),
+            // AutoReload(AutoReloadProps::builder().options(options.clone()).build()),
             HydrationScripts(HydrationScriptsProps::builder().options(options).build()),
             MetaTags(),
             Stylesheet(
@@ -41,7 +39,7 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
             Stylesheet(
                 StylesheetProps::builder()
                     .id("katex")
-                    .href("/katex.min.css")
+                    .href("/public/katex.min.css")
                     .build(),
             ),
             Title(
@@ -64,80 +62,45 @@ pub fn component() -> impl IntoView {
     // Provides context that manages stylesheets, titles, meta tags, etc.
     provide_meta_context();
 
-    Router(
-        RouterProps::builder()
-            .children(TypedChildren::to_children(move || {
-                div().class("overflow-auto text-white font-poppins").child((
-          header::component,
-          main()
-            .class("container flex flex-col gap-8 px-4 pt-10 pb-14 mx-auto mt-16 max-w-4xl md:px-0")
-            .child(FlatRoutes(
-              FlatRoutesProps::builder()
-                .fallback(|| {
-                  let mut outside_errors = Errors::default();
-                  outside_errors.insert_with_default_key(error_template::AppError::NotFound);
-                  error_template::component(
-                      Some(outside_errors),
-                      None
-                  )
-                })
-                .children(RouteChildren::to_children(move || {
-                  (
-                    Route(
-                      RouteProps::builder()
-                        .path(StaticSegment(""))
-                        .view(home::component)
-                        .ssr(SsrMode::InOrder)
-                        .build(),
-                    ),
-                    Route(
-                      RouteProps::builder()
-                        .path(StaticSegment("references"))
-                        .view(references::component)
-                        .build(),
-                    ),
-                    Route(
-                      RouteProps::builder()
-                        .path(StaticSegment("contact"))
-                        .view(contact::component)
-                        .build(),
-                    ),
-                    Route(
-                      RouteProps::builder()
-                        .path((StaticSegment("post"), ParamSegment("slug")))
-                        .view(post::component)
-                        .ssr(SsrMode::Async)
-                        .build(),
-                    ),
-                    Route(
-                      RouteProps::builder()
-                        .path(StaticSegment("activity"))
-                        .view(activity::component)
-                        .build(),
-                    ),
-                  )
-                }))
-                .build(),
-            )),
-          footer()
-            .class("fixed right-0 bottom-0 left-0 z-10 py-2 text-center md:py-4 bg-[#1e1e1e]/80 backdrop-blur-md")
-            .child(
-              div().class("flex flex-col gap-1 justify-center items-center").child((
+    view! {
+        <Router>
+            <div class="overflow-auto text-white font-poppins">
+                {header::component}
+                <main class="container flex flex-col gap-8 px-4 pt-10 pb-14 mx-auto mt-16 max-w-4xl md:px-0">
+                    <FlatRoutes fallback=|| {
+                        let mut outside_errors = Errors::default();
+                        outside_errors.insert_with_default_key(error_template::AppError::NotFound);
+                        error_template::component(Some(outside_errors), None)
+                    }>
+                        <Route path=StaticSegment("") view=home::component ssr=SsrMode::InOrder/>
+                        <Route path=StaticSegment("references") view=references::component/>
+                        <Route path=StaticSegment("contact") view=contact::component/>
+                        <Route path=(StaticSegment("post"), ParamSegment("slug")) view=post::component ssr=SsrMode::Async/>
+                        <Route path=StaticSegment("activity") view=activity::component/>
+                    </FlatRoutes>
+                </main>
+                {footer_component()}
+            </div>
+        </Router>
+    }
+}
+
+fn footer_component() -> impl IntoView {
+    footer()
+        .class("fixed right-0 bottom-0 left-0 z-10 py-2 text-center md:py-4 bg-[#1e1e1e]/80 backdrop-blur-md")
+        .child(
+            div().class("flex flex-col gap-1 justify-center items-center").child((
                 p().class("text-gray-400").child((
-                  "Powered by",
-                  a()
-                    .href("https://github.com/athola")
-                    .class("hover:underline text-[#ffef5c]")
-                    .child(" athola"),
-                  format!(" \u{a9} {}", Utc::now().year()),
+                    "Powered by",
+                    a()
+                        .href("https://github.com/athola")
+                        .class("hover:underline text-[#ffef5c]")
+                        .child(" athola"),
+                    format!(" \u{a9} {}", Utc::now().year()),
                 )),
                 div().class("block md:hidden").child(icons::component),
-              )),
-            ),
-        ))
-            }))
-            .build(),
-    )
+            )),
+        )
 }
 
 #[cfg(test)]
