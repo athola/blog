@@ -3,8 +3,8 @@
 ## Always treat these targets as out of date
 .PHONY: help rebuild build format fmt lint bloat spellcheck udeps security test install-pkgs upgrade \\
 	server cli build-release server-release cli-release test-report test-coverage test-coverage-html \\
-	test-retry test-db test-email test-migrations test-server clean-test-artifacts watch \\
-	install-test-tools
+	test-retry test-db test-email test-migrations test-server clean-test-artifacts watch teardown validate \\
+	install-test-tools init-db start-db stop-db reset-db
 
 ## Alias for format command (compatibility)
 format: fmt
@@ -34,6 +34,12 @@ help:
 	@echo "  spellcheck   : checks documentation spellcheck for $(PROJECT)"
 	@echo "  udeps        : checks unused dependencies for $(PROJECT)"
 	@echo "  test         : tests $(PROJECT)"
+	@echo "  init-db      : initializes database users if needed"
+	@echo "  start-db     : starts database server"
+	@echo "  stop-db      : stops database server"
+	@echo "  reset-db     : resets database (stops, removes data, restarts)"
+	@echo "  teardown     : stops all watch processes and cleans up artifacts"
+	@echo "  validate     : validates codebase is ready for PR submission"
 	@echo "  help         : prints this help message"
 
 ## Rebuild cargo
@@ -140,10 +146,70 @@ test-coverage-html:
 	@cargo make --makefile Makefile.toml test-coverage-html
 	@echo "Coverage report available at: test-results/coverage/html/index.html"
 
+## Initialize database users if needed
+init-db:
+	$(ECHO_PREFIX) Initializing database users
+	@./init-db.sh
+
+## Start database server
+start-db:
+	$(ECHO_PREFIX) Starting database server
+	@./db.sh &
+
+## Stop database server
+stop-db:
+	$(ECHO_PREFIX) Stopping database server
+	@./stop-db.sh
+
+## Reset database (stop, remove data, restart)
+reset-db:
+	$(ECHO_PREFIX) Resetting database
+	@echo "Stopping database server..."
+	@./stop-db.sh
+	@sleep 2
+	@echo "Removing database files..."
+	@rm -rf rustblog.db rustblog_test_*.db rustblog_ci_test_*.db 2>/dev/null || true
+	@echo "Database files removed. Use 'make start-db' to start fresh database."
+	@echo "Database reset completed"
+
 watch:
 	$(ECHO_PREFIX) Watching $${PROJECT}
 	@sh db.sh&
+	@sleep 3
+	@./init-db.sh
 	@cargo leptos watch
+
+## Validate codebase is ready for PR submission - runs all CI checks locally
+validate: fmt lint test
+	$(ECHO_PREFIX) Validating $${PROJECT} for PR submission
+	@echo "Running security scans..."
+	@if [ -f "./run_secret_scan.sh" ]; then chmod +x ./run_secret_scan.sh && ./run_secret_scan.sh; else echo "Warning: Secret scan script not found"; fi
+	@echo "Running security audit..."
+	@cargo audit --deny warnings --ignore RUSTSEC-2024-0436 --ignore RUSTSEC-2024-0320 || echo "Warning: Security audit found issues"
+	@echo "Checking for unused dependencies..."
+	@cargo +nightly udeps --all-targets || echo "Warning: Unused dependencies found"
+	@echo "Building release profile..."
+	@cargo build --workspace --profile server
+	@echo "Running test coverage..."
+	@$(MAKE) test-coverage-html
+	@echo "Validation complete"
+
+## Teardown all watch processes and clean artifacts
+teardown:
+	$(ECHO_PREFIX) Tearing down $${PROJECT}
+	@echo "Stopping leptos watch processes..."
+	@-pkill -f "cargo leptos watch" 2>/dev/null
+	@-pkill -f "leptos" 2>/dev/null
+	@echo "Stopping database processes..."
+	@-pkill -f "surreal" 2>/dev/null
+	@-pkill -f "db.sh" 2>/dev/null
+	@echo "Cleaning up server processes..."
+	@-pkill -f "server" 2>/dev/null
+	@echo "Cleaning up temporary files..."
+	@-rm -f /tmp/db_pid /tmp/test_db_pid 2>/dev/null
+	@echo "Cleaning up build artifacts..."
+	@-rm -rf target/debug/build/*/out target/debug/incremental target/debug/deps/*.d 2>/dev/null
+	@echo "Teardown completed - all processes stopped and artifacts cleaned"
 
 install-pkgs:
 	$(ECHO_PREFIX) Installing $${RUST_PKGS}

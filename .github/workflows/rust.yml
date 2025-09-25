@@ -187,6 +187,8 @@ jobs:
       run: |
         if [ "${{ matrix.profile }}" = "dev" ]; then
           cargo build --verbose --workspace
+          # Initialize database for tests
+          make init-db
           # Run all tests except the heavy server_integration_tests
           cargo test --workspace --no-fail-fast --lib --bins
           cargo test migration_core_tests --no-fail-fast
@@ -258,12 +260,16 @@ jobs:
     - name: Run test coverage
       timeout-minutes: 30  # Increased from 20 minutes to allow for longer coverage analysis
       run: |
+        # Initialize database for tests
+        make init-db
         # Run coverage on all tests except the heavy server_integration_tests
         cargo llvm-cov nextest --workspace --lcov --output-path test-results/coverage/lcov.info \
           --exclude-test server_integration_tests
     
     - name: Generate HTML coverage report
       run: |
+        # Initialize database for tests
+        make init-db
         cargo llvm-cov nextest --workspace --html --output-dir test-results/coverage/html \
           --exclude-test server_integration_tests
     

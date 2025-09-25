@@ -6,13 +6,14 @@ use axum::{Router, http::StatusCode, response::Json, routing::get};
 use dotenvy::dotenv;
 use leptos::logging;
 use leptos::prelude::*;
-use leptos_config::get_configuration;
 use leptos_axum::{LeptosRoutes as _, generate_route_list};
+use leptos_config::get_configuration;
 use redirect::redirect_www;
 use serde_json::json;
-use tower_http::CompressionLevel;
+
 use tower_http::compression::predicate::{NotForContentType, SizeAbove};
 use tower_http::compression::{CompressionLayer, Predicate as _};
+use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
 use utils::{connect, rss_handler, sitemap_handler};
 
@@ -45,8 +46,24 @@ async fn main() {
         logging::warn!("There is no corresponding .env file");
     }
 
-    let Ok(conf) = get_configuration(Some("Cargo.toml")) else {
-        logging::error!("Failed to get configuration");
+    // Determine the configuration file path
+    let config_path = std::env::var("LEPTOS_CONFIG_PATH").unwrap_or_else(|_| {
+        // Try multiple possible locations for Cargo.toml
+        let possible_paths = vec![
+            "../Cargo.toml".to_string(),    // When running from server directory
+            "Cargo.toml".to_string(),       // When running from root directory
+            "./Cargo.toml".to_string(),     // Explicit current directory
+            "../../Cargo.toml".to_string(), // When running from target/debug
+        ];
+
+        possible_paths
+            .into_iter()
+            .find(|path| std::path::Path::new(path).exists())
+            .unwrap_or_else(|| "../Cargo.toml".to_string()) // Fallback to original
+    });
+
+    let Ok(conf) = get_configuration(Some(&config_path)) else {
+        logging::error!("Failed to get configuration from: {}", config_path);
         return;
     };
 
@@ -60,42 +77,37 @@ async fn main() {
         leptos_options: leptos_options.clone(),
     };
 
-    let app = Router::new()
-        .leptos_routes_with_context(
-            &app_state,
-            routes,
-            {
-                let app_state = app_state.clone();
-                move || provide_context(app_state.clone())
-            },
-            {
-                let leptos_options = leptos_options.clone();
-                move || shell(leptos_options.clone())
-            },
-        )
-        .route("/health", get(health_handler))
-        .route("/rss.xml", get(rss_handler))
-        .route("/sitemap.xml", get(sitemap_handler))
-        .layer(
-            tower::ServiceBuilder::new()
-                .layer(TraceLayer::new_for_http())
-                .layer(axum::middleware::from_fn(redirect_www)),
-        )
-        .layer(
-            CompressionLayer::new()
-                .quality(CompressionLevel::Default)
-                .compress_when(
-                    SizeAbove::new(1500)
-                        .and(NotForContentType::GRPC)
-                        .and(NotForContentType::IMAGES)
-                        .and(NotForContentType::const_new("application/xml"))
-                        .and(NotForContentType::const_new("application/javascript"))
-                        .and(NotForContentType::const_new("application/wasm"))
-                        .and(NotForContentType::const_new("test/css")),
-                ),
-        )
-        .fallback(leptos_axum::file_and_error_handler::<AppState, _>(shell))
-        .with_state(app_state);
+    let app =
+        Router::new()
+            .leptos_routes_with_context(
+                &app_state,
+                routes,
+                {
+                    let app_state = app_state.clone();
+                    move || provide_context(app_state.clone())
+                },
+                {
+                    let leptos_options = leptos_options.clone();
+                    move || shell(leptos_options.clone())
+                },
+            )
+            .route("/health", get(health_handler))
+            .route("/rss", get(rss_handler))
+            .route("/rss.xml", get(rss_handler))
+            .route("/sitemap.xml", get(sitemap_handler))
+            .nest_service("/pkg", ServeDir::new("/home/alex/blog/target/site/pkg"))
+            .nest_service("/public", ServeDir::new("/home/alex/blog/public"))
+            .nest_service("/fonts", ServeDir::new("/home/alex/blog/public/fonts"))
+            .layer(
+                tower::ServiceBuilder::new()
+                    .layer(TraceLayer::new_for_http())
+                    .layer(axum::middleware::from_fn(redirect_www)),
+            )
+            .layer(CompressionLayer::new().compress_when(
+                NotForContentType::new("application/rss+xml").and(SizeAbove::new(1024)),
+            ))
+            .fallback(leptos_axum::file_and_error_handler::<AppState, _>(shell))
+            .with_state(app_state);
 
     let listener = match tokio::net::TcpListener::bind(&addr).await {
         Ok(list) => list,
@@ -105,8 +117,17 @@ async fn main() {
         }
     };
     logging::log!("Listening on http://{}", &addr);
-    if let Err(err) = axum::serve(listener, app.into_make_service()).await {
-        logging::error!("Failed to serve app: {}", err);
+
+    // Add more detailed error handling for the serve function
+    let serve_result = axum::serve(listener, app.into_make_service()).await;
+    match serve_result {
+        Ok(_) => {
+            logging::log!("Server shutdown gracefully");
+        }
+        Err(err) => {
+            logging::error!("Failed to serve app: {}", err);
+            logging::error!("Error details: {:?}", err);
+        }
     }
 }
 

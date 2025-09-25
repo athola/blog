@@ -1,9 +1,10 @@
 use http::status::StatusCode;
 use leptos::{
-    html::{a, div, h1},
+    html::{div, h1},
     prelude::*,
     svg::{path, svg},
 };
+use leptos_router::components::{A, AProps};
 use thiserror::Error;
 
 #[derive(Clone, Debug, Error)]
@@ -65,15 +66,20 @@ pub fn component(
                         h1().class("text-xl tracking-widest text-gray-400 uppercase").child(
                             format!("{error_code}| {error_string}")
                         ),
-                        a()
-                            .href("/")
-                            .class("flex gap-1 justify-center items-center mt-6 text-center duration-200 hover:text-[#68b5fc]")
-                            .child((
-                                svg().attr("width", "1.1em").attr("height", "1.1em").attr("viewBox", "0 0 24 24").attr("fill", "currentColor").attr("role", "graphics-symbol").attr("data-hk", "0-0-0-98").child(
-                                    path().attr("d", "M21 11H6.414l5.293-5.293-1.414-1.414L2.586 12l7.707 7.707 1.414-1.414L6.414 13H21z"),
-                                ),
-                                "Go back home",
-                            )),
+                        div().class("flex gap-1 justify-center items-center mt-6 text-center duration-200 hover:text-[#68b5fc]").child(
+                            A(AProps::builder()
+                                .href("/")
+                                .children(ToChildren::to_children(move || {
+                                    vec![
+                                        svg().attr("width", "1.1em").attr("height", "1.1em").attr("viewBox", "0 0 24 24").attr("fill", "currentColor").attr("role", "graphics-symbol").attr("data-hk", "0-0-0-98").child(
+                                            path().attr("d", "M21 11H6.414l5.293-5.293-1.414-1.414L2.586 12l7.707 7.707 1.414-1.414L6.414 13H21z"),
+                                        ).into_any(),
+                                        "Go back home".into_any(),
+                                    ]
+                                }))
+                                .build()
+                            )
+                        )
                     ))
                 }).build(),
         ),

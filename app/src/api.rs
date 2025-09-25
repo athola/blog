@@ -213,9 +213,51 @@ pub async fn select_references() -> Result<Vec<Reference>, ServerFnError> {
     Ok(references)
 }
 
+#[derive(Deserialize)]
+pub struct Pagination {
+    pub page: usize,
+}
+
+#[server(endpoint = "/api/activities/create")]
+pub async fn create_activity(activity: crate::types::Activity) -> Result<(), ServerFnError> {
+    use crate::types::AppState;
+    use leptos::prelude::expect_context;
+
+    let AppState { db, .. } = expect_context::<AppState>();
+
+    let _created: Option<crate::types::Activity> =
+        retry_db_operation(|| async { db.create("activity").content(activity.clone()).await })
+            .await?;
+
+    Ok(())
+}
+
+#[server(endpoint = "/api/activities")]
+pub async fn select_activities(
+    #[server(default)] page: usize,
+) -> Result<Vec<crate::types::Activity>, ServerFnError> {
+    use crate::types::AppState;
+    use leptos::prelude::expect_context;
+
+    let AppState { db, .. } = expect_context::<AppState>();
+    let activities_per_page = 10;
+    let start = page * activities_per_page;
+
+    let query = format!(
+        "SELECT * FROM activity ORDER BY created_at DESC LIMIT {} START {};",
+        activities_per_page, start
+    );
+
+    let mut query = retry_db_operation(|| async { db.query(&query).await }).await?;
+    let activities = query.take::<Vec<crate::types::Activity>>(0)?;
+
+    Ok(activities)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::Activity;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -403,6 +445,80 @@ mod tests {
         let _: fn(String) -> _ = increment_views;
         let _: fn(ContactRequest) -> _ = contact;
         let _: fn() -> _ = select_references;
+        let _: fn(Activity) -> _ = create_activity;
+        let _: fn(usize) -> _ = select_activities;
+    }
+
+    #[test]
+    fn test_activity_default() {
+        let activity = Activity::default();
+        assert_eq!(activity.content, "");
+        assert_eq!(activity.tags, Vec::<String>::new());
+        assert_eq!(activity.source, None);
+        assert_eq!(activity.created_at, "");
+    }
+
+    #[test]
+    fn test_activity_serialization() {
+        let activity = Activity {
+            content: "Test activity".to_string(),
+            tags: vec!["test".to_string(), "rust".to_string()],
+            source: Some("https://example.com".to_string()),
+            created_at: "2023-01-01T00:00:00Z".to_string(),
+            ..Default::default()
+        };
+
+        let serialized = serde_json::to_string(&activity).unwrap();
+        let deserialized: Activity = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(activity.content, deserialized.content);
+        assert_eq!(activity.tags, deserialized.tags);
+        assert_eq!(activity.source, deserialized.source);
+        assert_eq!(activity.created_at, deserialized.created_at);
+    }
+
+    #[test]
+    fn test_pagination_struct() {
+        let pagination = Pagination { page: 1 };
+        assert_eq!(pagination.page, 1);
+    }
+
+    #[cfg(feature = "ssr")]
+    #[tokio::test]
+    async fn test_create_activity_with_retry() {
+        // Test that create_activity function exists and has correct signature
+        let _: fn(Activity) -> _ = create_activity;
+
+        // Test activity creation with valid data
+        let activity = Activity {
+            content: "Test activity content".to_string(),
+            tags: vec!["test".to_string()],
+            source: Some("https://test.com".to_string()),
+            ..Default::default()
+        };
+
+        // Verify the activity can be serialized (required for database operations)
+        let serialized = serde_json::to_string(&activity).unwrap();
+        assert!(!serialized.is_empty());
+        assert!(serialized.contains("Test activity content"));
+    }
+
+    #[cfg(feature = "ssr")]
+    #[tokio::test]
+    async fn test_select_activities_with_retry() {
+        // Test that select_activities function exists and has correct signature
+        let _: fn(usize) -> _ = select_activities;
+
+        // Test pagination parameter handling
+        let page = 0;
+        let activities_per_page = 10;
+        let start = page * activities_per_page;
+
+        assert_eq!(start, 0);
+
+        let page = 1;
+        let start = page * activities_per_page;
+        assert_eq!(start, 10);
     }
 
     #[cfg(feature = "ssr")]

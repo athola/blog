@@ -90,3 +90,30 @@ pub struct Reference {
     pub updated_at: String,
     pub is_published: bool,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Activity {
+    #[serde(default = "default_thing")]
+    pub id: Thing,
+    pub content: String,
+    pub tags: Vec<String>,
+    pub source: Option<String>,
+    #[serde(default)]
+    pub created_at: String,
+}
+
+impl Default for Activity {
+    fn default() -> Self {
+        Self {
+            id: default_thing(),
+            content: String::new(),
+            tags: Vec::new(),
+            source: None,
+            created_at: String::new(),
+        }
+    }
+}
+
+fn default_thing() -> Thing {
+    Thing::from(("activity", "0"))
+}

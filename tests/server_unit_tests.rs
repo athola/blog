@@ -7,7 +7,7 @@ mod server_unit_tests {
         // Test that health check would return proper JSON structure
         let timestamp = "2023-01-01T00:00:00Z";
         let version = "0.1.0";
-        
+
         assert_eq!(timestamp, "2023-01-01T00:00:00Z");
         assert_eq!(version, "0.1.0");
     }
@@ -17,7 +17,7 @@ mod server_unit_tests {
         // Test default environment variable handling
         let protocol = std::env::var("SURREAL_PROTOCOL").unwrap_or_else(|_| "http".to_owned());
         let host = std::env::var("SURREAL_HOST").unwrap_or_else(|_| "127.0.0.1:8000".to_owned());
-        
+
         assert_eq!(protocol, "http");
         assert_eq!(host, "127.0.0.1:8000");
     }

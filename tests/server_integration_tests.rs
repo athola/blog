@@ -21,6 +21,7 @@ mod server_integration_tests {
         ("/contact", "Contact page"),
     ];
 
+    #[allow(dead_code)]
     /// Critical assets that must be available
     const CRITICAL_ASSETS: &[(&str, &str, u64)] = &[
         ("/pkg/blog.css", "text/css", 1024),
@@ -44,7 +45,7 @@ mod server_integration_tests {
             // Get a unique port for this test instance
             let port = PORT_COUNTER.fetch_add(1, Ordering::SeqCst);
             let server_url = format!("http://127.0.0.1:{}", port);
-            
+
             eprintln!("Starting test server on port {}...", port);
             Self::cleanup_existing_processes(port).await;
 
@@ -77,8 +78,11 @@ mod server_integration_tests {
             // Set environment variables for the server
             std::env::set_var("LEPTOS_SITE_ADDR", format!("127.0.0.1:{}", port));
             std::env::set_var("SURREAL_HOST", format!("127.0.0.1:{}", db_port));
-            
-            eprintln!("Starting server binary on port {} with DB on port {}...", port, db_port);
+
+            eprintln!(
+                "Starting server binary on port {} with DB on port {}...",
+                port, db_port
+            );
             let mut process = Command::new("./target/debug/server")
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
@@ -103,19 +107,32 @@ mod server_integration_tests {
         async fn start_database(port: u16) -> Result<Child, Box<dyn std::error::Error>> {
             let db_port = 8000 + (port - 3007); // Use a unique DB port for each test
             let db_file = format!("rustblog_test_{}.db", port);
-            
-            eprintln!("Starting SurrealDB database on port {} with file {}...", db_port, db_file);
+
+            eprintln!(
+                "Starting SurrealDB database on port {} with file {}...",
+                db_port, db_file
+            );
 
             // Kill any existing database processes first
-            let _ = Command::new("pkill").args(["-f", &format!("surreal.*{}", db_port)]).output();
+            let _ = Command::new("pkill")
+                .args(["-f", &format!("surreal.*{}", db_port)])
+                .output();
             // Also kill any processes using the specific db port
-            let _ = Command::new("bash").args(["-c", &format!("lsof -ti:{} | xargs -r kill -TERM 2>/dev/null || true", db_port)]).output();
+            let _ = Command::new("bash")
+                .args([
+                    "-c",
+                    &format!(
+                        "lsof -ti:{} | xargs -r kill -TERM 2>/dev/null || true",
+                        db_port
+                    ),
+                ])
+                .output();
             tokio::time::sleep(Duration::from_millis(500)).await;
 
             // Start the database process with unique port and file
             let db_command = format!("env SURREAL_EXPERIMENTAL_GRAPHQL=true surreal start --log info --user root --pass root --bind 127.0.0.1:{} surrealkv:{}", db_port, db_file);
             eprintln!("Executing command: {}", db_command);
-            
+
             let mut db_process = Command::new("bash")
                 .arg("-c")
                 .arg(&db_command)
@@ -129,7 +146,10 @@ mod server_integration_tests {
 
             // Check if the process is still running
             if let Ok(Some(status)) = db_process.try_wait() {
-                eprintln!("Database process exited immediately with status: {}", status);
+                eprintln!(
+                    "Database process exited immediately with status: {}",
+                    status
+                );
                 // Try to get stderr output
                 if let Some(ref mut stderr) = db_process.stderr {
                     use std::io::Read;
@@ -145,7 +165,10 @@ mod server_integration_tests {
             // Wait for database to be ready
             let timeout = Instant::now() + Duration::from_secs(30);
 
-            eprintln!("Waiting for database on port {} to be ready (up to 30 seconds)...", db_port);
+            eprintln!(
+                "Waiting for database on port {} to be ready (up to 30 seconds)...",
+                db_port
+            );
 
             while Instant::now() < timeout {
                 if Self::test_database_connection(db_port).await {
@@ -167,7 +190,11 @@ mod server_integration_tests {
                 }
             }
 
-            Err(format!("Database on port {} is not responsive within timeout", db_port).into())
+            Err(format!(
+                "Database on port {} is not responsive within timeout",
+                db_port
+            )
+            .into())
         }
 
         /// Test if database is responsive
@@ -175,10 +202,14 @@ mod server_integration_tests {
             // Try to make an actual HTTP request to SurrealDB's root endpoint
             let client = reqwest::Client::new();
             let db_url = format!("http://127.0.0.1:{}", port);
-            
+
             // First try a simple TCP connection to see if the port is open
-            match tokio::time::timeout(Duration::from_secs(1), 
-                tokio::net::TcpStream::connect(format!("127.0.0.1:{}", port))).await {
+            match tokio::time::timeout(
+                Duration::from_secs(1),
+                tokio::net::TcpStream::connect(format!("127.0.0.1:{}", port)),
+            )
+            .await
+            {
                 Ok(Ok(_)) => {
                     eprintln!("Database port {} is open", port);
                 }
@@ -191,7 +222,7 @@ mod server_integration_tests {
                     return false;
                 }
             }
-            
+
             // Then try an HTTP request with more detailed error handling
             match client
                 .get(&db_url)
@@ -201,8 +232,12 @@ mod server_integration_tests {
             {
                 Ok(response) => {
                     // Database is ready if we get any response
-                    eprintln!("Database HTTP test response on port {}: {} (status: {})", 
-                        port, response.status(), response.status());
+                    eprintln!(
+                        "Database HTTP test response on port {}: {} (status: {})",
+                        port,
+                        response.status(),
+                        response.status()
+                    );
                     true
                 }
                 Err(e) => {
@@ -210,10 +245,14 @@ mod server_integration_tests {
                     // Even if we get an error, if we can reach the server it means it's running
                     // Check if it's a common error that indicates the server is running but returning an error
                     let error_str = e.to_string().to_lowercase();
-                    if error_str.contains("connection closed") || 
-                       error_str.contains("connection reset") ||
-                       error_str.contains("operation timed out") {
-                        eprintln!("Database on port {} appears to be running but not fully ready yet", port);
+                    if error_str.contains("connection closed")
+                        || error_str.contains("connection reset")
+                        || error_str.contains("operation timed out")
+                    {
+                        eprintln!(
+                            "Database on port {} appears to be running but not fully ready yet",
+                            port
+                        );
                         true
                     } else {
                         false
@@ -240,10 +279,24 @@ mod server_integration_tests {
 
             if !ports_in_use.is_empty() {
                 // Try to clean up server processes
-                let _ = Command::new("pkill").args(["-f", &format!("server.*{}", port)]).output();
+                let _ = Command::new("pkill")
+                    .args(["-f", &format!("server.*{}", port)])
+                    .output();
                 // Kill any processes using the server ports
-                let ports_str = server_ports.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(",");
-                let _ = Command::new("bash").args(["-c", &format!("lsof -ti:{} | xargs -r kill -TERM 2>/dev/null || true", ports_str)]).output();
+                let ports_str = server_ports
+                    .iter()
+                    .map(|p| p.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",");
+                let _ = Command::new("bash")
+                    .args([
+                        "-c",
+                        &format!(
+                            "lsof -ti:{} | xargs -r kill -TERM 2>/dev/null || true",
+                            ports_str
+                        ),
+                    ])
+                    .output();
                 tokio::time::sleep(Duration::from_millis(500)).await;
 
                 // Check again after cleanup
@@ -264,110 +317,139 @@ mod server_integration_tests {
         }
 
         /// Wait for server to start and respond
-    async fn wait_for_server_startup(
-        client: &reqwest::Client,
-        server_url: &str,
-        process: &mut Child,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let timeout = Instant::now() + Duration::from_secs(45); // Reduced timeout for CI environments
-        let mut attempt = 0;
+        async fn wait_for_server_startup(
+            client: &reqwest::Client,
+            server_url: &str,
+            process: &mut Child,
+        ) -> Result<(), Box<dyn std::error::Error>> {
+            let timeout = Instant::now() + Duration::from_secs(45); // Reduced timeout for CI environments
+            let mut attempt = 0;
 
-        eprintln!("Waiting for Leptos server on {} to respond...", server_url);
+            eprintln!("Waiting for Leptos server on {} to respond...", server_url);
 
-        while Instant::now() < timeout {
-            attempt += 1;
+            while Instant::now() < timeout {
+                attempt += 1;
 
-            // Check if the process has exited unexpectedly
+                // Check if the process has exited unexpectedly
+                match process.try_wait() {
+                    Ok(Some(status)) => {
+                        eprintln!("Server process exited unexpectedly with status: {}", status);
+                        // Try to get stderr output if available
+                        if let Some(ref mut stderr) = process.stderr {
+                            use std::io::Read;
+                            let mut buffer = String::new();
+                            let _ = stderr.read_to_string(&mut buffer);
+                            if !buffer.is_empty() {
+                                eprintln!("Server stderr: {}", buffer);
+                            }
+                        }
+                        return Err(
+                            format!("Server process exited unexpectedly: {}", status).into()
+                        );
+                    }
+                    Ok(None) => {
+                        // Process is still running
+                    }
+                    Err(e) => {
+                        eprintln!("Error checking server process status: {}", e);
+                    }
+                }
+
+                match client.get(server_url).send().await {
+                    Ok(response) if response.status().is_success() => {
+                        eprintln!(
+                            "Server on {} is responding! (attempt {})",
+                            server_url, attempt
+                        );
+                        // Give it a moment to fully initialize
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+                        return Ok(());
+                    }
+                    Ok(response) => {
+                        eprintln!(
+                            "Server on {} responded with status: {} (attempt {})",
+                            server_url,
+                            response.status(),
+                            attempt
+                        );
+                    }
+                    Err(e) => {
+                        if attempt % 5 == 0 {
+                            eprintln!("Connection attempt {} to {}: {}", attempt, server_url, e);
+                        }
+
+                        // Additional debugging - check if process is still alive
+                        if attempt % 15 == 0 {
+                            match process.try_wait() {
+                                Ok(Some(status)) => {
+                                    eprintln!(
+                                        "Server process exited during wait with status: {}",
+                                        status
+                                    );
+                                    return Err(format!(
+                                        "Server process exited during wait: {}",
+                                        status
+                                    )
+                                    .into());
+                                }
+                                Ok(None) => {
+                                    eprintln!(
+                                        "Server process still running after {} attempts",
+                                        attempt
+                                    );
+                                }
+                                Err(e) => {
+                                    eprintln!("Error checking server process during wait: {}", e);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                tokio::time::sleep(Duration::from_millis(250)).await; // Reduced sleep for faster response
+            }
+
+            // Before giving up, check if the process is still running
             match process.try_wait() {
                 Ok(Some(status)) => {
-                    eprintln!("Server process exited unexpectedly with status: {}", status);
-                    // Try to get stderr output if available
-                    if let Some(ref mut stderr) = process.stderr {
-                        use std::io::Read;
-                        let mut buffer = String::new();
-                        let _ = stderr.read_to_string(&mut buffer);
-                        if !buffer.is_empty() {
-                            eprintln!("Server stderr: {}", buffer);
-                        }
-                    }
-                    return Err(format!("Server process exited unexpectedly: {}", status).into());
+                    eprintln!(
+                        "Server process exited with status: {} after timeout",
+                        status
+                    );
+                    return Err(format!(
+                        "Server process exited with status: {} after timeout",
+                        status
+                    )
+                    .into());
                 }
                 Ok(None) => {
-                    // Process is still running
+                    eprintln!("Server process still running but timed out waiting for response");
                 }
                 Err(e) => {
-                    eprintln!("Error checking server process status: {}", e);
+                    eprintln!("Error checking server process after timeout: {}", e);
                 }
             }
 
-            match client.get(server_url).send().await {
-                Ok(response) if response.status().is_success() => {
-                    eprintln!("Server on {} is responding! (attempt {})", server_url, attempt);
-                    // Give it a moment to fully initialize
-                    tokio::time::sleep(Duration::from_secs(1)).await;
-                    return Ok(());
-                }
-                Ok(response) => {
-                    eprintln!(
-                        "Server on {} responded with status: {} (attempt {})",
-                        server_url,
-                        response.status(),
-                        attempt
-                    );
-                }
-                Err(e) => {
-                    if attempt % 5 == 0 {
-                        eprintln!("Connection attempt {} to {}: {}", attempt, server_url, e);
-                    }
-                    
-                    // Additional debugging - check if process is still alive
-                    if attempt % 15 == 0 {
-                        match process.try_wait() {
-                            Ok(Some(status)) => {
-                                eprintln!("Server process exited during wait with status: {}", status);
-                                return Err(format!("Server process exited during wait: {}", status).into());
-                            }
-                            Ok(None) => {
-                                eprintln!("Server process still running after {} attempts", attempt);
-                            }
-                            Err(e) => {
-                                eprintln!("Error checking server process during wait: {}", e);
-                            }
-                        }
-                    }
-                }
-            }
-
-            tokio::time::sleep(Duration::from_millis(250)).await; // Reduced sleep for faster response
+            Err(format!(
+                "Server on {} failed to start within timeout period",
+                server_url
+            )
+            .into())
         }
-
-        // Before giving up, check if the process is still running
-        match process.try_wait() {
-            Ok(Some(status)) => {
-                eprintln!("Server process exited with status: {} after timeout", status);
-                return Err(format!("Server process exited with status: {} after timeout", status).into());
-            }
-            Ok(None) => {
-                eprintln!("Server process still running but timed out waiting for response");
-            }
-            Err(e) => {
-                eprintln!("Error checking server process after timeout: {}", e);
-            }
-        }
-
-        Err(format!("Server on {} failed to start within timeout period", server_url).into())
-    }
 
         /// Clean up existing processes
         async fn cleanup_existing_processes(port: u16) {
             let db_port = 8000 + (port - 3007);
             let reload_port = port + 1000;
-            
+
             // Kill processes associated with our specific ports
             let _ = Command::new("bash")
                 .args([
                     "-c",
-                    &format!("lsof -ti:{},{},{} | xargs -r kill -TERM 2>/dev/null || true", port, reload_port, db_port),
+                    &format!(
+                        "lsof -ti:{},{},{} | xargs -r kill -TERM 2>/dev/null || true",
+                        port, reload_port, db_port
+                    ),
                 ])
                 .output();
 
@@ -378,7 +460,10 @@ mod server_integration_tests {
             let _ = Command::new("bash")
                 .args([
                     "-c",
-                    &format!("lsof -ti:{},{},{} | xargs -r kill -KILL 2>/dev/null || true", port, reload_port, db_port),
+                    &format!(
+                        "lsof -ti:{},{},{} | xargs -r kill -KILL 2>/dev/null || true",
+                        port, reload_port, db_port
+                    ),
                 ])
                 .output();
         }
@@ -392,15 +477,18 @@ mod server_integration_tests {
     impl Drop for TestServer {
         fn drop(&mut self) {
             eprintln!("Cleaning up TestServer on port {}...", self.port);
-            
+
             // Clean up the server process
             if let Some(mut process) = self.process.take() {
                 eprintln!("Terminating server process on port {}...", self.port);
-                
+
                 // Try graceful termination first
                 match process.kill() {
                     Ok(_) => eprintln!("Sent kill signal to server process on port {}", self.port),
-                    Err(e) => eprintln!("Failed to send kill signal to server process on port {}: {}", self.port, e),
+                    Err(e) => eprintln!(
+                        "Failed to send kill signal to server process on port {}: {}",
+                        self.port, e
+                    ),
                 }
 
                 // Wait for process to terminate with timeout
@@ -410,7 +498,10 @@ mod server_integration_tests {
                 while start.elapsed() < timeout {
                     match process.try_wait() {
                         Ok(Some(status)) => {
-                            eprintln!("Server process on port {} exited with status: {}", self.port, status);
+                            eprintln!(
+                                "Server process on port {} exited with status: {}",
+                                self.port, status
+                            );
                             break;
                         }
                         Ok(None) => {
@@ -418,7 +509,10 @@ mod server_integration_tests {
                             std::thread::sleep(std::time::Duration::from_millis(25));
                         }
                         Err(e) => {
-                            eprintln!("Error checking server process status on port {}: {}", self.port, e);
+                            eprintln!(
+                                "Error checking server process status on port {}: {}",
+                                self.port, e
+                            );
                             break;
                         }
                     }
@@ -435,11 +529,17 @@ mod server_integration_tests {
             // Clean up the database process
             if let Some(mut db_process) = self.db_process.take() {
                 eprintln!("Terminating database process for port {}...", self.port);
-                
+
                 // Try graceful termination first
                 match db_process.kill() {
-                    Ok(_) => eprintln!("Sent kill signal to database process for port {}", self.port),
-                    Err(e) => eprintln!("Failed to send kill signal to database process for port {}: {}", self.port, e),
+                    Ok(_) => eprintln!(
+                        "Sent kill signal to database process for port {}",
+                        self.port
+                    ),
+                    Err(e) => eprintln!(
+                        "Failed to send kill signal to database process for port {}: {}",
+                        self.port, e
+                    ),
                 }
 
                 // Wait for process to terminate with timeout
@@ -449,7 +549,10 @@ mod server_integration_tests {
                 while start.elapsed() < timeout {
                     match db_process.try_wait() {
                         Ok(Some(status)) => {
-                            eprintln!("Database process for port {} exited with status: {}", self.port, status);
+                            eprintln!(
+                                "Database process for port {} exited with status: {}",
+                                self.port, status
+                            );
                             break;
                         }
                         Ok(None) => {
@@ -457,7 +560,10 @@ mod server_integration_tests {
                             std::thread::sleep(std::time::Duration::from_millis(25));
                         }
                         Err(e) => {
-                            eprintln!("Error checking database process status for port {}: {}", self.port, e);
+                            eprintln!(
+                                "Error checking database process status for port {}: {}",
+                                self.port, e
+                            );
                             break;
                         }
                     }
@@ -469,7 +575,7 @@ mod server_integration_tests {
                     let _ = db_process.kill();
                     let _ = db_process.wait();
                 }
-                
+
                 // Clean up database file
                 let db_file = format!("rustblog_test_{}.db", self.port);
                 let _ = std::fs::remove_file(&db_file);
@@ -495,10 +601,7 @@ mod server_integration_tests {
         path: &str,
         description: &str,
     ) -> Result<String, Box<dyn std::error::Error>> {
-        let response = client
-            .get(format!("{}{}", server_url, path))
-            .send()
-            .await?;
+        let response = client.get(format!("{}{}", server_url, path)).send().await?;
 
         assert!(
             response.status().is_success(),
@@ -529,10 +632,7 @@ mod server_integration_tests {
         expected_content_type: &str,
         min_size: u64,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let response = client
-            .get(format!("{}{}", server_url, path))
-            .send()
-            .await?;
+        let response = client.get(format!("{}{}", server_url, path)).send().await?;
 
         assert!(
             response.status().is_success(),
@@ -571,7 +671,6 @@ mod server_integration_tests {
     /// Test 1: Server Connectivity and Basic Response
     /// Verifies server starts, responds to requests, and returns proper content type
     #[tokio::test]
-    #[cfg(not(any(feature = "ci", coverage)))]
     async fn test_server_connectivity() -> Result<(), Box<dyn std::error::Error>> {
         let (server, server_url) = start_test_server().await?;
         let client = server.client.clone();
@@ -593,7 +692,7 @@ mod server_integration_tests {
     /// Test 2: Page Navigation and Content
     /// Tests all core pages for accessibility, content type, and expected content
     #[tokio::test]
-    #[cfg(not(any(feature = "ci", coverage)))]
+
     async fn test_page_navigation_and_content() -> Result<(), Box<dyn std::error::Error>> {
         let (server, server_url) = start_test_server().await?;
         let client = server.client.clone();
@@ -611,18 +710,9 @@ mod server_integration_tests {
 
         // Test navigation links on home page
         let home_body = fetch_and_validate_page(&client, &server_url, "/", "Home page").await?;
-        assert!(
-            home_body.contains(r#""#),
-            "Should contain home link"
-        );
-        assert!(
-            home_body.contains(r#""#),
-            "Should contain references link"
-        );
-        assert!(
-            home_body.contains(r#""#),
-            "Should contain contact link"
-        );
+        assert!(home_body.contains(r#""#), "Should contain home link");
+        assert!(home_body.contains(r#""#), "Should contain references link");
+        assert!(home_body.contains(r#""#), "Should contain contact link");
         assert!(
             home_body.contains("github.com/athola"),
             "Should contain GitHub link"
@@ -640,7 +730,8 @@ mod server_integration_tests {
             "References page should contain 'Project References'"
         );
 
-        let contact_body = fetch_and_validate_page(&client, &server_url, "/contact", "Contact page").await?;
+        let contact_body =
+            fetch_and_validate_page(&client, &server_url, "/contact", "Contact page").await?;
         assert!(
             contact_body.contains("Get In Touch"),
             "Contact page should contain 'Get In Touch'"
@@ -656,14 +747,15 @@ mod server_integration_tests {
     /// Test 3: Static Asset Serving
     /// Validates that all critical assets (CSS, JS) are served correctly with proper headers
     #[tokio::test]
-    #[cfg(not(any(feature = "ci", coverage)))]
+
     async fn test_static_asset_serving() -> Result<(), Box<dyn std::error::Error>> {
         let (server, server_url) = start_test_server().await?;
         let client = server.client.clone();
 
         // Test critical assets - be more forgiving in coverage mode
         for &(path, expected_content_type, min_size) in CRITICAL_ASSETS {
-            match validate_asset(&client, &server_url, path, expected_content_type, min_size).await {
+            match validate_asset(&client, &server_url, path, expected_content_type, min_size).await
+            {
                 Ok(_) => {} // Asset validated successfully
                 Err(e) if cfg!(coverage) => {
                     eprintln!("Warning: Asset validation failed in coverage mode: {}", e);
@@ -708,14 +800,15 @@ mod server_integration_tests {
     /// Test 4: Server Performance
     /// Measures response times to ensure reasonable performance under load
     #[tokio::test]
-    #[cfg(not(any(feature = "ci", coverage)))]
+
     async fn test_server_performance() -> Result<(), Box<dyn std::error::Error>> {
         let (server, server_url) = start_test_server().await?;
         let client = server.client.clone();
         let mut response_times = Vec::new();
 
         // Test multiple requests to get average response time
-        for _ in 0..3 { // Reduced from 5 to 3 to save resources
+        for _ in 0..3 {
+            // Reduced from 5 to 3 to save resources
             let start = Instant::now();
             let response = client.get(&server_url).send().await?;
             let elapsed = start.elapsed();
@@ -749,7 +842,7 @@ mod server_integration_tests {
     /// Test 5: Error Handling
     /// Tests server behavior with invalid routes and error conditions
     #[tokio::test]
-    #[cfg(not(any(feature = "ci", coverage)))]
+
     async fn test_error_handling() -> Result<(), Box<dyn std::error::Error>> {
         let (server, server_url) = start_test_server().await?;
         let client = server.client.clone();
@@ -772,7 +865,7 @@ mod server_integration_tests {
     /// Test 6: Complete Development Workflow
     /// End-to-end test ensuring all components work together
     #[tokio::test]
-    #[cfg(not(any(feature = "ci", coverage)))]
+
     async fn test_complete_development_workflow() -> Result<(), Box<dyn std::error::Error>> {
         let (server, server_url) = start_test_server().await?;
         let client = server.client.clone();
@@ -786,10 +879,7 @@ mod server_integration_tests {
 
         // Verify all core pages are accessible
         for &(path, _) in CORE_PAGES {
-            let response = client
-                .get(format!("{}{}", server_url, path))
-                .send()
-                .await?;
+            let response = client.get(format!("{}{}", server_url, path)).send().await?;
             assert!(
                 response.status().is_success(),
                 "Page {} should be accessible",
@@ -799,10 +889,7 @@ mod server_integration_tests {
 
         // Verify critical assets are available
         for &(path, _, _) in CRITICAL_ASSETS {
-            let response = client
-                .get(format!("{}{}", server_url, path))
-                .send()
-                .await?;
+            let response = client.get(format!("{}{}", server_url, path)).send().await?;
             assert!(
                 response.status().is_success(),
                 "Asset {} should be available",
@@ -816,7 +903,7 @@ mod server_integration_tests {
     /// Test 7: Server Coordination Management
     /// Tests that isolated server instances work correctly
     #[tokio::test]
-    #[cfg(not(any(feature = "ci", coverage)))]
+
     async fn test_server_coordination_management() -> Result<(), Box<dyn std::error::Error>> {
         let (server1, server_url1) = start_test_server().await?;
         let client1 = server1.client.clone();
