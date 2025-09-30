@@ -6,13 +6,34 @@ use axum::extract::FromRef;
 #[cfg(feature = "ssr")]
 use leptos::config::LeptosOptions;
 #[cfg(feature = "ssr")]
-use surrealdb::{Surreal, engine::remote::http::Client};
+use surrealdb::{Surreal, engine::remote::http::Client as HttpClient};
 
 #[cfg(feature = "ssr")]
-#[derive(FromRef, Debug, Clone)]
-pub struct AppState {
-    pub db: Surreal<Client>,
+#[derive(Debug, Clone)]
+pub struct AppState<T: surrealdb::Connection = HttpClient> {
+    pub db: Surreal<T>,
     pub leptos_options: LeptosOptions,
+}
+
+#[cfg(feature = "ssr")]
+impl<T> FromRef<AppState<T>> for Surreal<T>
+where
+    T: surrealdb::Connection,
+    Surreal<T>: Clone,
+{
+    fn from_ref(state: &AppState<T>) -> Self {
+        state.db.clone()
+    }
+}
+
+#[cfg(feature = "ssr")]
+impl<T> FromRef<AppState<T>> for LeptosOptions
+where
+    T: surrealdb::Connection,
+{
+    fn from_ref(state: &AppState<T>) -> Self {
+        state.leptos_options.clone()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

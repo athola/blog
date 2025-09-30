@@ -161,13 +161,23 @@ path = "tests/schema_evolution_tests.rs"
 name = "activity_feed_tests"
 path = "tests/activity_feed_tests.rs"
 
+[[test]]
+name = "activity_unit_tests"
+path = "tests/activity_unit_tests.rs"
+
 [dev-dependencies]
+app = { path = "app" }
+leptos = { workspace = true, features = ["ssr"] }
 serde = { version = "1.0.226", features = ["derive"] }
 uuid = { version = "1.18", features = ["v4"] }
 surrealdb = { version = "2.3.10", features = ["protocol-http", "kv-mem"] }
 tokio = { version = "1", features = ["full"] }
 reqwest.workspace = true
+chrono = { workspace = true }
 lazy_static = "1.5"
 once_cell = "1.21"
 serde_json = "1.0"
-
+lettre = { version = "0.11.18", default-features = false, features = ["builder", "smtp-transport", "rustls-tls", "tokio1", "tokio1-rustls-tls"] }
+markdown = { path = "markdown", default-features = false, features = ["ssr"] }
+tracing = { workspace = true }
+tokio-retry = { workspace = true }

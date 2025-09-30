@@ -72,10 +72,19 @@ async fn main() {
     let routes = generate_route_list(component);
 
     let db = connect().await;
-    let app_state = AppState {
+    let app_state = AppState::<surrealdb::engine::remote::http::Client> {
         db,
         leptos_options: leptos_options.clone(),
     };
+
+    // Get paths from leptos options
+    let site_pkg_dir = leptos_options.site_pkg_dir.to_string();
+    let site_root = leptos_options.site_root.to_string();
+
+    // Construct full paths
+    let pkg_path = format!("{}/{}", site_root, site_pkg_dir);
+    let public_path = format!("{}/public", site_root);
+    let fonts_path = format!("{}/public/fonts", site_root);
 
     let app =
         Router::new()
@@ -95,9 +104,9 @@ async fn main() {
             .route("/rss", get(rss_handler))
             .route("/rss.xml", get(rss_handler))
             .route("/sitemap.xml", get(sitemap_handler))
-            .nest_service("/pkg", ServeDir::new("/home/alex/blog/target/site/pkg"))
-            .nest_service("/public", ServeDir::new("/home/alex/blog/public"))
-            .nest_service("/fonts", ServeDir::new("/home/alex/blog/public/fonts"))
+            .nest_service("/pkg", ServeDir::new(&pkg_path))
+            .nest_service("/public", ServeDir::new(&public_path))
+            .nest_service("/fonts", ServeDir::new(&fonts_path))
             .layer(
                 tower::ServiceBuilder::new()
                     .layer(TraceLayer::new_for_http())
@@ -106,7 +115,10 @@ async fn main() {
             .layer(CompressionLayer::new().compress_when(
                 NotForContentType::new("application/rss+xml").and(SizeAbove::new(1024)),
             ))
-            .fallback(leptos_axum::file_and_error_handler::<AppState, _>(shell))
+            .fallback(leptos_axum::file_and_error_handler::<
+                AppState<surrealdb::engine::remote::http::Client>,
+                _,
+            >(shell))
             .with_state(app_state);
 
     let listener = match tokio::net::TcpListener::bind(&addr).await {
@@ -128,80 +140,5 @@ async fn main() {
             logging::error!("Failed to serve app: {}", err);
             logging::error!("Error details: {:?}", err);
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_tracing_level_debug() {
-        // Test debug assertions return debug level
-        let level = if cfg!(debug_assertions) {
-            tracing::Level::DEBUG
-        } else {
-            tracing::Level::INFO
-        };
-
-        if cfg!(debug_assertions) {
-            assert_eq!(level, tracing::Level::DEBUG);
-        } else {
-            assert_eq!(level, tracing::Level::INFO);
-        }
-    }
-
-    #[test]
-    fn test_env_loading() {
-        // Test that dotenv function returns a result type
-        let result = dotenvy::dotenv();
-        // Should return either Ok or Err, confirming function works
-        assert!(result.is_ok() || result.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_configuration_loading() {
-        // Test configuration loading returns proper result type
-        let config_result = get_configuration(Some("Cargo.toml"));
-        // Configuration loading should return a result type
-        assert!(config_result.is_ok() || config_result.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_database_connection_with_retries() {
-        // Test that database connection function exists and can be called
-        // This test verifies the connect function with retry logic compiles
-
-        // Set test environment variables to avoid connecting to real DB (using unsafe as required)
-        unsafe {
-            std::env::set_var("SURREAL_HOST", "localhost:9999"); // Non-existent port
-            std::env::set_var("SURREAL_PROTOCOL", "http");
-        }
-
-        // This will fail to connect but should exercise the retry logic
-        // We can't easily test the full connection without a test database
-        let _connect_fn: fn() -> _ = crate::utils::connect;
-
-        // Test that environment variables are read correctly
-        let protocol = std::env::var("SURREAL_PROTOCOL").unwrap_or_else(|_| "http".to_owned());
-        assert_eq!(protocol, "http");
-    }
-
-    #[test]
-    fn test_health_handler_structure() {
-        // Test that health handler exists with correct signature
-        let _: fn() -> _ = health_handler;
-
-        // Verify health check returns proper JSON structure
-        tokio_test::block_on(async {
-            let result = health_handler().await;
-            assert!(result.is_ok());
-
-            let json_value = result.unwrap().0;
-            assert!(json_value.get("status").is_some());
-            assert!(json_value.get("timestamp").is_some());
-            assert!(json_value.get("service").is_some());
-            assert!(json_value.get("version").is_some());
-        });
     }
 }

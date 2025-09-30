@@ -15,6 +15,7 @@ use harness::{MigrationTestFramework, RollbackTestCapability, TestDataBuilder};
 #[cfg(test)]
 mod migration_core_tests {
     use super::*;
+    use serde::Deserialize;
 
     /// Shared test database for performance optimization
     static SHARED_DB: OnceCell<Arc<MigrationTestFramework>> = OnceCell::const_new();
@@ -371,6 +372,228 @@ mod migration_core_tests {
 
         let post_author = db.query_field_thing("post:test", "author").await.unwrap();
         assert_eq!(post_author.unwrap().to_string(), "author:test");
+    }
+
+    /// Test post activity event functionality
+    #[tokio::test]
+    async fn test_post_activity_event() {
+        #[derive(Debug, Deserialize)]
+        struct ActivityRow {
+            content: String,
+            tags: Vec<String>,
+            source: Option<String>,
+        }
+
+        let mut db = MigrationTestFramework::new().await.unwrap();
+
+        db.reset_database().await.unwrap();
+        db.apply_cached_migrations(&[
+            "initial",
+            "indexes",
+            "comments",
+            "activity",
+            "post_activity",
+        ])
+        .await
+        .unwrap();
+        db.setup_complete_testing().await.unwrap();
+
+        db.create_test_author(
+            "author:event_test",
+            "Event Test Author",
+            "event@example.com",
+        )
+        .await
+        .unwrap();
+
+        db.create_test_post(
+            "post:event_test",
+            "Event Test Post",
+            "Test summary for event",
+            "Test content for event post",
+            "author:event_test",
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            db.count_table_records("activity").await.unwrap(),
+            0,
+            "No activity should exist before publishing"
+        );
+
+        db.execute_query(
+            "UPDATE post:event_test SET is_published = true, slug = 'event-test-post';",
+        )
+        .await
+        .unwrap()
+        .check()
+        .unwrap();
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        db.create_test_author(
+            "author:event_test2",
+            "Event Test Author 2",
+            "event2@example.com",
+        )
+        .await
+        .unwrap();
+
+        db.execute_query(
+            "CREATE post:event_test2 SET title = 'Event Test Post 2', summary = 'Test summary 2', body = 'Test content 2', tags = ['test'], author = author:event_test2, is_published = true, slug = 'event-test-post-2';"
+        )
+        .await
+        .unwrap()
+        .check()
+        .unwrap();
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        let mut response = db
+            .execute_query(
+                "SELECT content, tags, source, created_at FROM activity ORDER BY created_at ASC;",
+            )
+            .await
+            .unwrap();
+        let activities: Vec<ActivityRow> = response.take(0).unwrap();
+
+        assert_eq!(activities.len(), 2, "Expected two activity entries");
+
+        let first = &activities[0];
+        assert_eq!(
+            first.content,
+            "Published on Alex Thola's blog: Event Test Post - Test summary for event (https://alexthola.com/post/event-test-post)"
+        );
+        assert_eq!(first.tags, vec!["new post".to_string(), "blog".to_string()]);
+        assert_eq!(
+            first.source.as_deref(),
+            Some("https://alexthola.com/post/event-test-post")
+        );
+
+        let second = &activities[1];
+        assert_eq!(
+            second.content,
+            "Published on Alex Thola's blog: Event Test Post 2 - Test summary 2 (https://alexthola.com/post/event-test-post-2)"
+        );
+        assert_eq!(
+            second.tags,
+            vec!["new post".to_string(), "blog".to_string()]
+        );
+        assert_eq!(
+            second.source.as_deref(),
+            Some("https://alexthola.com/post/event-test-post-2")
+        );
+    }
+
+    /// Ensure the activity event derives a slugged URL when the post does not provide one
+    #[tokio::test]
+    async fn test_post_activity_event_generates_slug_when_missing() {
+        #[derive(Debug, Deserialize)]
+        struct ActivityRow {
+            content: String,
+            tags: Vec<String>,
+            source: Option<String>,
+        }
+
+        let mut db = MigrationTestFramework::new().await.unwrap();
+        db.reset_database().await.unwrap();
+        db.apply_cached_migrations(&[
+            "initial",
+            "indexes",
+            "comments",
+            "activity",
+            "post_activity",
+        ])
+        .await
+        .unwrap();
+        db.setup_complete_testing().await.unwrap();
+
+        db.create_test_author("author:slugless", "Slugless Author", "slugless@example.com")
+            .await
+            .unwrap();
+
+        db.execute_query(
+            "CREATE post:slugless SET title = 'Slugless Title', summary = 'Slugless summary', body = 'Body', tags = ['test'], author = author:slugless, is_published = true;"
+        )
+        .await
+        .unwrap()
+        .check()
+        .unwrap();
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        let mut response = db
+            .execute_query("SELECT content, tags, source FROM activity LIMIT 1;")
+            .await
+            .unwrap();
+        let activities: Vec<ActivityRow> = response.take(0).unwrap();
+        assert_eq!(activities.len(), 1);
+
+        let activity = &activities[0];
+        assert_eq!(
+            activity.source.as_deref(),
+            Some("https://alexthola.com/post/slugless-title")
+        );
+        assert!(activity
+            .content
+            .contains("https://alexthola.com/post/slugless-title"));
+        assert_eq!(
+            activity.tags,
+            vec!["new post".to_string(), "blog".to_string()]
+        );
+    }
+
+    /// Verify very long summaries are truncated for concise activity entries
+    #[tokio::test]
+    async fn test_post_activity_event_truncates_long_summary() {
+        let mut db = MigrationTestFramework::new().await.unwrap();
+        db.reset_database().await.unwrap();
+        db.apply_cached_migrations(&[
+            "initial",
+            "indexes",
+            "comments",
+            "activity",
+            "post_activity",
+        ])
+        .await
+        .unwrap();
+        db.setup_complete_testing().await.unwrap();
+
+        db.create_test_author("author:summary", "Summary Author", "summary@example.com")
+            .await
+            .unwrap();
+
+        let long_summary = "A".repeat(220);
+        db.execute_query(&format!(
+            "CREATE post:summary_test SET title = 'Summary Title', summary = '{}', body = 'Body', tags = ['test'], author = author:summary, is_published = true;",
+            long_summary
+        ))
+        .await
+        .unwrap()
+        .check()
+        .unwrap();
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        let mut response = db
+            .execute_query("SELECT VALUE content FROM activity LIMIT 1;")
+            .await
+            .unwrap();
+        let contents: Vec<String> = response.take(0).unwrap();
+        assert_eq!(contents.len(), 1);
+
+        let content = &contents[0];
+        assert!(content.starts_with("Published on Alex Thola's blog: Summary Title - "));
+        assert!(content.contains("https://alexthola.com/post/summary-title"));
+
+        let summary_fragment = content
+            .split(" - ")
+            .nth(1)
+            .and_then(|segment| segment.split(" (https://").next())
+            .unwrap_or("");
+        assert!(summary_fragment.ends_with("..."));
+        assert!(summary_fragment.len() <= 183);
     }
 
     /// Stress test for performance validation

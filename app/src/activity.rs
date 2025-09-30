@@ -3,7 +3,7 @@ use leptos::html::{div, p};
 use leptos::prelude::*;
 use leptos_meta::{Title, TitleProps};
 
-use crate::api::select_activities;
+use crate::api::{create_activity, select_activities};
 use crate::types::Activity;
 
 pub fn component() -> impl IntoView {
@@ -12,11 +12,10 @@ pub fn component() -> impl IntoView {
         |page| async move { select_activities(page).await },
     );
 
-    // Create a test activity action to ensure server function registration
-    let _create_test_activity = Action::new(|_activity: &Activity| async move {
-        // This action ensures the create_activity server function is registered
-        // We don't actually create activities here, just ensure registration
-        Result::<(), ServerFnError>::Ok(())
+    // Create an action to ensure the create_activity server function is registered
+    let _create_activity_action = Action::new(move |activity: &Activity| {
+        let activity = activity.clone();
+        async move { create_activity(activity).await }
     });
 
     div().child((

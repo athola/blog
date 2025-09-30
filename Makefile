@@ -128,8 +128,18 @@ test-integration-pattern:
 	done
 	@echo "  Integration pattern tests completed successfully"
 
+## Build frontend assets (CSS, JS, WASM) required for integration tests
+build-assets:
+	$(ECHO_PREFIX) Building frontend assets
+	@if [ ! -f target/site/pkg/blog.css ] || [ ! -f target/site/pkg/blog.js ] || [ ! -f target/site/pkg/blog.wasm ]; then \
+		echo "Assets missing or incomplete, rebuilding..."; \
+		cargo leptos build; \
+	else \
+		echo "Assets already exist, skipping build"; \
+	fi
+
 ## Enhanced test target with full integration
-test:
+test: build-assets
 	$(ECHO_PREFIX) Testing $${PROJECT}
 	@echo "Running Rust unit and integration tests..."
 	@cargo test --workspace --no-fail-fast --lib --bins
