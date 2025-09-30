@@ -62,6 +62,8 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
 
 #[must_use]
 pub fn component() -> impl IntoView {
+    provide_meta_context();
+
     view! {
         <Router>
             <div class="overflow-auto text-white font-poppins">

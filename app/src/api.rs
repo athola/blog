@@ -2,6 +2,7 @@ extern crate alloc;
 use alloc::collections::BTreeMap;
 
 use leptos::prelude::{ServerFnError, server};
+use leptos::server_fn::codec::GetUrl;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "ssr")]
@@ -53,7 +54,7 @@ pub async fn select_posts(
     } else {
         let tags = tags
             .iter()
-            .map(|tag| format!(r#""{tag}""#))
+            .map(|tag| format!(r#"""{tag}"""#))
             .collect::<Vec<_>>();
         format!(
             "SELECT *, author.* from post WHERE tags CONTAINSANY [{0}] ORDER BY created_at DESC;",
@@ -218,7 +219,7 @@ pub struct Pagination {
     pub page: usize,
 }
 
-#[server(endpoint = "/api/activities/create")]
+#[server(prefix = "/api/activities", endpoint = "create")]
 pub async fn create_activity(activity: crate::types::Activity) -> Result<(), ServerFnError> {
     use crate::types::AppState;
     use leptos::prelude::expect_context;
@@ -232,7 +233,7 @@ pub async fn create_activity(activity: crate::types::Activity) -> Result<(), Ser
     Ok(())
 }
 
-#[server(endpoint = "/api/activities")]
+#[server(prefix = "/api", endpoint = "activities", input = GetUrl)]
 pub async fn select_activities(
     #[server(default)] page: usize,
 ) -> Result<Vec<crate::types::Activity>, ServerFnError> {
