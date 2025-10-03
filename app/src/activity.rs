@@ -53,3 +53,91 @@ pub fn component() -> impl IntoView {
         ),
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::Activity;
+
+    #[test]
+    fn test_activity_component_creation() {
+        // Test that the activity component can be created without panicking
+        let _component = component();
+        // Component creation should not panic
+    }
+
+    #[test]
+    fn test_activity_resource_creation() {
+        // Test that the activities resource can be created
+        let _resource = Resource::new(
+            || 0usize,
+            |page| async move { select_activities(page).await },
+        );
+        // Resource creation should not panic
+    }
+
+    #[test]
+    fn test_activity_data_validation() {
+        // Test activity data validation patterns from integration tests
+        let activity_data = serde_json::json!({
+            "content": "This is a test activity",
+            "tags": ["test", "rust"],
+            "source": "https://example.com"
+        });
+
+        // Verify the structure matches expected Activity format
+        assert!(activity_data["content"].is_str());
+        assert!(activity_data["tags"].is_array());
+        assert!(activity_data["source"].is_str());
+        
+        let tags: Vec<String> = serde_json::from_value(activity_data["tags"].clone()).unwrap();
+        assert_eq!(tags, vec!["test", "rust"]);
+    }
+
+    #[test]
+    fn test_activity_serialization_patterns() {
+        // Test serialization patterns similar to integration test expectations
+        let activity = Activity {
+            content: "This is a test activity".to_string(),
+            tags: vec!["test".to_string(), "rust".to_string()],
+            source: Some("https://example.com".to_string()),
+            created_at: "2023-01-01T00:00:00Z".to_string(),
+            ..Default::default()
+        };
+
+        // Test serialization to JSON
+        let serialized = serde_json::to_string(&activity).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&serialized).unwrap();
+
+        // Verify the structure matches integration test expectations
+        assert_eq!(parsed["content"], "This is a test activity");
+        assert_eq!(parsed["tags"], serde_json::json!(["test", "rust"]));
+        assert_eq!(parsed["source"], "https://example.com");
+    }
+
+    #[test]
+    fn test_activity_default_values() {
+        // Test default activity values for edge cases
+        let activity = Activity::default();
+        
+        // These are the values that integration tests might rely on
+        assert_eq!(activity.content, "");
+        assert!(activity.tags.is_empty());
+        assert!(activity.source.is_none());
+        assert!(activity.created_at.is_empty());
+    }
+
+    #[test]
+    fn test_activity_tag_handling() {
+        // Test tag handling patterns from integration test scenarios
+        let activity = Activity {
+            tags: vec!["test".to_string(), "rust".to_string(), "web".to_string()],
+            ..Default::default()
+        };
+
+        // Test tag manipulation patterns
+        assert_eq!(activity.tags.len(), 3);
+        assert!(activity.tags.contains(&"rust".to_string()));
+        assert!(!activity.tags.contains(&"missing".to_string()));
+    }
+}

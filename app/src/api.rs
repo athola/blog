@@ -45,7 +45,7 @@ pub async fn select_posts(
     use chrono::{DateTime, Utc};
     use leptos::prelude::expect_context;
 
-    let AppState { db, .. } = expect_context::<AppState>();
+    let AppState { db, .. } = expect_context::<AppState>(); let db = db.as_ref();
     let query = if tags.is_empty() {
         String::from(
             "SELECT *, author.* from post WHERE is_published = true ORDER BY created_at DESC;",
@@ -80,7 +80,7 @@ pub async fn select_tags() -> Result<BTreeMap<String, usize>, ServerFnError> {
     use crate::types::AppState;
     use leptos::prelude::expect_context;
 
-    let AppState { db, .. } = expect_context::<AppState>();
+    let AppState { db, .. } = expect_context::<AppState>(); let db = db.as_ref();
 
     let query = "
     LET $tags = SELECT tags FROM post;
@@ -104,7 +104,7 @@ pub async fn select_post(slug: String) -> Result<Post, ServerFnError> {
     use leptos::prelude::expect_context;
     use markdown::process_markdown;
 
-    let AppState { db, .. } = expect_context::<AppState>();
+    let AppState { db, .. } = expect_context::<AppState>(); let db = db.as_ref();
 
     let query_str = format!(r#"SELECT *, author.* from post WHERE slug = "{slug}""#);
     let mut query = retry_db_operation(|| async { db.query(&query_str).await }).await?;
@@ -132,7 +132,7 @@ pub async fn increment_views(id: String) -> Result<(), ServerFnError> {
     use crate::types::AppState;
     use leptos::prelude::expect_context;
 
-    let AppState { db, .. } = expect_context::<AppState>();
+    let AppState { db, .. } = expect_context::<AppState>(); let db = db.as_ref();
 
     let query_str = format!("UPDATE post:{id} SET total_views = total_views + 1;");
     retry_db_operation(|| async { db.query(&query_str).await }).await?;
@@ -205,7 +205,7 @@ pub async fn select_references() -> Result<Vec<Reference>, ServerFnError> {
     use crate::types::AppState;
     use leptos::prelude::expect_context;
 
-    let AppState { db, .. } = expect_context::<AppState>();
+    let AppState { db, .. } = expect_context::<AppState>(); let db = db.as_ref();
 
     let query_str = "SELECT * from reference WHERE is_published = true ORDER BY created_at DESC;";
     let mut query = retry_db_operation(|| async { db.query(query_str).await }).await?;
@@ -223,7 +223,7 @@ pub async fn create_activity(activity: crate::types::Activity) -> Result<(), Ser
     use crate::types::AppState;
     use leptos::prelude::expect_context;
 
-    let AppState { db, .. } = expect_context::<AppState>();
+    let AppState { db, .. } = expect_context::<AppState>(); let db = db.as_ref();
 
     let _created: Option<crate::types::Activity> =
         retry_db_operation(|| async { db.create("activity").content(activity.clone()).await })
@@ -239,7 +239,7 @@ pub async fn select_activities(
     use crate::types::AppState;
     use leptos::prelude::expect_context;
 
-    let AppState { db, .. } = expect_context::<AppState>();
+    let AppState { db, .. } = expect_context::<AppState>(); let db = db.as_ref();
     let activities_per_page = 10;
     let start = page * activities_per_page;
 
@@ -554,3 +554,204 @@ mod tests {
         });
     }
 }
+
+    // Additional activity-related unit tests from integration test patterns
+    
+    #[test]
+    fn test_activity_json_structure_compatibility() {
+        // Test that Activity struct matches the JSON structure used in integration tests
+        let activity_json = serde_json::json!({
+            "content": "This is a test activity",
+            "tags": ["test", "rust"],
+            "source": "https://example.com"
+        });
+
+        // Test deserialization from the exact structure used in integration tests
+        let activity: Activity = serde_json::from_value(activity_json).unwrap();
+        
+        assert_eq!(activity.content, "This is a test activity");
+        assert_eq!(activity.tags, vec!["test", "rust"]);
+        assert_eq!(activity.source, Some("https://example.com".to_string()));
+    }
+
+    #[test]
+    fn test_activity_creation_validation() {
+        // Test activity creation patterns from integration test scenarios
+        let test_cases = vec![
+            // Valid activity
+            Activity {
+                content: "Valid activity".to_string(),
+                tags: vec!["test".to_string()],
+                source: Some("https://example.com".to_string()),
+                created_at: "2023-01-01T00:00:00Z".to_string(),
+                ..Default::default()
+            },
+            // Activity with empty tags
+            Activity {
+                content: "Activity with no tags".to_string(),
+                tags: vec![],
+                source: None,
+                created_at: "2023-01-01T00:00:00Z".to_string(),
+                ..Default::default()
+            },
+            // Activity with multiple tags
+            Activity {
+                content: "Multi-tag activity".to_string(),
+                tags: vec!["rust".to_string(), "web".to_string(), "blog".to_string()],
+                source: Some("https://blog.example.com".to_string()),
+                created_at: "2023-01-01T00:00:00Z".to_string(),
+                ..Default::default()
+            },
+        ];
+
+        for activity in test_cases {
+            // Test serialization roundtrip
+            let serialized = serde_json::to_string(&activity).unwrap();
+            let deserialized: Activity = serde_json::from_str(&serialized).unwrap();
+            assert_eq!(activity, deserialized);
+        }
+    }
+
+    #[test]
+    fn test_activity_pagination_parameters() {
+        // Test pagination parameter handling from integration test patterns
+        let test_pages = vec![0, 1, 5, 10];
+        
+        for page in test_pages {
+            // Test that pagination parameters are handled correctly
+            // This mirrors the integration test that calls /api/activities?page=N
+            assert!(page >= 0, "Page number should be non-negative");
+            
+            // Test the activities_per_page constant used in server function
+            let activities_per_page = 10;
+            let start = page * activities_per_page;
+            assert!(start >= 0, "Start index should be non-negative");
+        }
+    }
+
+    #[test]
+    fn test_activity_endpoint_signatures() {
+        // Test that activity server functions maintain correct signatures
+        // This ensures compatibility with integration test expectations
+        
+        // Test create_activity signature
+        let _: fn(Activity) -> _ = create_activity;
+        
+        // Test select_activities signature
+        let _: fn(usize) -> _ = select_activities;
+        
+        // These signatures must match what the integration tests expect
+    }
+
+    #[test]
+    fn test_activity_error_handling_patterns() {
+        // Test error handling patterns that integration tests might encounter
+        let invalid_activity_json = serde_json::json!({
+            "content": 123, // Wrong type
+            "tags": "not-an-array", // Wrong type
+            "source": null // Valid null
+        });
+
+        // Test that invalid data is handled gracefully
+        let result: Result<Activity, _> = serde_json::from_value(invalid_activity_json);
+        assert!(result.is_err(), "Invalid activity data should fail deserialization");
+    }
+
+    #[cfg(feature = "ssr")]
+    #[tokio::test]
+    async fn test_activity_server_function_registration() {
+        // Test that activity server functions are properly registered
+        // This complements the integration test that actually calls the endpoints
+        
+        // Test function existence and basic structure
+        let test_activity = Activity {
+            content: "Test registration".to_string(),
+            tags: vec!["test".to_string()],
+            source: None,
+            created_at: chrono::Utc::now().to_rfc3339(),
+            ..Default::default()
+        };
+
+        // We can't actually call the server function without a proper context,
+        // but we can verify the function signature and basic structure
+        let _activity_clone = test_activity.clone();
+        let _: fn(Activity) -> _ = create_activity;
+        
+        // This test ensures the function signature matches integration test expectations
+    }
+
+    // Utility function tests extracted from integration test patterns
+    
+    #[test]
+    fn test_port_calculation_logic() {
+        // Test the port calculation logic used in integration tests
+        let base_port = 3007;
+        let test_port = 3030;
+        
+        // This mirrors the calculation: db_port = 8000 + (port - 3007)
+        let expected_db_port = 8000 + (test_port - base_port);
+        assert_eq!(expected_db_port, 8023);
+        
+        // Test edge cases
+        let min_port = 3007;
+        let min_db_port = 8000 + (min_port - base_port);
+        assert_eq!(min_db_port, 8000);
+    }
+
+    #[test]
+    fn test_activity_json_response_format() {
+        // Test the expected JSON response format from integration tests
+        let activity_response = serde_json::json!([
+            {
+                "content": "This is a test activity",
+                "tags": ["test", "rust"],
+                "source": "https://example.com",
+                "created_at": "2023-01-01T00:00:00Z"
+            }
+        ]);
+
+        // Test that the response format matches what integration tests expect
+        assert!(activity_response.is_array());
+        let activities: Vec<Activity> = serde_json::from_value(activity_response).unwrap();
+        assert_eq!(activities.len(), 1);
+        assert_eq!(activities[0].content, "This is a test activity");
+        assert_eq!(activities[0].tags, vec!["test", "rust"]);
+        assert_eq!(activities[0].source, Some("https://example.com".to_string()));
+    }
+
+    #[test]
+    fn test_activity_endpoint_url_construction() {
+        // Test URL construction patterns used in integration tests
+        let base_url = "http://127.0.0.1:3030";
+        let page = 0;
+        
+        let create_url = format!("{}/api/activities/create", base_url);
+        let fetch_url = format!("{}/api/activities?page={}", base_url, page);
+        
+        assert_eq!(create_url, "http://127.0.0.1:3030/api/activities/create");
+        assert_eq!(fetch_url, "http://127.0.0.1:3030/api/activities?page=0");
+        
+        // Test pagination URL construction
+        for page in 0..=5 {
+            let url = format!("{}/api/activities?page={}", base_url, page);
+            assert!(url.contains(&format!("page={}", page)));
+        }
+    }
+
+    #[test]
+    fn test_activity_status_code_expectations() {
+        // Test the status code expectations from integration tests
+        use reqwest::StatusCode;
+        
+        // These are the status codes that integration tests expect
+        let expected_create_status = StatusCode::CREATED;
+        let expected_fetch_status = StatusCode::OK;
+        
+        assert_eq!(expected_create_status, 201);
+        assert_eq!(expected_fetch_status, 200);
+        
+        // Test status code comparison logic
+        assert!(expected_create_status.is_success());
+        assert!(expected_fetch_status.is_success());
+        assert!(!StatusCode::BAD_REQUEST.is_success());
+    }

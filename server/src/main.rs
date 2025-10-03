@@ -73,8 +73,8 @@ async fn main() {
 
     let db = connect().await;
     let app_state = AppState {
-        db,
-        leptos_options: leptos_options.clone(),
+        db: std::sync::Arc::new(db),
+        leptos_options: std::sync::Arc::new(leptos_options.clone()),
     };
 
     let app =
@@ -95,9 +95,9 @@ async fn main() {
             .route("/rss", get(rss_handler))
             .route("/rss.xml", get(rss_handler))
             .route("/sitemap.xml", get(sitemap_handler))
-            .nest_service("/pkg", ServeDir::new("/home/alex/blog/target/site/pkg"))
-            .nest_service("/public", ServeDir::new("/home/alex/blog/public"))
-            .nest_service("/fonts", ServeDir::new("/home/alex/blog/public/fonts"))
+            .nest_service("/pkg", ServeDir::new(&format!("{}/{}", leptos_options.site_root(), leptos_options.site_pkg_dir())))
+            .nest_service("/public", ServeDir::new(&leptos_options.site_root()))
+            .nest_service("/fonts", ServeDir::new(&format!("{}/fonts", leptos_options.site_root())))
             .layer(
                 tower::ServiceBuilder::new()
                     .layer(TraceLayer::new_for_http())

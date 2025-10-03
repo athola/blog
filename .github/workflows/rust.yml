@@ -31,9 +31,6 @@ on:
       - "!.gitleaksignore"
       - "!.semgrep.yml"
       - "!run_secret_scan.sh"
-
-permissions:
-  contents: read
   pull_request:
     types: [opened, synchronize]
     branches: [ "master" ]
@@ -66,6 +63,9 @@ permissions:
       - "!.semgrep.yml"
       - "!run_secret_scan.sh"
 
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
@@ -77,7 +77,6 @@ env:
   RUSTFLAGS: "-C target-cpu=native -C opt-level=3"
   # Security hardening
   RUSTDOCFLAGS: "-D warnings"
-
 jobs:
   # Detect what type of changes were made to optimize CI strategy
   detect-changes:

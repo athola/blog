@@ -119,7 +119,7 @@ where
 }
 
 pub async fn rss_handler(State(state): State<AppState>) -> Response<String> {
-    let AppState { db, .. } = state;
+    let AppState { db, .. } = state; let db = db.as_ref();
     let rss = generate_rss(db).await.unwrap();
     Response::builder()
         .header("Content-Type", "application/rss+xml")
@@ -201,7 +201,7 @@ pub async fn sitemap_handler(State(state): State<AppState>) -> Response<String> 
         created_at: String,
     }
 
-    let AppState { db, .. } = state;
+    let AppState { db, .. } = state; let db = db.as_ref();
     let query = retry_query(|| async {
         db.query(
             "SELECT slug, created_at FROM post WHERE is_published = true ORDER BY created_at DESC;",

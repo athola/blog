@@ -11,8 +11,8 @@ use surrealdb::{Surreal, engine::remote::http::Client};
 #[cfg(feature = "ssr")]
 #[derive(FromRef, Debug, Clone)]
 pub struct AppState {
-    pub db: Surreal<Client>,
-    pub leptos_options: LeptosOptions,
+    pub db: std::sync::Arc<Surreal<Client>>,
+    pub leptos_options: std::sync::Arc<LeptosOptions>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
