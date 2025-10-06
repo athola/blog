@@ -7,6 +7,7 @@ PROJECT?=blog
 export OPENSSL_NO_VENDOR := 1
 
 ## Packages
+APT_PKGS=clang curl libssl-dev pkg-config
 RUST_PKGS=cargo-make cargo-audit cargo-bloat cargo-leptos \
 	    cargo-machete cargo-outdated cargo-sort cargo-spellcheck \
 	    cargo-udeps cargo-valgrind

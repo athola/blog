@@ -10,10 +10,10 @@ A modern, fast, and secure blog engine built with Rust using the Leptos full-sta
 - **Database-backed**: SurrealDB for data persistence
 - **Markdown support**: Rich content with code highlighting and math support
 - **Contact form**: Email integration with retry mechanisms
-- **Security-first**: Comprehensive multi-tool security scanning (Gitleaks + Semgrep + Trufflehog)
-- **Test coverage**: Extensive unit and integration testing with CI-aware optimizations
+- **Security-first**: Multi-tool security scanning (Gitleaks + Semgrep + Trufflehog)
+- **Test coverage**: Unit and integration testing with CI optimizations
 - **PR Size Management**: GitHub Actions workflow that comments on PRs with 2000+ lines changed
-- **Code Quality Enforcement**: Strict linting and formatting standards with automated checks
+- **Code Quality Enforcement**: Automated linting and formatting checks
 
 ## Technology Stack
 
@@ -91,7 +91,7 @@ make test-coverage-html
 
 ## Testing
 
-All tests must pass - failing tests indicate bugs that must be fixed:
+All tests must pass:
 
 ```bash
 # Run all tests

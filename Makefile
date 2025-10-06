@@ -10,6 +10,7 @@
 format: fmt
 
 include .config.mk
+export OPENSSL_NO_VENDOR := 1
 
 LEPTOSARGS := build
 
@@ -156,8 +157,29 @@ test-coverage-html:
 	@cargo make --makefile Makefile.toml test-coverage-html
 	@echo "Coverage report available at: test-results/coverage/html/index.html"
 
+## Install cargo packages
+install-pkgs:
+	$(ECHO_PREFIX) Installing ${RUST_PKGS}
+	@cargo install ${RUST_PKGS}
 
-## Initialize database users if needed
+## Install SurrealDB (for local development only - CI uses cached binary)
+install-surrealdb:
+	$(ECHO_PREFIX) Installing SurrealDB
+	@if command -v surreal >/dev/null 2>&1; then \
+		echo "SurrealDB already installed: $$(surreal --version)"; \
+	else \
+		echo "Downloading SurrealDB v2.3.7..."; \
+		mkdir -p $(HOME)/.surrealdb; \
+		cd $(HOME)/.surrealdb && \
+		curl -sSL https://github.com/surrealdb/surrealdb/releases/download/v2.3.7/surreal-v2.3.7.linux-amd64.tgz -o surreal.tgz && \
+		tar -xzf surreal.tgz && \
+		chmod +x surreal && \
+		rm surreal.tgz && \
+		echo 'export PATH="$$HOME/.surrealdb:$$PATH"' >> $(HOME)/.bashrc || true; \
+		echo "SurrealDB installed. Add $(HOME)/.surrealdb to your PATH"; \
+	fi
+
+## Initialize database users if needed (assumes SurrealDB is already installed)
 init-db:
 	$(ECHO_PREFIX) Initializing database users
 	@if [ -f "./ensure-db-ready.sh" ]; then \
@@ -165,10 +187,9 @@ init-db:
 	elif [ -f "./init-db.sh" ]; then \
 		./init-db.sh; \
 	else \
-		./init-db.sh; \
+		echo "No database initialization script found"; \
+		exit 1; \
 	fi
-
-## Validate codebase is ready for PR submission - runs all CI checks locally
 validate: fmt lint test
 	$(ECHO_PREFIX) Validating $${PROJECT} for PR submission
 	@echo "Running security scans..."

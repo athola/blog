@@ -37,6 +37,16 @@ is_database_running() {
 # Function to start database
 start_database() {
     echo "Starting database..."
+
+    # Check if surreal is available
+    if ! command -v surreal >/dev/null 2>&1; then
+        echo "Error: SurrealDB not found. Please install SurrealDB first."
+        echo "Visit: https://surrealdb.com/install or run 'make install-surrealdb'"
+        return 1
+    fi
+
+    # Show SurrealDB version
+    echo "SurrealDB version: $(surreal --version 2>/dev/null || echo "unknown")"
     
     # Clean up any existing processes
     pkill -f "surreal start" 2>/dev/null || true
@@ -50,6 +60,7 @@ start_database() {
     fi
     
     # Start SurrealDB
+    echo "Starting SurrealDB server..."
     env SURREAL_EXPERIMENTAL_GRAPHQL=true \
         surreal start \
             --log info \
@@ -57,6 +68,9 @@ start_database() {
             --pass "$SURREAL_ROOT_PASS" \
             --bind 127.0.0.1:8000 \
             "surrealkv:$DB_FILE" &
+    
+    # Store the process ID
+    DB_PID=$!
     
     # Wait for database to be ready
     local max_attempts=30
