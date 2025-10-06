@@ -85,6 +85,11 @@ mod activity_feed_tests {
             db_port: u16,
             db_file: &str,
         ) -> Result<Child, Box<dyn std::error::Error>> {
+            // Check if surreal is available
+            if Command::new("which").arg("surreal").output().ok().map_or(true, |o| !o.status.success()) {
+                return Err("SurrealDB not found in PATH. Install it or skip these tests.".into());
+            }
+
             let _ = Command::new("pkill")
                 .args(["-f", &format!("surreal.*{}", db_port)])
                 .output();
@@ -264,7 +269,8 @@ mod activity_feed_tests {
                 let server_url = format!("http://127.0.0.1:{}", server.port);
                 Ok(Some((server, server_url)))
             }
-            Err(e) if e.to_string().contains("Unable to find available ports") => {
+            Err(e) if e.to_string().contains("Unable to find available ports")
+                   || e.to_string().contains("SurrealDB not found") => {
                 eprintln!("Skipping activity feed test: {}", e);
                 Ok(None)
             }
