@@ -1,8 +1,15 @@
 #!/bin/sh
 
-# Start SurrealDB without credentials in server command
-# Root user is created idempotently by init-db.sh
-env SURREAL_EXPERIMENTAL_GRAPHQL=true surreal start --log info --bind 127.0.0.1:8000 surrealkv:rustblog.db &
+# Start SurrealDB with the configured root credentials so subsequent auth succeeds
+ROOT_USER=${SURREAL_ROOT_USER:-root}
+ROOT_PASS=${SURREAL_ROOT_PASS:-root}
+env SURREAL_EXPERIMENTAL_GRAPHQL=true \
+    surreal start \
+        --log info \
+        --user "$ROOT_USER" \
+        --pass "$ROOT_PASS" \
+        --bind 127.0.0.1:8000 \
+        surrealkv:rustblog.db &
 
 # Store the process ID
 DB_PID=$!

@@ -71,23 +71,20 @@ async fn main() {
     let addr = leptos_options.site_addr;
     let routes = generate_route_list(component);
 
-    let db = connect().await;
-    let app_state = AppState::<surrealdb::engine::remote::http::Client> {
-        db,
-        leptos_options: leptos_options.clone(),
+    let db = match connect().await {
+        Ok(db) => db,
+        Err(err) => {
+            logging::error!("Failed to establish SurrealDB connection: {:?}", err);
+            return;
+        }
+    };
+    let app_state = AppState {
+        db: std::sync::Arc::new(db),
+        leptos_options: std::sync::Arc::new(leptos_options.clone()),
     };
 
-    // Get paths from leptos options
-    let site_pkg_dir = leptos_options.site_pkg_dir.to_string();
-    let site_root = leptos_options.site_root.to_string();
-
-    // Construct full paths
-    let pkg_path = format!("{}/{}", site_root, site_pkg_dir);
-    let public_path = format!("{}/public", site_root);
-    let fonts_path = format!("{}/public/fonts", site_root);
-
     let app =
-        Router::new()
+        Router::<AppState>::new()
             .leptos_routes_with_context(
                 &app_state,
                 routes,
@@ -104,9 +101,19 @@ async fn main() {
             .route("/rss", get(rss_handler))
             .route("/rss.xml", get(rss_handler))
             .route("/sitemap.xml", get(sitemap_handler))
-            .nest_service("/pkg", ServeDir::new(&pkg_path))
-            .nest_service("/public", ServeDir::new(&public_path))
-            .nest_service("/fonts", ServeDir::new(&fonts_path))
+            .nest_service(
+                "/pkg",
+                ServeDir::new(format!(
+                    "{}/{}",
+                    leptos_options.site_root.as_ref(),
+                    leptos_options.site_pkg_dir.as_ref()
+                )),
+            )
+            .nest_service("/public", ServeDir::new(leptos_options.site_root.as_ref()))
+            .nest_service(
+                "/fonts",
+                ServeDir::new(format!("{}/fonts", leptos_options.site_root.as_ref())),
+            )
             .layer(
                 tower::ServiceBuilder::new()
                     .layer(TraceLayer::new_for_http())
@@ -115,10 +122,7 @@ async fn main() {
             .layer(CompressionLayer::new().compress_when(
                 NotForContentType::new("application/rss+xml").and(SizeAbove::new(1024)),
             ))
-            .fallback(leptos_axum::file_and_error_handler::<
-                AppState<surrealdb::engine::remote::http::Client>,
-                _,
-            >(shell))
+            .fallback(leptos_axum::file_and_error_handler::<AppState, _>(shell))
             .with_state(app_state);
 
     let listener = match tokio::net::TcpListener::bind(&addr).await {

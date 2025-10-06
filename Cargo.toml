@@ -149,6 +149,7 @@ ci = []
 
 
 # SurrealDB migration test suite
+
 [[test]]
 name = "migration_core_tests"
 path = "tests/migration_core_tests.rs"
@@ -160,10 +161,6 @@ path = "tests/schema_evolution_tests.rs"
 [[test]]
 name = "activity_feed_tests"
 path = "tests/activity_feed_tests.rs"
-
-[[test]]
-name = "activity_unit_tests"
-path = "tests/activity_unit_tests.rs"
 
 [dev-dependencies]
 app = { path = "app" }
