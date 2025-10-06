@@ -271,10 +271,13 @@ mod activity_error_tests {
     // === Malformed Data Tests ===
 
     #[tokio::test]
+    #[should_panic(expected = "assertion failed: !s.contains('\\0')")]
     async fn test_create_activity_with_null_bytes() {
         let db = Surreal::new::<Mem>(()).await.unwrap();
         db.use_ns("test").use_db("test").await.unwrap();
         // Test with content containing null bytes
+        // Note: SurrealDB 2.3.10 has an assertion that panics on null bytes in strands
+        // This test verifies the expected behavior
         let content_with_null = "Content with \0 null bytes".to_string();
         let activity = Activity {
             id: Thing::from(("activity", "null_bytes")),
@@ -283,15 +286,8 @@ mod activity_error_tests {
             ..Default::default()
         };
 
-        let db_clone = db.clone();
-        let activity_clone = activity.clone();
-        let join_result =
-            tokio::spawn(async move { create_activity(&db_clone, activity_clone).await }).await;
-
-        assert!(
-            join_result.is_err(),
-            "expected Surreal to reject strings containing null bytes"
-        );
+        // This will panic due to SurrealDB's assertion
+        let _ = create_activity(&db, activity.clone()).await;
     }
 
     #[tokio::test]

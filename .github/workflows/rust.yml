@@ -204,19 +204,19 @@ jobs:
       run: |
         echo "🔨 Building workspace (profile: ${{ matrix.profile }})..."
         if [ "${{ matrix.profile }}" = "dev" ]; then
-          cargo build --workspace 2>/dev/null || cargo build --workspace
+          cargo build --workspace
           echo "🗄️ Initializing database for tests..."
-          make init-db 2>/dev/null || echo "Database initialization completed"
+          make init-db || echo "Database initialization completed"
           echo "SurrealDB version: $(surreal --version 2>/dev/null || echo "unknown")"
           echo "🧪 Running tests..."
-          cargo test --workspace --no-fail-fast --lib --bins 2>/dev/null
-          cargo test migration_core_tests --no-fail-fast 2>/dev/null
-          cargo test schema_evolution_tests --no-fail-fast 2>/dev/null
-          cargo test server_unit_tests --no-fail-fast 2>/dev/null
-          cargo test server_integration_tests_ci --features ci --no-fail-fast -- --test-threads=1 2>/dev/null
+          cargo test --workspace --no-fail-fast --lib --bins
+          cargo test migration_core_tests --no-fail-fast
+          cargo test schema_evolution_tests --no-fail-fast
+          cargo test server_unit_tests --no-fail-fast
+          cargo test server_integration_tests_ci --features ci --no-fail-fast -- --test-threads=1
         else
-          cargo build --workspace --profile server 2>/dev/null || cargo build --workspace --profile server
-          cargo test --profile server 2>/dev/null || cargo test --profile server
+          cargo build --workspace --profile server
+          cargo test --profile server
         fi
         echo "✅ Build and tests completed"
     
@@ -307,16 +307,16 @@ jobs:
       timeout-minutes: 30
       run: |
         echo "🗄️ Initializing database for coverage tests..."
-        make init-db 2>/dev/null || echo "Database initialization completed"
+        make init-db || echo "Database initialization completed"
         echo "📊 Running coverage analysis..."
         cargo llvm-cov nextest --workspace --lcov --output-path test-results/coverage/lcov.info \
-          --exclude-test server_integration_tests 2>/dev/null || echo "Coverage analysis completed"
-    
+          --exclude-test server_integration_tests
+
     - name: Generate HTML coverage report
       run: |
         echo "📄 Generating HTML coverage report..."
         cargo llvm-cov nextest --workspace --html --output-dir test-results/coverage/html \
-          --exclude-test server_integration_tests 2>/dev/null || echo "HTML report generation completed"
+          --exclude-test server_integration_tests
     
     - name: Upload coverage reports
       uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
@@ -354,7 +354,8 @@ jobs:
         path: |
           ~/.cargo/registry/index/
           ~/.cargo/registry/cache/
-          ~/.cargo/git/db/        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          ~/.cargo/git/db/
+        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: |
           ${{ runner.os }}-cargo-registry-
 
@@ -371,28 +372,28 @@ jobs:
     - name: Run clippy
       run: |
         echo "🔍 Running clippy analysis..."
-        cargo clippy --all-targets --all-features -- -D warnings 2>/dev/null || cargo clippy --all-targets --all-features -- -D warnings
+        cargo clippy --all-targets --all-features -- -D warnings
 
     - name: Security audit
       timeout-minutes: 5
       run: |
         echo "🔒 Running security audit..."
         cargo install --locked cargo-audit --quiet 2>/dev/null || cargo install --locked cargo-audit
-        cargo audit --deny warnings --ignore RUSTSEC-2024-0436 --ignore RUSTSEC-2024-0320 2>/dev/null || echo "Security audit completed"
-    
+        cargo audit --deny warnings --ignore RUSTSEC-2024-0436 --ignore RUSTSEC-2024-0320 || echo "⚠️ Security audit found issues"
+
     - name: Check for unused dependencies
       timeout-minutes: 10
       run: |
         echo "🧹 Checking for unused dependencies..."
         cargo install --locked cargo-udeps --quiet 2>/dev/null || cargo install --locked cargo-udeps
-        cargo +nightly udeps --all-targets 2>/dev/null || echo "Unused dependencies check completed"
-    
+        cargo +nightly udeps --all-targets || echo "⚠️ Unused dependencies found"
+
     - name: Performance benchmarks
       timeout-minutes: 15
       run: |
         echo "⚡ Running performance benchmarks..."
         if find . -name "benches" -type d | grep -q .; then
-          timeout 600 cargo bench --workspace 2>/dev/null || echo "Benchmarks completed"
+          timeout 600 cargo bench --workspace || echo "⚠️ Benchmarks failed or timed out"
         else
           echo "ℹ️ No benchmarks found, skipping performance tests"
         fi
