@@ -423,16 +423,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_generate_rss_handles_db_errors() {
-        // This test verifies the RSS generation handles database errors gracefully
-        // We can't easily mock SurrealDB, but we can test error handling patterns
+    async fn test_generate_rss_signature() {
+        // This test verifies the RSS generation function compiles with correct signature
+        // Full testing would require a mock database setup, which is deferred to integration tests
 
-        // Test would require a mock database, which is complex with SurrealDB
-        // Instead, we test that the function signature and error handling compile correctly
-
-        // This is a placeholder that would be expanded with proper mocking
-        // For now, we just verify the function exists and has correct return type
-        let _: fn(&Surreal<Client>) -> _ = |db| generate_rss(db);
+        // Verify the function signature is correct by checking it compiles
+        // This is a compile-time check that the function has the expected signature
+        let _check = |db: &Surreal<Client>| async move {
+            let _result: Result<String, ServerFnError> = generate_rss(db).await;
+        };
     }
 
     #[tokio::test]
