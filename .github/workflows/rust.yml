@@ -214,6 +214,7 @@ jobs:
           cargo test schema_evolution_tests --no-fail-fast
           cargo test server_unit_tests --no-fail-fast
           cargo test server_integration_tests_ci --features ci --no-fail-fast -- --test-threads=1
+          cargo test activity_feed_tests --no-fail-fast -- --test-threads=1
         else
           cargo build --workspace --profile server
           cargo test --profile server
