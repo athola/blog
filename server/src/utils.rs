@@ -423,15 +423,22 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_generate_rss_signature() {
-        // This test verifies the RSS generation function compiles with correct signature
-        // Full testing would require a mock database setup, which is deferred to integration tests
+    async fn test_generate_rss_with_empty_db() {
+        // Test RSS generation with an empty in-memory database
+        use surrealdb::engine::local::Mem;
 
-        // Verify the function signature is correct by checking it compiles
-        // This is a compile-time check that the function has the expected signature
-        let _check = |db: &Surreal<Client>| async move {
-            let _result: Result<String, ServerFnError> = generate_rss(db).await;
-        };
+        let db = Surreal::new::<Mem>(()).await.expect("Failed to create in-memory database");
+        db.use_ns("test").use_db("test").await.expect("Failed to use namespace/database");
+
+        // Call generate_rss with empty database - should succeed with empty feed
+        let result = generate_rss(&db).await;
+
+        // Should return a valid RSS feed even if empty
+        assert!(result.is_ok(), "generate_rss should succeed with empty database");
+
+        let rss = result.unwrap();
+        assert!(rss.contains("<?xml"), "RSS should be valid XML");
+        assert!(rss.contains("<rss"), "RSS should contain rss tag");
     }
 
     #[tokio::test]
