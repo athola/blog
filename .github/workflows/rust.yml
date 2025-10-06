@@ -309,12 +309,12 @@ jobs:
         echo "🗄️ Initializing database for coverage tests..."
         make init-db || echo "Database initialization completed"
         echo "📊 Running coverage analysis..."
-        cargo llvm-cov nextest --workspace --lcov --output-path test-results/coverage/lcov.info -- -E 'not test(server_integration_tests)'
+        cargo llvm-cov nextest --workspace --lcov --output-path test-results/coverage/lcov.info -E 'not test(server_integration_tests)'
 
     - name: Generate HTML coverage report
       run: |
         echo "📄 Generating HTML coverage report..."
-        cargo llvm-cov nextest --workspace --html --output-dir test-results/coverage/html -- -E 'not test(server_integration_tests)'
+        cargo llvm-cov nextest --workspace --html --output-dir test-results/coverage/html -E 'not test(server_integration_tests)'
     
     - name: Upload coverage reports
       uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
