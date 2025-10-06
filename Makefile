@@ -156,39 +156,17 @@ test-coverage-html:
 	@cargo make --makefile Makefile.toml test-coverage-html
 	@echo "Coverage report available at: test-results/coverage/html/index.html"
 
+
 ## Initialize database users if needed
 init-db:
 	$(ECHO_PREFIX) Initializing database users
-	@./init-db.sh
-
-## Start database server
-start-db:
-	$(ECHO_PREFIX) Starting database server
-	@./db.sh &
-
-## Stop database server
-stop-db:
-	$(ECHO_PREFIX) Stopping database server
-	@./stop-db.sh
-
-## Reset database (stop, remove data, restart)
-reset-db:
-	$(ECHO_PREFIX) Resetting database
-	@echo "Stopping database server..."
-	@./stop-db.sh
-	@sleep 2
-	@echo "Removing database files..."
-	@rm -rf rustblog.db rustblog_test_*.db rustblog_ci_test_*.db 2>/dev/null || true
-	@echo "Database files removed. Use 'make start-db' to start fresh database."
-	@echo "Database reset completed"
-
-watch:
-	$(ECHO_PREFIX) Watching $${PROJECT}
-	@sh db.sh&
-	@sleep 3
-	@$(MAKE) init-db
-	@cargo clean
-	@cargo leptos watch
+	@if [ -f "./ensure-db-ready.sh" ]; then \
+		./ensure-db-ready.sh; \
+	elif [ -f "./init-db.sh" ]; then \
+		./init-db.sh; \
+	else \
+		./init-db.sh; \
+	fi
 
 ## Validate codebase is ready for PR submission - runs all CI checks locally
 validate: fmt lint test
@@ -204,30 +182,3 @@ validate: fmt lint test
 	@echo "Running test coverage..."
 	@$(MAKE) test-coverage-html
 	@echo "Validation complete"
-
-## Teardown all watch processes and clean artifacts
-teardown:
-	$(ECHO_PREFIX) Tearing down $${PROJECT}
-	@echo "Stopping leptos watch processes..."
-	@-pkill -f "cargo leptos watch" 2>/dev/null
-	@-pkill -f "leptos" 2>/dev/null
-	@echo "Stopping database processes..."
-	@-pkill -f "surreal" 2>/dev/null
-	@-pkill -f "db.sh" 2>/dev/null
-	@echo "Cleaning up server processes..."
-	@-pkill -f "server" 2>/dev/null
-	@echo "Cleaning up temporary files..."
-	@-rm -f /tmp/db_pid /tmp/test_db_pid 2>/dev/null
-	@echo "Cleaning up build artifacts..."
-	@-rm -rf target/debug/build/*/out target/debug/incremental target/debug/deps/*.d 2>/dev/null
-	@echo "Teardown completed - all processes stopped and artifacts cleaned"
-
-install-pkgs:
-	$(ECHO_PREFIX) Installing $${RUST_PKGS}
-	@rustup component add clippy rustfmt
-	@cargo install $${RUST_PKGS}
-
-upgrade:
-	$(ECHO_PREFIX) Upgrading all dependencies for $${PROJECT}
-	@cargo install cargo-edit
-	@cargo upgrade

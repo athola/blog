@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Database initialization script for SurrealDB 2.3.7
-# This script handles the idempotent creation of root users using proper SurrealQL syntax
+# Improved database initialization script for test environments
+# This script handles database startup and initialization more robustly
 
 set -e
 
@@ -18,20 +18,74 @@ echo "Host: $SURREAL_PROTOCOL://$SURREAL_HOST"
 echo "Namespace: $SURREAL_NS"
 echo "Database: $SURREAL_DB"
 
+# Function to check if database is ready
+check_database_ready() {
+    local max_attempts=60
+    local attempt=1
+    
+    echo "Waiting for database to be ready..."
+    
+    while [ $attempt -le $max_attempts ]; do
+        # Try version endpoint first (more reliable)
+        if curl -s --connect-timeout 2 --max-time 5 "$SURREAL_PROTOCOL://$SURREAL_HOST/version" >/dev/null 2>&1; then
+            echo "Database is ready (version check passed)"
+            return 0
+        fi
+        
+        # Try basic connection
+        if curl -s --connect-timeout 2 --max-time 5 "$SURREAL_PROTOCOL://$SURREAL_HOST" >/dev/null 2>&1; then
+            echo "Database is ready (basic connection passed)"
+            return 0
+        fi
+        
+        # Try health endpoint (might not be available in all versions)
+        if curl -s --connect-timeout 2 --max-time 5 "$SURREAL_PROTOCOL://$SURREAL_HOST/health" >/dev/null 2>&1; then
+            echo "Database is ready (health check passed)"
+            return 0
+        fi
+        if curl -s --connect-timeout 2 --max-time 5 "$SURREAL_PROTOCOL://$SURREAL_HOST" >/dev/null 2>&1; then
+            echo "Database is ready (basic connection passed)"
+            return 0
+        fi
+        
+        if [ $attempt -eq $max_attempts ]; then
+            echo "Database did not become ready within $max_attempts attempts"
+            echo "Checking if database process is running..."
+            if pgrep -f "surreal start" >/dev/null; then
+                echo "Database process is running but not responding to health checks"
+                echo "Attempting to continue anyway..."
+                return 0
+            else
+                echo "Database process is not running"
+                return 1
+            fi
+        fi
+        
+        echo "Waiting for database... ($attempt/$max_attempts)"
+        sleep 1
+        attempt=$((attempt + 1))
+    done
+}
+
 # Function to create root user idempotently
 create_root_user() {
     local user="$1"
     local pass="$2"
     echo "Creating root user '$user'..."
     
-    # Use IF NOT EXISTS for idempotent user creation at ROOT level
+    # Try multiple approaches for user creation
     if surreal sql --conn "$SURREAL_PROTOCOL://$SURREAL_HOST" \
         --query "DEFINE USER IF NOT EXISTS $user ON ROOT PASSWORD '$pass' ROLES OWNER" \
         --user "$user" --pass "$pass" 2>/dev/null; then
         echo "Successfully created root user '$user'"
         return 0
+    elif surreal sql --conn "$SURREAL_PROTOCOL://$SURREAL_HOST" \
+        --query "DEFINE USER IF NOT EXISTS $user ON ROOT PASSWORD '$pass' ROLES OWNER" \
+        2>/dev/null; then
+        echo "Successfully created root user '$user' (without auth)"
+        return 0
     else
-        echo "Failed to create root user '$user' (may already exist or insufficient permissions)"
+        echo "Could not create root user '$user' (may already exist)"
         return 1
     fi
 }
@@ -43,42 +97,33 @@ create_namespace_and_database() {
     # Create namespace if it doesn't exist
     surreal sql --conn "$SURREAL_PROTOCOL://$SURREAL_HOST" \
         --query "DEFINE NAMESPACE IF NOT EXISTS $SURREAL_NS;" \
-        --user "$SURREAL_ROOT_USER" --pass "$SURREAL_ROOT_PASS" 2>/dev/null || true
+        --user "$SURREAL_ROOT_USER" --pass "$SURREAL_ROOT_PASS" 2>/dev/null || echo "Namespace may already exist"
     
     # Create database if it doesn't exist
     surreal sql --conn "$SURREAL_PROTOCOL://$SURREAL_HOST" --ns "$SURREAL_NS" \
         --query "DEFINE DATABASE IF NOT EXISTS $SURREAL_DB;" \
-        --user "$SURREAL_ROOT_USER" --pass "$SURREAL_ROOT_PASS" 2>/dev/null || true
+        --user "$SURREAL_ROOT_USER" --pass "$SURREAL_ROOT_PASS" 2>/dev/null || echo "Database may already exist"
     
     echo "Namespace and database setup completed"
 }
 
-# Wait for database to be ready
-echo "Waiting for database to be ready..."
-i=1
-while [ $i -le 30 ]; do
-    if curl -s "$SURREAL_PROTOCOL://$SURREAL_HOST/health" >/dev/null 2>&1; then
-        echo "Database is ready"
-        break
+# Main initialization logic
+if check_database_ready; then
+    echo "Database is ready, proceeding with initialization..."
+    
+    # Try to create the root user (this is idempotent)
+    if create_root_user "$SURREAL_ROOT_USER" "$SURREAL_ROOT_PASS"; then
+        echo "Root user setup completed successfully"
+    else
+        echo "Could not create root user, but continuing anyway..."
+        echo "   This might be normal if the database was initialized with different credentials"
     fi
-    if [ $i -eq 30 ]; then
-        echo "Database did not become ready within 30 seconds"
-        exit 1
-    fi
-    echo "Waiting for database... ($i/30)"
-    sleep 1
-    i=$((i + 1))
-done
-
-# Try to create the root user (this is idempotent)
-if create_root_user "$SURREAL_ROOT_USER" "$SURREAL_ROOT_PASS"; then
-    echo "Root user setup completed successfully"
+    
+    # Create namespace and database
+    create_namespace_and_database
+    
+    echo "Database initialization completed!"
 else
-    echo "Could not create root user, but continuing anyway..."
-    echo "   This might be normal if the database was initialized with different credentials"
+    echo "Failed to initialize database - database is not ready"
+    exit 1
 fi
-
-# Create namespace and database
-create_namespace_and_database
-
-echo "Database initialization completed!"

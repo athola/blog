@@ -79,10 +79,10 @@ mod activity_error_tests {
 
         // The function might still succeed as it uses the "activity" table explicitly
         // but let's verify the behavior
-        if result.is_err() {
+        if let Err(err) = result {
             println!(
                 "Create activity with invalid ID failed as expected: {:?}",
-                result.unwrap_err()
+                err
             );
         } else {
             println!("Create activity with invalid ID succeeded (might be expected behavior)");
@@ -104,11 +104,8 @@ mod activity_error_tests {
 
         // The database might handle this gracefully or reject it
         // Either way, we want to ensure the system doesn't crash
-        if result.is_err() {
-            println!(
-                "Create activity with invalid timestamp failed: {:?}",
-                result.unwrap_err()
-            );
+        if let Err(err) = result {
+            println!("Create activity with invalid timestamp failed: {:?}", err);
         } else {
             println!("Create activity with invalid timestamp succeeded");
         }
@@ -223,10 +220,10 @@ mod activity_error_tests {
         let result = create_activity(&db, activity).await;
 
         // The result depends on database limits - either success or graceful failure is acceptable
-        if result.is_err() {
+        if let Err(err) = result {
             println!(
                 "Create activity with extremely large content failed: {:?}",
-                result.unwrap_err()
+                err
             );
         } else {
             println!("Create activity with extremely large content succeeded");
@@ -257,11 +254,8 @@ mod activity_error_tests {
         let result = create_activity(&db, activity).await;
 
         // The result depends on database limits - either success or graceful failure is acceptable
-        if result.is_err() {
-            println!(
-                "Create activity with many tags failed: {:?}",
-                result.unwrap_err()
-            );
+        if let Err(err) = result {
+            println!("Create activity with many tags failed: {:?}", err);
         } else {
             println!("Create activity with many tags succeeded");
 
@@ -316,11 +310,8 @@ mod activity_error_tests {
         let result = create_activity(&db, activity).await;
 
         // Should handle control characters gracefully
-        if result.is_err() {
-            println!(
-                "Create activity with control characters failed: {:?}",
-                result.unwrap_err()
-            );
+        if let Err(err) = result {
+            println!("Create activity with control characters failed: {:?}", err);
         } else {
             println!("Create activity with control characters succeeded");
 
