@@ -204,7 +204,7 @@ jobs:
           make init-db || echo "Database initialization completed"
           echo "SurrealDB version: $(surreal --version 2>/dev/null || echo "unknown")"
           echo "🧪 Running tests..."
-          cargo test --workspace --no-fail-fast --lib --bins
+          cargo test --workspace --no-fail-fast
           cargo test migration_core_tests --no-fail-fast
           cargo test schema_evolution_tests --no-fail-fast
           cargo test server_unit_tests --no-fail-fast
@@ -212,7 +212,7 @@ jobs:
           cargo test activity_feed_tests --no-fail-fast -- --test-threads=1
         else
           cargo build --workspace --profile server
-          cargo test --profile server --lib --bins
+          cargo test --profile server --no-fail-fast -p app -p server -p markdown --lib --bins
           cargo test migration_core_tests --profile server --no-fail-fast
           cargo test schema_evolution_tests --profile server --no-fail-fast
           cargo test server_unit_tests --profile server --no-fail-fast

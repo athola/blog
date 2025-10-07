@@ -148,7 +148,7 @@ impl MigrationTestFramework {
             .query(
                 r#"
             DEFINE FIELD OVERWRITE name ON author TYPE string ASSERT $value != NONE;
-            DEFINE FIELD OVERWRITE email ON author TYPE string ASSERT string::is::email($value);
+            DEFINE FIELD OVERWRITE email ON author TYPE string ASSERT string::is_email($value);
             DEFINE FIELD OVERWRITE bio ON author TYPE option<string>;
             
             DEFINE FIELD OVERWRITE title ON post TYPE string ASSERT $value != NONE;
