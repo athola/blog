@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use surrealdb::sql::Thing;
+use surrealdb::RecordId as Thing;
 
 #[cfg(feature = "ssr")]
 use axum::extract::FromRef;

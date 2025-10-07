@@ -5,7 +5,7 @@ use activity_test_api::{create_activity, retry_db_operation, select_activities};
 use app::types::Activity;
 use leptos::prelude::ServerFnError;
 use surrealdb::engine::local::Mem;
-use surrealdb::sql::Thing;
+use surrealdb::RecordId as Thing;
 use surrealdb::Surreal;
 
 #[cfg(test)]
@@ -128,9 +128,7 @@ mod activity_error_tests {
                 let current = count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 if current < 2 {
                     // Fail first two attempts
-                    Err(surrealdb::Error::Db(surrealdb::error::Db::Thrown(
-                        "Temporary database failure".to_string(),
-                    )))
+                    Err(surrealdb::Error::msg("Temporary database failure"))
                 } else {
                     // Succeed on third attempt
                     Ok::<String, surrealdb::Error>("success_after_retry".to_string())
@@ -155,9 +153,7 @@ mod activity_error_tests {
                 let current = count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 if current < 1 {
                     // Fail first attempt
-                    Err(surrealdb::Error::Db(surrealdb::error::Db::Thrown(
-                        "Temporary query failure".to_string(),
-                    )))
+                    Err(surrealdb::Error::msg("Temporary query failure"))
                 } else {
                     // Succeed on second attempt
                     Ok::<Vec<Activity>, surrealdb::Error>(vec![])
@@ -180,9 +176,9 @@ mod activity_error_tests {
             let count = call_count_clone.clone();
             async move {
                 count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                Err::<String, surrealdb::Error>(surrealdb::Error::Db(surrealdb::error::Db::Thrown(
-                    "Persistent database failure".to_string(),
-                )))
+                Err::<String, surrealdb::Error>(surrealdb::Error::msg(
+                    "Persistent database failure",
+                ))
             }
         })
         .await;
@@ -289,9 +285,7 @@ mod activity_error_tests {
         // Spawn in a separate task to catch potential panic
         let db_clone = db.clone();
         let activity_clone = activity.clone();
-        let handle = tokio::spawn(async move {
-            create_activity(&db_clone, activity_clone).await
-        });
+        let handle = tokio::spawn(async move { create_activity(&db_clone, activity_clone).await });
 
         // The operation may succeed, fail, or panic depending on SurrealDB version
         // We just verify it doesn't crash the test suite

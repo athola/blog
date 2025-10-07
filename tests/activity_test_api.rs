@@ -1,5 +1,7 @@
+#![allow(deprecated)]
 use app::types::Activity;
 use leptos::prelude::ServerFnError;
+use leptos::server_fn::error::NoCustomError;
 use std::time::Duration;
 use surrealdb::Surreal;
 use tokio_retry::{strategy::ExponentialBackoff, Retry};
@@ -17,7 +19,10 @@ where
 
     match Retry::spawn(retry_strategy, || async { operation().await }).await {
         Ok(result) => Ok(result),
-        Err(err) => Err(ServerFnError::from(err)),
+        Err(err) => Err(ServerFnError::<NoCustomError>::ServerError(format!(
+            "Database error: {}",
+            err
+        ))),
     }
 }
 
@@ -45,7 +50,9 @@ pub async fn select_activities(
     );
 
     let mut query = retry_db_operation(|| async { db.query(&query).await }).await?;
-    let activities = query.take::<Vec<Activity>>(0)?;
+    let activities = query
+        .take::<Vec<Activity>>(0)
+        .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {}", e)))?;
 
     Ok(activities)
 }

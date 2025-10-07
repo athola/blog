@@ -86,7 +86,12 @@ mod activity_feed_tests {
             db_file: &str,
         ) -> Result<Child, Box<dyn std::error::Error>> {
             // Check if surreal is available
-            if Command::new("which").arg("surreal").output().ok().map_or(true, |o| !o.status.success()) {
+            if Command::new("which")
+                .arg("surreal")
+                .output()
+                .ok()
+                .is_none_or(|o| !o.status.success())
+            {
                 return Err("SurrealDB not found in PATH. Install it or skip these tests.".into());
             }
 
@@ -269,8 +274,10 @@ mod activity_feed_tests {
                 let server_url = format!("http://127.0.0.1:{}", server.port);
                 Ok(Some((server, server_url)))
             }
-            Err(e) if e.to_string().contains("Unable to find available ports")
-                   || e.to_string().contains("SurrealDB not found") => {
+            Err(e)
+                if e.to_string().contains("Unable to find available ports")
+                    || e.to_string().contains("SurrealDB not found") =>
+            {
                 eprintln!("Skipping activity feed test: {}", e);
                 Ok(None)
             }
@@ -295,33 +302,17 @@ mod activity_feed_tests {
         });
 
         // 2. Create a new activity
-        let mut response = client
-            .post(format!("{}/api/create_activity", server_url))
+        let response = client
+            .post(format!("{}/api/activities/create", server_url))
             .json(&activity_data)
             .send()
             .await?;
-
-        // Print response details for debugging
-        println!("Create activity response status: {}", response.status());
-        if !response.status().is_success() {
-            let error_text = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "No error text".to_string());
-            println!("Error response: {}", error_text);
-            // We need to create a new response since we consumed the old one
-            response = client
-                .post(format!("{}/api/activities/create", server_url))
-                .json(&activity_data)
-                .send()
-                .await?;
-        }
 
         assert_eq!(response.status(), StatusCode::CREATED);
 
         // 3. Fetch the activities
         let response = client
-            .get(format!("{}/api/select_activities?page=0", server_url))
+            .get(format!("{}/api/activities?page=0", server_url))
             .send()
             .await?;
         assert_eq!(response.status(), StatusCode::OK);

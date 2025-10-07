@@ -101,10 +101,10 @@ impl MigrationTestFramework {
             if let Some(migration) = self.migration_cache.get(key).cloned() {
                 self.execute_migration(&migration).await?;
             } else {
-                return Err(surrealdb::Error::Db(surrealdb::error::Db::Thrown(format!(
+                return Err(surrealdb::Error::msg(format!(
                     "Migration not found: {}",
                     key
-                ))));
+                )));
             }
         }
         Ok(())
@@ -378,7 +378,7 @@ impl MigrationTestFramework {
         &self,
         table_record: &str,
         field: &str,
-    ) -> SurrealResult<Option<surrealdb::sql::Thing>> {
+    ) -> SurrealResult<Option<surrealdb::RecordId>> {
         let mut result = self
             .db
             .query(format!("SELECT VALUE {} FROM {}", field, table_record))

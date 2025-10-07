@@ -1,8 +1,10 @@
+#![allow(deprecated)]
 extern crate alloc;
 use alloc::collections::BTreeMap;
 
 use leptos::prelude::{ServerFnError, server};
 use leptos::server_fn::codec::GetUrl;
+use leptos::server_fn::error::NoCustomError;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "ssr")]
@@ -33,7 +35,10 @@ where
         Ok(result) => Ok(result),
         Err(e) => {
             tracing::error!("Database operation failed after retries: {:?}", e);
-            Err(ServerFnError::from(e))
+            Err(ServerFnError::<NoCustomError>::ServerError(format!(
+                "Database error: {}",
+                e
+            )))
         }
     }
 }
@@ -64,7 +69,9 @@ pub async fn select_posts(
     };
 
     let mut query = retry_db_operation(|| async { db.query(&query).await }).await?;
-    let mut posts = query.take::<Vec<Post>>(0)?;
+    let mut posts = query
+        .take::<Vec<Post>>(0)
+        .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {}", e)))?;
     for post in &mut posts.iter_mut() {
         if let Ok(parsed_date) = DateTime::parse_from_rfc3339(&post.created_at) {
             let date_time = parsed_date.with_timezone(&Utc);
@@ -91,7 +98,9 @@ pub async fn select_tags() -> Result<BTreeMap<String, usize>, ServerFnError> {
     "
     .to_owned();
     let mut query = retry_db_operation(|| async { db.query(&query).await }).await?;
-    let tags = query.take::<Vec<String>>(1)?;
+    let tags = query
+        .take::<Vec<String>>(1)
+        .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {}", e)))?;
     let mut tag_map = BTreeMap::<String, usize>::new();
     for tag in tags {
         *tag_map.entry(tag).or_insert(0) += 1;
@@ -112,7 +121,9 @@ pub async fn select_post(slug: String) -> Result<Post, ServerFnError> {
 
     let query_str = format!(r#"SELECT *, author.* from post WHERE slug = "{slug}""#);
     let mut query = retry_db_operation(|| async { db.query(&query_str).await }).await?;
-    let post = query.take::<Vec<Post>>(0)?;
+    let post = query
+        .take::<Vec<Post>>(0)
+        .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {}", e)))?;
     let mut post = match post.first() {
         Some(first_post) => first_post.clone(),
         None => {
@@ -215,7 +226,9 @@ pub async fn select_references() -> Result<Vec<Reference>, ServerFnError> {
 
     let query_str = "SELECT * from reference WHERE is_published = true ORDER BY created_at DESC;";
     let mut query = retry_db_operation(|| async { db.query(query_str).await }).await?;
-    let references = query.take::<Vec<Reference>>(0)?;
+    let references = query
+        .take::<Vec<Reference>>(0)
+        .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {}", e)))?;
     Ok(references)
 }
 
@@ -257,7 +270,9 @@ pub async fn select_activities(
     );
 
     let mut query = retry_db_operation(|| async { db.query(&query).await }).await?;
-    let activities = query.take::<Vec<crate::types::Activity>>(0)?;
+    let activities = query
+        .take::<Vec<crate::types::Activity>>(0)
+        .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {}", e)))?;
 
     Ok(activities)
 }
@@ -306,9 +321,7 @@ mod tests {
                     let current_count = count.fetch_add(1, Ordering::SeqCst);
                     if current_count < 2 {
                         // Fail first two attempts
-                        Err(surrealdb::Error::Db(surrealdb::error::Db::Thrown(
-                            "Temporary failure".to_string(),
-                        )))
+                        Err(surrealdb::Error::msg("Temporary failure"))
                     } else {
                         // Succeed on third attempt
                         Ok::<String, surrealdb::Error>("success_after_retry".to_string())
@@ -334,9 +347,7 @@ mod tests {
                 let count = call_count_clone.clone();
                 async move {
                     count.fetch_add(1, Ordering::SeqCst);
-                    Err::<String, surrealdb::Error>(surrealdb::Error::Db(
-                        surrealdb::error::Db::Thrown("Persistent failure".to_string()),
-                    ))
+                    Err::<String, surrealdb::Error>(surrealdb::Error::msg("Persistent failure"))
                 }
             })
             .await;
@@ -347,10 +358,10 @@ mod tests {
 
             // Verify it's converted to ServerFnError
             match result.unwrap_err() {
-                ServerFnError::ServerError(_) => {
-                    // Successfully converted to ServerFnError::ServerError as expected
+                ServerFnError::<NoCustomError>::ServerError(_) => {
+                    // Successfully converted to ServerFnError::<NoCustomError>::ServerError as expected
                 }
-                _ => panic!("Expected ServerFnError::ServerError"),
+                _ => panic!("Expected ServerFnError::<NoCustomError>::ServerError"),
             }
         });
     }
@@ -369,9 +380,7 @@ mod tests {
                 let count = call_count_clone.clone();
                 async move {
                     count.fetch_add(1, Ordering::SeqCst);
-                    Err::<String, surrealdb::Error>(surrealdb::Error::Db(
-                        surrealdb::error::Db::Thrown("Always fail".to_string()),
-                    ))
+                    Err::<String, surrealdb::Error>(surrealdb::Error::msg("Always fail"))
                 }
             })
             .await;
@@ -556,13 +565,9 @@ mod tests {
                 async move {
                     let current = count.fetch_add(1, Ordering::SeqCst);
                     if current == 0 {
-                        Err(surrealdb::Error::Db(surrealdb::error::Db::Thrown(
-                            "Network timeout".to_string(),
-                        )))
+                        Err(surrealdb::Error::msg("Network timeout"))
                     } else if current == 1 {
-                        Err(surrealdb::Error::Db(surrealdb::error::Db::Thrown(
-                            "Connection lost".to_string(),
-                        )))
+                        Err(surrealdb::Error::msg("Connection lost"))
                     } else {
                         Ok::<&str, surrealdb::Error>("recovered")
                     }
@@ -792,9 +797,9 @@ mod tests {
 mod activity_function_tests {
     use super::*;
     use crate::types::Activity;
+    use surrealdb::RecordId as Thing;
     use surrealdb::Surreal;
     use surrealdb::engine::local::Mem;
-    use surrealdb::sql::Thing;
 
     // Mock database for testing
     async fn setup_mock_db() -> Surreal<surrealdb::engine::local::Db> {
@@ -1285,7 +1290,7 @@ mod activity_function_tests {
 
         // Verify tags and sources are preserved
         for activity in &activities {
-            match activity.id.id.to_string().as_str() {
+            match activity.id.to_string().as_str() {
                 "tagged_1" => {
                     assert_eq!(activity.tags, vec!["rust".to_string(), "web".to_string()]);
                     assert!(activity.source.is_none());

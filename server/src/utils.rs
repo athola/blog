@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 extern crate alloc;
 use alloc::sync::Arc;
 use app::types::{AppState, Post};
@@ -6,6 +7,7 @@ use axum::response::Response;
 use chrono::{DateTime, Utc};
 use core::fmt::Write as _;
 use leptos::prelude::ServerFnError;
+use leptos::server_fn::error::NoCustomError;
 use markdown::process_markdown;
 use rss::{ChannelBuilder, Item};
 use serde::{Deserialize, Serialize};
@@ -13,7 +15,6 @@ use std::env;
 use std::time::Duration;
 use surrealdb::Surreal;
 use surrealdb::engine::remote::http::{Client, Http, Https};
-use surrealdb::error::Api as SurrealApiError;
 use surrealdb::opt::auth::{Database, Namespace, Root};
 use tokio::sync::Mutex;
 use tokio_retry::{Retry, strategy::ExponentialBackoff};
@@ -126,11 +127,11 @@ pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
                 }
             }
 
-            Err(last_err.unwrap_or_else(|| {
-                surrealdb::Error::Api(SurrealApiError::InvalidRequest(
-                    "No SurrealDB authentication methods succeeded".to_string(),
-                ))
-            }))
+            if let Some(err) = last_err {
+                Err(err)
+            } else {
+                panic!("No SurrealDB authentication methods succeeded")
+            }
         }
     })
     .await
@@ -228,10 +229,12 @@ pub async fn generate_rss(db: &Surreal<Client>) -> Result<String, ServerFnError>
 
     let mut query = match query {
         Ok(q) => q,
-        Err(e) => return Err(ServerFnError::ServerError(e.to_string())),
+        Err(e) => return Err(ServerFnError::<NoCustomError>::ServerError(e.to_string())),
     };
 
-    let mut posts = query.take::<Vec<Post>>(0)?;
+    let mut posts = query
+        .take::<Vec<Post>>(0)
+        .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {}", e)))?;
     for post in &mut posts.iter_mut() {
         let date_time = DateTime::parse_from_rfc3339(&post.created_at)
             .unwrap()
@@ -382,9 +385,7 @@ mod tests {
                     let current_count = count.fetch_add(1, Ordering::SeqCst);
                     if current_count < 2 {
                         // Fail first two attempts
-                        Err(surrealdb::Error::Db(surrealdb::error::Db::Thrown(
-                            "Connection failed".to_string(),
-                        )))
+                        Err(surrealdb::Error::msg("Connection failed"))
                     } else {
                         // Succeed on third attempt
                         Ok::<String, surrealdb::Error>("success".to_string())
@@ -409,9 +410,7 @@ mod tests {
                 let count = call_count_clone.clone();
                 async move {
                     count.fetch_add(1, Ordering::SeqCst);
-                    Err::<String, surrealdb::Error>(surrealdb::Error::Db(
-                        surrealdb::error::Db::Thrown("Persistent failure".to_string()),
-                    ))
+                    Err::<String, surrealdb::Error>(surrealdb::Error::msg("Persistent failure"))
                 }
             })
             .await;
@@ -434,9 +433,7 @@ mod tests {
             let count = call_count_clone.clone();
             async move {
                 count.fetch_add(1, Ordering::SeqCst);
-                Err::<String, surrealdb::Error>(surrealdb::Error::Db(surrealdb::error::Db::Thrown(
-                    "Always fail".to_string(),
-                )))
+                Err::<String, surrealdb::Error>(surrealdb::Error::msg("Always fail"))
             }
         })
         .await;

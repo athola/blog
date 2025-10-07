@@ -25,7 +25,7 @@ pub fn component() -> impl IntoView {
     Effect::new(move |_| {
         #[cfg(not(debug_assertions))]
         if post.get().is_some() {
-            _increment_view.dispatch(post.get().as_ref().unwrap().id.id.to_string());
+            _increment_view.dispatch(post.get().as_ref().unwrap().id.to_string());
         }
     });
 

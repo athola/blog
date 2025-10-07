@@ -24,7 +24,8 @@ leptos_axum = "0.8"
 leptos_meta = "0.8.5"
 leptos_router = { version = "0.8.7", features = ["nightly"] }
 serde = { version = "1.0.226", features = ["derive"] }
-surrealdb = { version = "2.3.10", features = ["protocol-http", "kv-mem"] }
+surrealdb = { version = "3.0.0-alpha.10", features = ["protocol-http", "kv-mem"] }
+surrealdb-types = "3.0.0-alpha.10"
 tracing = "0.1"
 tokio-retry = "0.3"
 backoff = { version = "0.4", features = ["tokio"] }
@@ -167,7 +168,7 @@ app = { path = "app" }
 leptos = { workspace = true, features = ["ssr"] }
 serde = { version = "1.0.226", features = ["derive"] }
 uuid = { version = "1.18", features = ["v4"] }
-surrealdb = { version = "2.3.10", features = ["protocol-http", "kv-mem"] }
+surrealdb = { version = "3.0.0-alpha.10", features = ["protocol-http", "kv-mem"] }
 tokio = { version = "1", features = ["full"] }
 reqwest.workspace = true
 chrono = { workspace = true }
@@ -178,3 +179,6 @@ lettre = { version = "0.11.18", default-features = false, features = ["builder",
 markdown = { path = "markdown", default-features = false, features = ["ssr"] }
 tracing = { workspace = true }
 tokio-retry = { workspace = true }
+
+[dependencies]
+surrealdb-types = "3.0.0-alpha.10"
