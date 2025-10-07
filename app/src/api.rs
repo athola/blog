@@ -1290,7 +1290,14 @@ mod activity_function_tests {
 
         // Verify tags and sources are preserved
         for activity in &activities {
-            match activity.id.to_string().as_str() {
+            let id_str = activity.id.to_string();
+            // Handle both "tagged_1" and "activity:tagged_1" formats
+            let id_part = if id_str.contains(':') {
+                id_str.split(':').nth(1).unwrap_or(&id_str)
+            } else {
+                &id_str
+            };
+            match id_part {
                 "tagged_1" => {
                     assert_eq!(activity.tags, vec!["rust".to_string(), "web".to_string()]);
                     assert!(activity.source.is_none());
@@ -1307,7 +1314,7 @@ mod activity_function_tests {
                     assert!(activity.tags.is_empty());
                     assert!(activity.source.is_none());
                 }
-                _ => panic!("Unexpected activity ID"),
+                _ => panic!("Unexpected activity ID: {}", id_str),
             }
         }
     }

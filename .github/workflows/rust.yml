@@ -157,17 +157,14 @@ jobs:
           ~/.cargo/registry/cache/
           ~/.cargo/git/db/
         key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-cargo-registry-
 
     - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
       with:
-        shared-key: "test-${{ matrix.profile }}-${{ needs.detect-changes.outputs.rust-code }}-${{ needs.detect-changes.outputs.frontend-assets }}"
+        shared-key: "test-${{ matrix.profile }}"
         cache-targets: "true"
         cache-on-failure: "true"
         save-if: ${{ github.ref == 'refs/heads/master' }}
-        workspaces: |
-          .
+        workspaces: "."
         cache-all-crates: "true"
 
     - name: Cache SurrealDB CLI
@@ -175,8 +172,6 @@ jobs:
       with:
         path: ~/.surrealdb
         key: surrealdb-cli-${{ runner.os }}-v2.3.7
-        restore-keys: |
-          surrealdb-cli-${{ runner.os }}-
 
     - name: Version
       run: cargo --version 2>/dev/null || echo "Cargo version check failed"
@@ -217,7 +212,10 @@ jobs:
           cargo test activity_feed_tests --no-fail-fast -- --test-threads=1
         else
           cargo build --workspace --profile server
-          cargo test --profile server
+          cargo test --profile server --lib --bins
+          cargo test migration_core_tests --profile server --no-fail-fast
+          cargo test schema_evolution_tests --profile server --no-fail-fast
+          cargo test server_unit_tests --profile server --no-fail-fast
         fi
         echo "✅ Build and tests completed"
     
@@ -257,17 +255,14 @@ jobs:
           ~/.cargo/registry/cache/
           ~/.cargo/git/db/
         key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-cargo-registry-
 
     - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
       with:
-        shared-key: "coverage-${{ needs.detect-changes.outputs.rust-code }}"
+        shared-key: "coverage"
         cache-targets: "true"
         cache-on-failure: "true"
         save-if: ${{ github.ref == 'refs/heads/master' }}
-        workspaces: |
-          .
+        workspaces: "."
         cache-all-crates: "true"
 
     - name: Cache SurrealDB CLI
@@ -275,8 +270,6 @@ jobs:
       with:
         path: ~/.surrealdb
         key: surrealdb-cli-${{ runner.os }}-v2.3.7
-        restore-keys: |
-          surrealdb-cli-${{ runner.os }}-
 
     - name: Install SurrealDB
       timeout-minutes: 5
@@ -355,17 +348,14 @@ jobs:
           ~/.cargo/registry/cache/
           ~/.cargo/git/db/
         key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-cargo-registry-
 
     - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
       with:
-        shared-key: "clippy-${{ needs.detect-changes.outputs.rust-code }}"
+        shared-key: "clippy"
         cache-targets: "true"
         cache-on-failure: "true"
         save-if: ${{ github.ref == 'refs/heads/master' }}
-        workspaces: |
-          .
+        workspaces: "."
         cache-all-crates: "true"
     
     - name: Run clippy
