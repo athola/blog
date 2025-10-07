@@ -387,27 +387,34 @@ jobs:
           echo "ℹ️ No benchmarks found, skipping performance tests"
         fi
     
+    - name: Install WASM target
+      run: rustup target add wasm32-unknown-unknown
+
+    - name: Build WASM bundle
+      timeout-minutes: 10
+      run: |
+        echo "🔨 Building WASM bundle for size check..."
+        cargo build -p frontend --target wasm32-unknown-unknown --profile wasm-release
+
     - name: WASM size check
       timeout-minutes: 2
       run: |
         set -euo pipefail
         echo "📏 Checking WASM bundle size..."
-        
-        if [ -d "target/wasm-release" ]; then
-          WASM_FILE=$(find target/wasm-release -name "*.wasm" -type f | head -1 || echo "")
-          
-          if [ -n "$WASM_FILE" ] && [ -f "$WASM_FILE" ]; then
-            WASM_SIZE=$(stat -c%s "$WASM_FILE")
-            echo "WASM bundle: $WASM_FILE ($WASM_SIZE bytes)"
-            
-            if [ "$WASM_SIZE" -gt 2097152 ]; then
-              echo "::warning::WASM bundle is larger than 2MB ($WASM_SIZE bytes)"
-            else
-              echo "✅ WASM bundle size is acceptable"
-            fi
+
+        WASM_FILE=$(find target/wasm32-unknown-unknown/wasm-release -name "*.wasm" -type f | head -1 || echo "")
+
+        if [ -n "$WASM_FILE" ] && [ -f "$WASM_FILE" ]; then
+          WASM_SIZE=$(stat -c%s "$WASM_FILE")
+          WASM_SIZE_MB=$(echo "scale=2; $WASM_SIZE / 1048576" | bc)
+          echo "WASM bundle: $WASM_FILE ($WASM_SIZE bytes / ${WASM_SIZE_MB}MB)"
+
+          if [ "$WASM_SIZE" -gt 2097152 ]; then
+            echo "::warning::WASM bundle is larger than 2MB (${WASM_SIZE_MB}MB)"
           else
-            echo "ℹ️ No WASM files found"
+            echo "✅ WASM bundle size is acceptable (${WASM_SIZE_MB}MB)"
           fi
         else
-          echo "ℹ️ WASM release directory not found"
+          echo "::error::WASM build failed - no WASM files found"
+          exit 1
         fi
