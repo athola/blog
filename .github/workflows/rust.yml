@@ -392,9 +392,12 @@ jobs:
 
     - name: Build WASM bundle
       timeout-minutes: 10
+      env:
+        RUSTFLAGS: "-C opt-level=z"  # Override global RUSTFLAGS for WASM (remove target-cpu=native)
       run: |
         echo "🔨 Building WASM bundle for size check..."
-        cargo build -p frontend --target wasm32-unknown-unknown --profile wasm-release
+        cargo build -p frontend --target wasm32-unknown-unknown --profile wasm-release --quiet
+        echo "✅ WASM build completed"
 
     - name: WASM size check
       timeout-minutes: 2
