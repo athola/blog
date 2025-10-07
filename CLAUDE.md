@@ -38,7 +38,7 @@ Rust-based blog engine with Leptos frontend and Axum backend:
 ### Technology Stack
 - **Leptos**: Full-stack Rust web framework
 - **Axum**: Backend web server
-- **SurrealDB**: Database layer (requires v2.3.7)
+- **SurrealDB**: Database layer (requires v3.0.0-alpha.10)
 - **Tailwind CSS**: Styling
 - **nextest**: Fast test runner
 - **cargo-llvm-cov**: Coverage analysis
@@ -81,7 +81,7 @@ All tests must pass. Current status: ✅ 69/69 passing
 - Unit tests, integration tests, database tests, performance tests
 - Three-tier strategy: Unit (~0s) → CI-optimized (~5s) → Full integration (~44s)
 - Enhanced process coordination and timeout management
-- SurrealDB 2.3.7 compatibility fixes
+- SurrealDB 3.0.0-alpha.10 compatibility fixes
 
 ### Verification Commands
 ```bash
@@ -101,7 +101,7 @@ make test-coverage-html      # Coverage report
 - `rustup target add wasm32-unknown-unknown` for WASM
 
 **Database Issues**:
-- Check SurrealDB version: `surreal version` (requires 2.3.7)
+- Check SurrealDB version: `surreal version` (requires 3.0.0-alpha.10)
 - `make reset-db` for complete database reset
 - Verify db.sh uses `--log info` not `--log strace`
 
@@ -147,7 +147,7 @@ cargo test --workspace --test server_integration_tests test_name -- --nocapture
 
 ### Environment Setup
 - Copy `.env.example` to `.env` and configure
-- Ensure SurrealDB 2.3.7 is installed and in PATH
+- Ensure SurrealDB 3.0.0-alpha.10 is installed and in PATH
 - Run `make install-pkgs` for development tools
 - Use `make init-db` for database initialization
 

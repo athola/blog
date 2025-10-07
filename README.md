@@ -118,7 +118,7 @@ make test-coverage-html
 - **Helper Function Consolidation**: Unified HTTP client creation and page validation logic
 - **Structured Test Organization**: Tests organized by functional areas with clear documentation
 - **Database Connection Fixes**: Resolved integration test failures by:
-  - Upgrading SurrealDB to version 2.3.7 (from 2.2.2)
+  - Upgrading SurrealDB to version 3.0.0-alpha.10 (from 2.2.2)
   - Fixing db.sh script log level (`--log info` instead of `--log strace`)
   - Improving shared server coordination and process cleanup
   - Optimizing build configuration from release to debug mode for faster startup (2-5 min → 10-30 sec)
@@ -186,7 +186,7 @@ The project uses GitHub Actions for CI/CD with security-first design:
 If you encounter issues, try these solutions:
 
 ### Database Connection Issues
-1. Ensure SurrealDB 2.3.7 is installed (not 2.2.2)
+1. Ensure SurrealDB 3.0.0-alpha.10 is installed (not 2.2.2)
 2. Check that the db.sh script uses `--log info` instead of `--log strace`
 3. Verify database is running: `pgrep -f surreal` or `ps aux | grep surreal`
 4. Restart database: `./db.sh`
