@@ -31,6 +31,54 @@ mod server_integration_tests {
     /// Port counter for isolated test instances
     static PORT_COUNTER: AtomicU16 = AtomicU16::new(3010);
 
+    /// Ensure frontend assets are built once before tests run
+    fn ensure_frontend_assets() -> Result<(), Box<dyn std::error::Error>> {
+        use std::path::Path;
+        use std::sync::Once;
+
+        static INIT: Once = Once::new();
+        static mut BUILD_RESULT: Option<Result<(), String>> = None;
+
+        INIT.call_once(|| {
+            let css_path = Path::new("target/site/pkg/blog.css");
+            let js_path = Path::new("target/site/pkg/blog.js");
+            let wasm_path = Path::new("target/site/pkg/blog.wasm");
+
+            if !css_path.exists() || !js_path.exists() || !wasm_path.exists() {
+                eprintln!("Frontend assets missing, building with 'cargo leptos build'...");
+                let status = Command::new("cargo")
+                    .args(["leptos", "build"])
+                    .status();
+
+                unsafe {
+                    BUILD_RESULT = Some(match status {
+                        Ok(s) if s.success() => {
+                            eprintln!("Frontend assets built successfully");
+                            Ok(())
+                        }
+                        Ok(s) => Err(format!("Failed to build frontend assets: exit code {:?}", s.code())),
+                        Err(e) => Err(format!("Failed to execute cargo leptos build: {}", e)),
+                    });
+                }
+            } else {
+                eprintln!("Frontend assets already exist, skipping build");
+                unsafe {
+                    BUILD_RESULT = Some(Ok(()));
+                }
+            }
+        });
+
+        unsafe {
+            match &raw const BUILD_RESULT {
+                ptr if (*ptr).is_some() => match (*ptr).as_ref().unwrap() {
+                    Ok(()) => Ok(()),
+                    Err(e) => Err(e.clone().into()),
+                },
+                _ => Err("Build result not initialized".into()),
+            }
+        }
+    }
+
     /// Test server instance that runs for the duration of a single test
     struct TestServer {
         process: Option<Child>,
@@ -42,6 +90,9 @@ mod server_integration_tests {
     impl TestServer {
         /// Start a test development server
         async fn start() -> Result<Self, Box<dyn std::error::Error>> {
+            // Ensure frontend assets are built before starting any test server
+            ensure_frontend_assets()?;
+
             // Get a unique port for this test instance
             let port = PORT_COUNTER.fetch_add(1, Ordering::SeqCst);
             let server_url = format!("http://127.0.0.1:{}", port);

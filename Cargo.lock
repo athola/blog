@@ -696,7 +696,6 @@ version = "0.1.0"
 dependencies = [
  "app",
  "chrono",
- "lazy_static",
  "leptos",
  "lettre",
  "markdown",
@@ -1623,6 +1622,7 @@ dependencies = [
  "app",
  "console_error_panic_hook",
  "console_log",
+ "getrandom 0.3.3",
  "leptos",
  "log",
  "wasm-bindgen",
