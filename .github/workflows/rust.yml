@@ -138,7 +138,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     needs: detect-changes
     strategy:
       matrix:
@@ -195,7 +195,7 @@ jobs:
         echo "$HOME/.surrealdb" >> $GITHUB_PATH
 
     - name: Build workspace
-      timeout-minutes: 35
+      timeout-minutes: 45
       run: |
         echo "🔨 Building workspace (profile: ${{ matrix.profile }})..."
         if [ "${{ matrix.profile }}" = "dev" ]; then
