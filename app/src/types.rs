@@ -100,10 +100,13 @@ pub struct Reference {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Activity {
-    #[serde(default = "default_thing")]
-    pub id: Thing,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<Thing>,
     pub content: String,
+    #[serde(default)]
     pub tags: Vec<String>,
+    #[serde(default)]
     pub source: Option<String>,
     #[serde(default)]
     pub created_at: String,
@@ -112,17 +115,13 @@ pub struct Activity {
 impl Default for Activity {
     fn default() -> Self {
         Self {
-            id: default_thing(),
+            id: None,
             content: String::new(),
             tags: Vec::new(),
             source: None,
             created_at: String::new(),
         }
     }
-}
-
-fn default_thing() -> Thing {
-    Thing::from(("activity", "0"))
 }
 
 #[cfg(test)]
@@ -138,7 +137,7 @@ mod activity_type_tests {
         assert_eq!(activity.tags, Vec::<String>::new());
         assert_eq!(activity.source, None);
         assert_eq!(activity.created_at, "");
-        assert_eq!(activity.id, Thing::from(("activity", "0")));
+        assert_eq!(activity.id, None);
     }
 
     #[test]
@@ -218,24 +217,10 @@ mod activity_type_tests {
 
         // RecordId in SurrealDB 3.0 may serialize as string "activity:0" or as object
         // Just verify the id field exists and contains expected information
-        let id_field = &json_value["id"];
-        assert!(!id_field.is_null(), "ID field should not be null");
-
-        // The ID should contain both table and id information
-        let id_str = if id_field.is_string() {
-            id_field.as_str().unwrap().to_string()
-        } else if id_field.is_object() {
-            // Old format: {"tb": "activity", "id": {"String": "0"}}
-            format!("{}:{}",
-                id_field.get("tb").and_then(|v| v.as_str()).unwrap_or("activity"),
-                id_field.get("id").and_then(|v| v.get("String")).and_then(|v| v.as_str()).unwrap_or("0")
-            )
-        } else {
-            panic!("Unexpected ID format: {:?}", id_field);
-        };
-
-        assert!(id_str.contains("activity"), "ID should contain table name 'activity'");
-        assert!(id_str.contains("0"), "ID should contain id '0'");
+        assert!(
+            json_value.get("id").is_none(),
+            "id should be omitted when not provided"
+        );
     }
 
     #[test]

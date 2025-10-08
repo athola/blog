@@ -21,7 +21,7 @@ mod activity_error_tests {
         let db = Surreal::new::<Mem>(()).await.unwrap();
         // Don't set up the namespace/database to simulate connection issues
         let activity = Activity {
-            id: Thing::from(("activity", "connection_test")),
+            id: Some(Thing::from(("activity", "connection_test"))),
             content: "Test connection error".to_string(),
             created_at: "2023-01-01T12:00:00Z".to_string(),
             ..Default::default()
@@ -69,7 +69,7 @@ mod activity_error_tests {
         db.use_ns("test").use_db("test").await.unwrap();
         // Test with invalid Thing structure
         let activity = Activity {
-            id: Thing::from(("invalid_table", "test_id")), // Wrong table name
+            id: Some(Thing::from(("invalid_table", "test_id"))), // Wrong table name
             content: "Test invalid ID".to_string(),
             created_at: "2023-01-01T12:00:00Z".to_string(),
             ..Default::default()
@@ -94,7 +94,7 @@ mod activity_error_tests {
         let db = Surreal::new::<Mem>(()).await.unwrap();
         db.use_ns("test").use_db("test").await.unwrap();
         let activity = Activity {
-            id: Thing::from(("activity", "invalid_timestamp")),
+            id: Some(Thing::from(("activity", "invalid_timestamp"))),
             content: "Test invalid timestamp".to_string(),
             created_at: "invalid-timestamp".to_string(), // Invalid timestamp format
             ..Default::default()
@@ -207,7 +207,7 @@ mod activity_error_tests {
         // Test with extremely large content (might exceed database limits)
         let extremely_large_content = "x".repeat(1_000_000); // 1MB of content
         let activity = Activity {
-            id: Thing::from(("activity", "large_content")),
+            id: Some(Thing::from(("activity", "large_content"))),
             content: extremely_large_content.clone(),
             created_at: "2023-01-01T12:00:00Z".to_string(),
             ..Default::default()
@@ -240,7 +240,7 @@ mod activity_error_tests {
         // Test with extremely many tags
         let many_tags: Vec<String> = (0..1000).map(|i| format!("tag_{}", i)).collect();
         let activity = Activity {
-            id: Thing::from(("activity", "many_tags")),
+            id: Some(Thing::from(("activity", "many_tags"))),
             content: "Test with many tags".to_string(),
             tags: many_tags.clone(),
             created_at: "2023-01-01T12:00:00Z".to_string(),
@@ -276,7 +276,7 @@ mod activity_error_tests {
         // This test verifies the system handles them gracefully without crashing
         let content_with_null = "Content with \0 null bytes".to_string();
         let activity = Activity {
-            id: Thing::from(("activity", "null_bytes")),
+            id: Some(Thing::from(("activity", "null_bytes"))),
             content: content_with_null.clone(),
             created_at: "2023-01-01T12:00:00Z".to_string(),
             ..Default::default()
@@ -310,7 +310,7 @@ mod activity_error_tests {
         // Test with content containing various control characters
         let control_chars = "\x01\x02\x03\x04\x05\x06\x07\x08\x0b\x0c\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f";
         let activity = Activity {
-            id: Thing::from(("activity", "control_chars")),
+            id: Some(Thing::from(("activity", "control_chars"))),
             content: control_chars.to_string(),
             created_at: "2023-01-01T12:00:00Z".to_string(),
             ..Default::default()
@@ -342,7 +342,7 @@ mod activity_error_tests {
         // Create multiple activities
         for i in 0..10 {
             let activity = Activity {
-                id: Thing::from(("activity".to_owned(), format!("cleanup_test_{}", i))),
+                id: Some(Thing::from(("activity".to_owned(), format!("cleanup_test_{}", i)))),
                 content: format!("Cleanup test activity {}", i),
                 created_at: format!("2023-01-01T12:00:{:02}Z", i),
                 ..Default::default()

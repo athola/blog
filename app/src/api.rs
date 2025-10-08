@@ -839,7 +839,7 @@ mod activity_function_tests {
     async fn test_create_activity_basic() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Thing::from(("activity", "test_id")),
+            id: Some(Thing::from(("activity", "test_id"))),
             content: "This is a test activity".to_string(),
             created_at: "2023-01-01T12:00:00Z".to_string(),
             ..Default::default()
@@ -858,7 +858,7 @@ mod activity_function_tests {
     async fn test_create_activity_with_tags() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Thing::from(("activity", "tagged_activity")),
+            id: Some(Thing::from(("activity", "tagged_activity"))),
             content: "Activity with tags".to_string(),
             tags: vec!["rust".to_string(), "testing".to_string(), "tdd".to_string()],
             created_at: "2023-01-01T12:00:00Z".to_string(),
@@ -880,7 +880,7 @@ mod activity_function_tests {
     async fn test_create_activity_with_source() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Thing::from(("activity", "sourced_activity")),
+            id: Some(Thing::from(("activity", "sourced_activity"))),
             content: "Activity with source".to_string(),
             source: Some("https://github.com/rust-lang/rust".to_string()),
             created_at: "2023-01-01T12:00:00Z".to_string(),
@@ -902,7 +902,7 @@ mod activity_function_tests {
     async fn test_create_activity_with_empty_content() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Thing::from(("activity", "empty_content")),
+            id: Some(Thing::from(("activity", "empty_content"))),
             content: "".to_string(),
             created_at: "2023-01-01T12:00:00Z".to_string(),
             ..Default::default()
@@ -922,7 +922,7 @@ mod activity_function_tests {
         let db = setup_mock_db().await;
         let long_content = "a".repeat(10000); // 10KB of content
         let activity = Activity {
-            id: Thing::from(("activity", "long_content")),
+            id: Some(Thing::from(("activity", "long_content"))),
             content: long_content.clone(),
             created_at: "2023-01-01T12:00:00Z".to_string(),
             ..Default::default()
@@ -942,7 +942,7 @@ mod activity_function_tests {
         let db = setup_mock_db().await;
         let special_content = "Special chars: áéíóú ñ ¿¡ 🚀 \n\t\r\"'\\";
         let activity = Activity {
-            id: Thing::from(("activity", "special_chars")),
+            id: Some(Thing::from(("activity", "special_chars"))),
             content: special_content.to_string(),
             tags: vec!["español".to_string(), "unicode".to_string()],
             created_at: "2023-01-01T12:00:00Z".to_string(),
@@ -967,7 +967,7 @@ mod activity_function_tests {
     async fn test_create_activity_with_unicode_tags() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Thing::from(("activity", "unicode_tags")),
+            id: Some(Thing::from(("activity", "unicode_tags"))),
             content: "Unicode tags test".to_string(),
             tags: vec![
                 "中文".to_string(),
@@ -999,7 +999,7 @@ mod activity_function_tests {
     async fn test_create_activity_with_empty_tags() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Thing::from(("activity", "empty_tags")),
+            id: Some(Thing::from(("activity", "empty_tags"))),
             content: "Empty tags test".to_string(),
             tags: Vec::new(),
             created_at: "2023-01-01T12:00:00Z".to_string(),
@@ -1019,7 +1019,7 @@ mod activity_function_tests {
     async fn test_create_activity_with_invalid_url_source() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Thing::from(("activity", "invalid_url")),
+            id: Some(Thing::from(("activity", "invalid_url"))),
             content: "Invalid URL test".to_string(),
             source: Some("not-a-valid-url".to_string()),
             created_at: "2023-01-01T12:00:00Z".to_string(),
@@ -1043,20 +1043,20 @@ mod activity_function_tests {
         let db = setup_mock_db().await;
         let activities = vec![
             Activity {
-                id: Thing::from(("activity", "multi_1")),
+                id: Some(Thing::from(("activity", "multi_1"))),
                 content: "First activity".to_string(),
                 created_at: "2023-01-01T12:00:00Z".to_string(),
                 ..Default::default()
             },
             Activity {
-                id: Thing::from(("activity", "multi_2")),
+                id: Some(Thing::from(("activity", "multi_2"))),
                 content: "Second activity".to_string(),
                 tags: vec!["test".to_string()],
                 created_at: "2023-01-01T12:01:00Z".to_string(),
                 ..Default::default()
             },
             Activity {
-                id: Thing::from(("activity", "multi_3")),
+                id: Some(Thing::from(("activity", "multi_3"))),
                 content: "Third activity".to_string(),
                 source: Some("https://example.com".to_string()),
                 created_at: "2023-01-01T12:02:00Z".to_string(),
@@ -1087,7 +1087,7 @@ mod activity_function_tests {
         // Create some test activities
         for i in 0..5 {
             let activity = Activity {
-                id: Thing::from(("activity".to_owned(), format!("test_id_{}", i))),
+                id: Some(Thing::from(("activity".to_owned(), format!("test_id_{}", i)))),
                 content: format!("Activity {}", i),
                 created_at: format!("2023-01-01T12:00:0{}Z", i),
                 ..Default::default()
@@ -1106,7 +1106,7 @@ mod activity_function_tests {
         // Create 25 test activities
         for i in 0..25 {
             let activity = Activity {
-                id: Thing::from(("activity".to_owned(), format!("page_test_{}", i))),
+                id: Some(Thing::from(("activity".to_owned(), format!("page_test_{}", i)))),
                 content: format!("Page test activity {}", i),
                 created_at: format!("2023-01-01T12:{:02}:00Z", i),
                 ..Default::default()
@@ -1146,10 +1146,10 @@ mod activity_function_tests {
 
         for (timestamp, content) in activities_data {
             let activity = Activity {
-                id: Thing::from((
+                id: Some(Thing::from((
                     "activity".to_owned(),
                     content.replace(" ", "_").to_lowercase(),
-                )),
+                ))),
                 content: content.to_string(),
                 created_at: timestamp.to_string(),
                 ..Default::default()
@@ -1179,7 +1179,7 @@ mod activity_function_tests {
 
         for (id, content) in activities_data {
             let activity = Activity {
-                id: Thing::from(("activity", id)),
+                id: Some(Thing::from(("activity", id))),
                 content: content.to_string(),
                 created_at: same_timestamp.to_string(),
                 ..Default::default()
@@ -1224,7 +1224,7 @@ mod activity_function_tests {
 
         for (id, content) in activities_data {
             let activity = Activity {
-                id: Thing::from(("activity", id)),
+                id: Some(Thing::from(("activity", id))),
                 content,
                 created_at: "2023-01-01T12:00:00Z".to_string(),
                 ..Default::default()
@@ -1252,28 +1252,28 @@ mod activity_function_tests {
         // Create activities with various tags and sources
         let activities_data = vec![
             Activity {
-                id: Thing::from(("activity", "tagged_1")),
+                id: Some(Thing::from(("activity", "tagged_1"))),
                 content: "Activity with tags".to_string(),
                 tags: vec!["rust".to_string(), "web".to_string()],
                 source: None,
                 created_at: "2023-01-01T12:00:00Z".to_string(),
             },
             Activity {
-                id: Thing::from(("activity", "sourced_1")),
+                id: Some(Thing::from(("activity", "sourced_1"))),
                 content: "Activity with source".to_string(),
                 tags: Vec::new(),
                 source: Some("https://github.com".to_string()),
                 created_at: "2023-01-01T12:01:00Z".to_string(),
             },
             Activity {
-                id: Thing::from(("activity", "both_1")),
+                id: Some(Thing::from(("activity", "both_1"))),
                 content: "Activity with both".to_string(),
                 tags: vec!["fullstack".to_string()],
                 source: Some("https://example.com".to_string()),
                 created_at: "2023-01-01T12:02:00Z".to_string(),
             },
             Activity {
-                id: Thing::from(("activity", "neither_1")),
+                id: Some(Thing::from(("activity", "neither_1"))),
                 content: "Activity with neither".to_string(),
                 tags: Vec::new(),
                 source: None,
@@ -1290,7 +1290,11 @@ mod activity_function_tests {
 
         // Verify tags and sources are preserved
         for activity in &activities {
-            let id_str = activity.id.to_string();
+            let id = activity
+                .id
+                .as_ref()
+                .expect("Activity ID should be present in query results");
+            let id_str = id.to_string();
             // Handle both "tagged_1" and "activity:tagged_1" formats
             let id_part = if id_str.contains(':') {
                 id_str.split(':').nth(1).unwrap_or(&id_str)
@@ -1339,7 +1343,7 @@ mod activity_function_tests {
         // Create only 5 activities
         for i in 0..5 {
             let activity = Activity {
-                id: Thing::from(("activity".to_owned(), format!("large_page_{}", i))),
+                id: Some(Thing::from(("activity".to_owned(), format!("large_page_{}", i)))),
                 content: format!("Activity {}", i),
                 created_at: format!("2023-01-01T12:00:0{}Z", i),
                 ..Default::default()
