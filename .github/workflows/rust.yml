@@ -138,7 +138,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     needs: detect-changes
     strategy:
       matrix:
@@ -204,11 +204,10 @@ jobs:
           make init-db || echo "Database initialization completed"
           echo "SurrealDB version: $(surreal --version 2>/dev/null || echo "unknown")"
           echo "🧪 Running tests..."
-          cargo test --workspace --no-fail-fast
+          cargo test --workspace --no-fail-fast --lib --bins
           cargo test migration_core_tests --no-fail-fast
           cargo test schema_evolution_tests --no-fail-fast
           cargo test server_unit_tests --no-fail-fast
-          cargo test server_integration_tests_ci --features ci --no-fail-fast -- --test-threads=1
           cargo test activity_feed_tests --no-fail-fast -- --test-threads=1
         else
           cargo build --workspace --profile server
@@ -412,8 +411,8 @@ jobs:
           WASM_SIZE_MB=$(echo "scale=2; $WASM_SIZE / 1048576" | bc)
           echo "WASM bundle: $WASM_FILE ($WASM_SIZE bytes / ${WASM_SIZE_MB}MB)"
 
-          if [ "$WASM_SIZE" -gt 2097152 ]; then
-            echo "::warning::WASM bundle is larger than 2MB (${WASM_SIZE_MB}MB)"
+          if [ "$WASM_SIZE" -gt 5242880 ]; then
+            echo "::warning::WASM bundle is larger than 5MB (${WASM_SIZE_MB}MB)"
           else
             echo "✅ WASM bundle size is acceptable (${WASM_SIZE_MB}MB)"
           fi

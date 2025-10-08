@@ -32,6 +32,7 @@ mod server_integration_tests {
     static PORT_COUNTER: AtomicU16 = AtomicU16::new(3010);
 
     /// Ensure frontend assets are built once before tests run
+    /// Returns Ok if assets exist, Err if they don't and couldn't be built
     fn ensure_frontend_assets() -> Result<(), Box<dyn std::error::Error>> {
         use std::path::Path;
         use std::sync::Once;
@@ -44,27 +45,52 @@ mod server_integration_tests {
             let js_path = Path::new("target/site/pkg/blog.js");
             let wasm_path = Path::new("target/site/pkg/blog.wasm");
 
-            if !css_path.exists() || !js_path.exists() || !wasm_path.exists() {
-                eprintln!("Frontend assets missing, building with 'cargo leptos build'...");
-                let status = Command::new("cargo")
-                    .args(["leptos", "build"])
-                    .status();
-
-                unsafe {
-                    BUILD_RESULT = Some(match status {
-                        Ok(s) if s.success() => {
-                            eprintln!("Frontend assets built successfully");
-                            Ok(())
-                        }
-                        Ok(s) => Err(format!("Failed to build frontend assets: exit code {:?}", s.code())),
-                        Err(e) => Err(format!("Failed to execute cargo leptos build: {}", e)),
-                    });
-                }
-            } else {
-                eprintln!("Frontend assets already exist, skipping build");
+            // Check if assets already exist
+            if css_path.exists() && js_path.exists() && wasm_path.exists() {
+                eprintln!("✓ Frontend assets already exist");
                 unsafe {
                     BUILD_RESULT = Some(Ok(()));
                 }
+                return;
+            }
+
+            // Assets missing - try to build them
+            eprintln!("⚠ Frontend assets missing, attempting to build...");
+
+            // First check if cargo-leptos is available
+            let check = Command::new("cargo")
+                .args(["leptos", "--version"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+
+            if check.is_err() || !check.unwrap().success() {
+                eprintln!("⚠ cargo-leptos not installed - skipping asset build");
+                eprintln!("  Run 'cargo install cargo-leptos' or 'make build-assets' to build frontend");
+                unsafe {
+                    BUILD_RESULT = Some(Err(
+                        "Frontend assets not found and cargo-leptos not available".to_string()
+                    ));
+                }
+                return;
+            }
+
+            // Try to build assets
+            let status = Command::new("cargo")
+                .args(["leptos", "build"])
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit())
+                .status();
+
+            unsafe {
+                BUILD_RESULT = Some(match status {
+                    Ok(s) if s.success() => {
+                        eprintln!("✓ Frontend assets built successfully");
+                        Ok(())
+                    }
+                    Ok(s) => Err(format!("Frontend asset build failed with exit code {:?}", s.code())),
+                    Err(e) => Err(format!("Failed to execute cargo leptos build: {}", e)),
+                });
             }
         });
 
