@@ -1,6 +1,7 @@
+use std::io::ErrorKind;
 use std::net::TcpListener;
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use std::time::{Duration, Instant};
 
 #[cfg(test)]
@@ -10,6 +11,7 @@ mod activity_feed_tests {
 
     const CLIENT_TIMEOUT: Duration = Duration::from_secs(15);
     static PORT_COUNTER: AtomicU16 = AtomicU16::new(3030);
+    static PORT_PERMISSION_DENIED: AtomicBool = AtomicBool::new(false);
 
     struct TestServer {
         process: Option<Child>,
@@ -22,6 +24,10 @@ mod activity_feed_tests {
 
     impl TestServer {
         async fn start() -> Result<Self, Box<dyn std::error::Error>> {
+            if PORT_PERMISSION_DENIED.load(Ordering::SeqCst) {
+                return Err("Insufficient permissions to bind local TCP ports".into());
+            }
+
             let mut attempts = 0;
             let port = loop {
                 let candidate = PORT_COUNTER.fetch_add(1, Ordering::SeqCst);
@@ -35,6 +41,10 @@ mod activity_feed_tests {
                 }
                 break candidate;
             };
+
+            if PORT_PERMISSION_DENIED.load(Ordering::SeqCst) {
+                return Err("Insufficient permissions to bind local TCP ports".into());
+            }
 
             let server_url = format!("http://127.0.0.1:{}", port);
             let reload_port = port + 1000;
@@ -172,10 +182,17 @@ mod activity_feed_tests {
         ) -> Result<u16, Box<dyn std::error::Error>> {
             for port in 9000..10000 {
                 if port != server_port && port != reload_port && !Self::is_port_in_use(port) {
+                    if PORT_PERMISSION_DENIED.load(Ordering::SeqCst) {
+                        return Err("Insufficient permissions to bind local TCP ports".into());
+                    }
                     return Ok(port);
                 }
             }
-            Err("Unable to find available database port".into())
+            if PORT_PERMISSION_DENIED.load(Ordering::SeqCst) {
+                Err("Insufficient permissions to bind local TCP ports".into())
+            } else {
+                Err("Unable to find available database port".into())
+            }
         }
 
         async fn test_database_connection(port: u16) -> bool {
@@ -240,7 +257,22 @@ mod activity_feed_tests {
         }
 
         fn is_port_in_use(port: u16) -> bool {
-            TcpListener::bind(("127.0.0.1", port)).is_err()
+            match TcpListener::bind(("127.0.0.1", port)) {
+                Ok(listener) => {
+                    drop(listener);
+                    false
+                }
+                Err(err) => {
+                    if err.kind() == ErrorKind::AddrInUse {
+                        true
+                    } else if err.kind() == ErrorKind::PermissionDenied {
+                        PORT_PERMISSION_DENIED.store(true, Ordering::SeqCst);
+                        false
+                    } else {
+                        true
+                    }
+                }
+            }
         }
     }
 
@@ -277,6 +309,14 @@ mod activity_feed_tests {
             Err(e)
                 if e.to_string().contains("Unable to find available ports")
                     || e.to_string().contains("SurrealDB not found") =>
+            {
+                eprintln!("Skipping activity feed test: {}", e);
+                Ok(None)
+            }
+            Err(e)
+                if e
+                    .to_string()
+                    .contains("Insufficient permissions to bind local TCP ports") =>
             {
                 eprintln!("Skipping activity feed test: {}", e);
                 Ok(None)
