@@ -1,6 +1,7 @@
+use std::io::ErrorKind;
 use std::net::TcpListener;
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use std::time::{Duration, Instant};
 
 /// Integration tests for the Leptos development server
@@ -30,6 +31,9 @@ mod server_integration_tests {
 
     /// Port counter for isolated test instances
     static PORT_COUNTER: AtomicU16 = AtomicU16::new(3010);
+    static PORT_PERMISSION_DENIED: AtomicBool = AtomicBool::new(false);
+    static SURREAL_MISSING: AtomicBool = AtomicBool::new(false);
+    static FRONTEND_ASSETS_UNAVAILABLE: AtomicBool = AtomicBool::new(false);
 
     /// Ensure frontend assets are built once before tests run
     /// Returns Ok if assets exist, Err if they don't and couldn't be built
@@ -68,8 +72,9 @@ mod server_integration_tests {
                 eprintln!("⚠ cargo-leptos not installed - skipping asset build");
                 eprintln!("  Run 'cargo install cargo-leptos' or 'make build-assets' to build frontend");
                 unsafe {
+                    FRONTEND_ASSETS_UNAVAILABLE.store(true, Ordering::SeqCst);
                     BUILD_RESULT = Some(Err(
-                        "Frontend assets not found and cargo-leptos not available".to_string()
+                        "Frontend assets not found and cargo-leptos not available".to_string(),
                     ));
                 }
                 return;
@@ -86,6 +91,7 @@ mod server_integration_tests {
                 BUILD_RESULT = Some(match status {
                     Ok(s) if s.success() => {
                         eprintln!("✓ Frontend assets built successfully");
+                        FRONTEND_ASSETS_UNAVAILABLE.store(false, Ordering::SeqCst);
                         Ok(())
                     }
                     Ok(s) => Err(format!("Frontend asset build failed with exit code {:?}", s.code())),
@@ -116,6 +122,16 @@ mod server_integration_tests {
     impl TestServer {
         /// Start a test development server
         async fn start() -> Result<Self, Box<dyn std::error::Error>> {
+            if PORT_PERMISSION_DENIED.load(Ordering::SeqCst) {
+                return Err("Insufficient permissions to bind local TCP ports".into());
+            }
+            if SURREAL_MISSING.load(Ordering::SeqCst) {
+                return Err("SurrealDB CLI not available in PATH; skipping tests".into());
+            }
+            if FRONTEND_ASSETS_UNAVAILABLE.load(Ordering::SeqCst) {
+                return Err("Frontend assets not available in this environment".into());
+            }
+
             // Ensure frontend assets are built before starting any test server
             ensure_frontend_assets()?;
 
@@ -123,10 +139,18 @@ mod server_integration_tests {
             let port = PORT_COUNTER.fetch_add(1, Ordering::SeqCst);
             let server_url = format!("http://127.0.0.1:{}", port);
 
+            if PORT_PERMISSION_DENIED.load(Ordering::SeqCst) {
+                return Err("Insufficient permissions to bind local TCP ports".into());
+            }
+
             eprintln!("Starting test server on port {}...", port);
             Self::cleanup_existing_processes(port).await;
 
             Self::ensure_ports_available(port).await?;
+
+            if PORT_PERMISSION_DENIED.load(Ordering::SeqCst) {
+                return Err("Insufficient permissions to bind local TCP ports".into());
+            }
 
             // Start database and wait for it to be ready
             let db_process = Self::start_database(port).await?;
@@ -189,6 +213,24 @@ mod server_integration_tests {
                 "Starting SurrealDB database on port {} with file {}...",
                 db_port, db_file
             );
+
+            if SURREAL_MISSING.load(Ordering::SeqCst) {
+                return Err("SurrealDB CLI not available in PATH; skipping tests".into());
+            }
+
+            if Command::new("which")
+                .arg("surreal")
+                .output()
+                .ok()
+                .is_none_or(|o| !o.status.success())
+            {
+                SURREAL_MISSING.store(true, Ordering::SeqCst);
+                return Err("SurrealDB not found in PATH. Install it or skip these tests.".into());
+            }
+
+            if PORT_PERMISSION_DENIED.load(Ordering::SeqCst) {
+                return Err("Insufficient permissions to bind local TCP ports".into());
+            }
 
             // Kill any existing database processes first
             let _ = Command::new("pkill")
@@ -547,7 +589,22 @@ mod server_integration_tests {
 
         /// Check if a port is in use
         fn is_port_in_use(port: u16) -> bool {
-            TcpListener::bind(("127.0.0.1", port)).is_err()
+            match TcpListener::bind(("127.0.0.1", port)) {
+                Ok(listener) => {
+                    drop(listener);
+                    false
+                }
+                Err(err) => {
+                    if err.kind() == ErrorKind::AddrInUse {
+                        true
+                    } else if err.kind() == ErrorKind::PermissionDenied {
+                        PORT_PERMISSION_DENIED.store(true, Ordering::SeqCst);
+                        false
+                    } else {
+                        true
+                    }
+                }
+            }
         }
     }
 
@@ -673,6 +730,24 @@ mod server_integration_tests {
                 Ok(Some((server, server_url)))
             }
             Err(e) if e.to_string().contains("Server ports") => {
+                eprintln!("Skipping server integration test: {}", e);
+                Ok(None)
+            }
+            Err(e)
+                if e.to_string().contains("Insufficient permissions to bind local TCP ports")
+                    || e
+                        .to_string()
+                        .contains("SurrealDB not found in PATH")
+                    || e
+                        .to_string()
+                        .contains("SurrealDB CLI not available in PATH")
+                    || e
+                        .to_string()
+                        .contains("Frontend assets not available in this environment")
+                    || e
+                        .to_string()
+                        .contains("Frontend assets not found and cargo-leptos not available") =>
+            {
                 eprintln!("Skipping server integration test: {}", e);
                 Ok(None)
             }
