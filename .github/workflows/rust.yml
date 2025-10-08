@@ -393,7 +393,7 @@ jobs:
     - name: Build WASM bundle
       timeout-minutes: 10
       env:
-        RUSTFLAGS: "-C opt-level=z"  # Override global RUSTFLAGS for WASM (remove target-cpu=native)
+        RUSTFLAGS: "-C opt-level=z --cfg getrandom_backend=\"wasm_js\""  # Override global RUSTFLAGS for WASM (remove target-cpu=native, add getrandom backend)
       run: |
         echo "🔨 Building WASM bundle for size check..."
         cargo build -p frontend --target wasm32-unknown-unknown --profile wasm-release --quiet

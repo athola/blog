@@ -29,7 +29,11 @@ console_error_panic_hook = "0.1"
 console_log = "1"
 log = "0.4.28"
 wasm-bindgen = "0.2.103"
-getrandom = { version = "0.3", features = ["wasm_js"] }  # Required for WASM builds
+
+# WASM-specific dependencies with proper backend configuration
+[target.wasm32-unknown-unknown.dependencies]
+getrandom_v2 = { version = "0.2", features = ["js"], package = "getrandom" }
+getrandom = { version = "0.3", features = ["wasm_js"] }
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false
