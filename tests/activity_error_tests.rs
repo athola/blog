@@ -342,7 +342,10 @@ mod activity_error_tests {
         // Create multiple activities
         for i in 0..10 {
             let activity = Activity {
-                id: Some(Thing::from(("activity".to_owned(), format!("cleanup_test_{}", i)))),
+                id: Some(Thing::from((
+                    "activity".to_owned(),
+                    format!("cleanup_test_{}", i),
+                ))),
                 content: format!("Cleanup test activity {}", i),
                 created_at: format!("2023-01-01T12:00:{:02}Z", i),
                 ..Default::default()

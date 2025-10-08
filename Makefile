@@ -82,7 +82,7 @@ test-server-integration:
 	@./db.sh & echo $$! > /tmp/db_pid
 	@sleep 5
 	@echo "Running server integration tests..."
-	@set -a; . .env.test; set +a; cargo test --test server_integration_tests --no-fail-fast || true
+	@set -a; . ./.env.test; set +a; cargo test --test server_integration_tests --no-fail-fast || true
 	@echo "Cleaning up database..."
 	@kill `cat /tmp/db_pid` 2>/dev/null || true
 	@rm -f /tmp/db_pid
@@ -96,7 +96,7 @@ test-server-integration-embedded:
 	@./db.sh & echo $! > /tmp/test_db_pid
 	@sleep 8
 	@echo "  Running server integration tests..."
-	@set -a; . .env.test; set +a; cargo test --test server_integration_tests --no-fail-fast -- --test-threads=1 || (echo "Server integration tests failed, cleaning up..." && kill `cat /tmp/test_db_pid` 2>/dev/null || true && rm -f /tmp/test_db_pid && false)
+	@set -a; . ./.env.test; set +a; cargo test --test server_integration_tests --no-fail-fast -- --test-threads=1 || (echo "Server integration tests failed, cleaning up..." && kill `cat /tmp/test_db_pid` 2>/dev/null || true && rm -f /tmp/test_db_pid && false)
 	@echo "  Cleaning up database process..."
 	@kill `cat /tmp/test_db_pid` 2>/dev/null || true
 	@rm -f /tmp/test_db_pid
@@ -107,7 +107,7 @@ test-ci:
 	@echo "  Running lightweight CI tests..."
 	@for test in $(find . -name "*_ci*.rs" -o -name "*ci_*.rs" | sed 's/\.rs$//' | xargs basename -a); do \
 		echo "  Running CI test: $test"; \
-		set -a; . .env.test; set +a; cargo test --test $test --features ci --no-fail-fast -- --test-threads=1 || exit 1; \
+		set -a; . ./.env.test; set +a; cargo test --test $test --features ci --no-fail-fast -- --test-threads=1 || exit 1; \
 	done
 	@echo "  CI tests completed successfully"
 
@@ -116,7 +116,7 @@ test-unit:
 	@echo "  Running unit tests only..."
 	@for test in $(find . -name "*_unit*.rs" -o -name "*unit_*.rs" | sed 's/\.rs$//' | xargs basename -a); do \
 		echo "  Running unit test: $test"; \
-		set -a; . .env.test; set +a; cargo test --test $test --no-fail-fast || exit 1; \
+		set -a; . ./.env.test; set +a; cargo test --test $test --no-fail-fast || exit 1; \
 	done
 	@echo "  Unit tests completed successfully"
 
@@ -125,7 +125,7 @@ test-integration-pattern:
 	@echo "  Running integration tests matching pattern..."
 	@for test in $(find . -name "*integration*.rs" | sed 's/\.rs$//' | xargs basename -a); do \
 		echo "  Running integration test: $test"; \
-		set -a; . .env.test; set +a; cargo test --test $test --no-fail-fast -- --test-threads=1 || exit 1; \
+		set -a; . ./.env.test; set +a; cargo test --test $test --no-fail-fast -- --test-threads=1 || exit 1; \
 	done
 	@echo "  Integration pattern tests completed successfully"
 
@@ -143,10 +143,10 @@ build-assets:
 test: build-assets
 	$(ECHO_PREFIX) Testing $${PROJECT}
 	@echo "Running Rust unit and integration tests..."
-	@set -a; . .env.test; set +a; cargo test --workspace --no-fail-fast --lib --bins
-	@set -a; . .env.test; set +a; cargo test migration_core_tests --no-fail-fast
-	@set -a; . .env.test; set +a; cargo test schema_evolution_tests --no-fail-fast
-	@set -a; . .env.test; set +a; cargo test server_integration_tests --no-fail-fast
+	@set -a; . ./.env.test; set +a; cargo test --workspace --no-fail-fast --lib --bins
+	@set -a; . ./.env.test; set +a; cargo test migration_core_tests --no-fail-fast
+	@set -a; . ./.env.test; set +a; cargo test schema_evolution_tests --no-fail-fast
+	@set -a; . ./.env.test; set +a; cargo test server_integration_tests --no-fail-fast
 	@echo ""
 	@echo "✅ Full test suite completed successfully!"
 	@echo "Note: Run 'make test-server-integration' separately to test server functionality"

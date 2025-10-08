@@ -70,7 +70,9 @@ mod server_integration_tests {
 
             if check.is_err() || !check.unwrap().success() {
                 eprintln!("⚠ cargo-leptos not installed - skipping asset build");
-                eprintln!("  Run 'cargo install cargo-leptos' or 'make build-assets' to build frontend");
+                eprintln!(
+                    "  Run 'cargo install cargo-leptos' or 'make build-assets' to build frontend"
+                );
                 unsafe {
                     FRONTEND_ASSETS_UNAVAILABLE.store(true, Ordering::SeqCst);
                     BUILD_RESULT = Some(Err(
@@ -94,7 +96,10 @@ mod server_integration_tests {
                         FRONTEND_ASSETS_UNAVAILABLE.store(false, Ordering::SeqCst);
                         Ok(())
                     }
-                    Ok(s) => Err(format!("Frontend asset build failed with exit code {:?}", s.code())),
+                    Ok(s) => Err(format!(
+                        "Frontend asset build failed with exit code {:?}",
+                        s.code()
+                    )),
                     Err(e) => Err(format!("Failed to execute cargo leptos build: {}", e)),
                 });
             }
@@ -734,18 +739,14 @@ mod server_integration_tests {
                 Ok(None)
             }
             Err(e)
-                if e.to_string().contains("Insufficient permissions to bind local TCP ports")
-                    || e
-                        .to_string()
-                        .contains("SurrealDB not found in PATH")
-                    || e
-                        .to_string()
+                if e.to_string()
+                    .contains("Insufficient permissions to bind local TCP ports")
+                    || e.to_string().contains("SurrealDB not found in PATH")
+                    || e.to_string()
                         .contains("SurrealDB CLI not available in PATH")
-                    || e
-                        .to_string()
+                    || e.to_string()
                         .contains("Frontend assets not available in this environment")
-                    || e
-                        .to_string()
+                    || e.to_string()
                         .contains("Frontend assets not found and cargo-leptos not available") =>
             {
                 eprintln!("Skipping server integration test: {}", e);

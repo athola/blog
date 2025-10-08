@@ -314,8 +314,7 @@ mod activity_feed_tests {
                 Ok(None)
             }
             Err(e)
-                if e
-                    .to_string()
+                if e.to_string()
                     .contains("Insufficient permissions to bind local TCP ports") =>
             {
                 eprintln!("Skipping activity feed test: {}", e);

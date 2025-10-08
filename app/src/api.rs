@@ -1087,7 +1087,10 @@ mod activity_function_tests {
         // Create some test activities
         for i in 0..5 {
             let activity = Activity {
-                id: Some(Thing::from(("activity".to_owned(), format!("test_id_{}", i)))),
+                id: Some(Thing::from((
+                    "activity".to_owned(),
+                    format!("test_id_{}", i),
+                ))),
                 content: format!("Activity {}", i),
                 created_at: format!("2023-01-01T12:00:0{}Z", i),
                 ..Default::default()
@@ -1106,7 +1109,10 @@ mod activity_function_tests {
         // Create 25 test activities
         for i in 0..25 {
             let activity = Activity {
-                id: Some(Thing::from(("activity".to_owned(), format!("page_test_{}", i)))),
+                id: Some(Thing::from((
+                    "activity".to_owned(),
+                    format!("page_test_{}", i),
+                ))),
                 content: format!("Page test activity {}", i),
                 created_at: format!("2023-01-01T12:{:02}:00Z", i),
                 ..Default::default()
@@ -1343,7 +1349,10 @@ mod activity_function_tests {
         // Create only 5 activities
         for i in 0..5 {
             let activity = Activity {
-                id: Some(Thing::from(("activity".to_owned(), format!("large_page_{}", i)))),
+                id: Some(Thing::from((
+                    "activity".to_owned(),
+                    format!("large_page_{}", i),
+                ))),
                 content: format!("Activity {}", i),
                 created_at: format!("2023-01-01T12:00:0{}Z", i),
                 ..Default::default()

@@ -98,7 +98,7 @@ pub struct Reference {
     pub is_published: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct Activity {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -110,18 +110,6 @@ pub struct Activity {
     pub source: Option<String>,
     #[serde(default)]
     pub created_at: String,
-}
-
-impl Default for Activity {
-    fn default() -> Self {
-        Self {
-            id: None,
-            content: String::new(),
-            tags: Vec::new(),
-            source: None,
-            created_at: String::new(),
-        }
-    }
 }
 
 #[cfg(test)]
