@@ -195,7 +195,7 @@ jobs:
         echo "$HOME/.surrealdb" >> $GITHUB_PATH
 
     - name: Build workspace
-      timeout-minutes: 30
+      timeout-minutes: 35
       run: |
         echo "🔨 Building workspace (profile: ${{ matrix.profile }})..."
         if [ "${{ matrix.profile }}" = "dev" ]; then
