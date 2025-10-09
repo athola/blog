@@ -98,7 +98,7 @@ pub struct Reference {
     pub is_published: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Activity {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -109,6 +109,7 @@ pub struct Activity {
     #[serde(default)]
     pub source: Option<String>,
     #[serde(default)]
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub created_at: String,
 }
 
