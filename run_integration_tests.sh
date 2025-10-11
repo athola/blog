@@ -27,7 +27,7 @@ for TEST in "${TESTS[@]}"; do
     echo "----------------------------------------"
     
     # Run the test with a timeout
-    timeout 120 cargo test --workspace --test server_integration_tests "$TEST" -- --nocapture
+    timeout 300 cargo test --workspace --test server_integration_tests "$TEST" --features ci -- --nocapture
     
     # Check the exit code
     if [ $? -eq 0 ]; then

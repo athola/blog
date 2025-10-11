@@ -22,18 +22,27 @@ use tokio_retry::{Retry, strategy::ExponentialBackoff};
 pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
     let protocol = env::var("SURREAL_PROTOCOL").unwrap_or_else(|_| "http".to_owned());
     let host = env::var("SURREAL_HOST").unwrap_or_else(|_| "127.0.0.1:8000".to_owned());
-    let username = env::var("SURREAL_ROOT_USER").unwrap_or_else(|_| "root".to_owned());
-    let password = env::var("SURREAL_ROOT_PASS").unwrap_or_else(|_| "root".to_owned());
-    let namespace_username = env::var("SURREAL_NAMESPACE_USER").ok();
+    let username = env::var("SURREAL_ROOT_USER").unwrap_or_else(|_| "".to_owned());
+    let password = env::var("SURREAL_ROOT_PASS").unwrap_or_else(|_| "".to_owned());
+    let namespace_username = env::var("SURREAL_NAMESPACE_USER")
+        .ok()
+        .filter(|s| !s.is_empty());
     let namespace_password = env::var("SURREAL_NAMESPACE_PASS").ok();
     let database_username = env::var("SURREAL_USERNAME")
         .or_else(|_| env::var("SURREAL_USER"))
-        .ok();
+        .ok()
+        .filter(|s| !s.is_empty());
     let database_password = env::var("SURREAL_PASSWORD")
         .or_else(|_| env::var("SURREAL_PASS"))
         .ok();
     let ns = env::var("SURREAL_NS").unwrap_or_else(|_| "rustblog".to_owned());
     let db_name = env::var("SURREAL_DB").unwrap_or_else(|_| "rustblog".to_owned());
+
+    println!("SURREAL_HOST: {}", host);
+    println!("SURREAL_ROOT_USER: {}", username);
+    println!("SURREAL_ROOT_PASS: {}", password);
+    println!("SURREAL_NS: {}", ns);
+    println!("SURREAL_DB: {}", db_name);
 
     let retry_strategy = ExponentialBackoff::from_millis(100)
         .max_delay(Duration::from_secs(5))

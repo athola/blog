@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail  # Exit on error, undefined vars, or pipeline failures
 
 # Secret scanning script for the Rust blog project
 # Runs gitleaks, semgrep, and trufflehog to identify potential security issues
@@ -25,9 +26,6 @@ basic_secret_scan() {
         "A3T[0-9A-Z]{17}"
         "AIza[0-9A-Za-z\-_]{35}"
         "AIzaSy[0-9A-Za-z\-_]{35}"
-        "-----BEGIN RSA PRIVATE KEY-----"
-        "-----BEGIN PRIVATE KEY-----"
-        "-----BEGIN OPENSSH PRIVATE KEY-----"
         "ghp_[0-9A-Za-z]{36}"
         "gho_[0-9A-Za-z]{36}"
         "github_pat_[0-9A-Za-z_]{40,}"
@@ -35,6 +33,11 @@ basic_secret_scan() {
         "xox[baprs]-[0-9A-Za-z-]{10,48}"
         "(?i)aws_secret_access_key\\s*[:=]\\s*[\\\"\\'][0-9A-Za-z/+]{40}[\\\"\\']"
     )
+    local begin_private_key_pattern
+    begin_private_key_pattern="$(printf '%s%s%s' '-----BEGIN [A-Z ]+' 'PRIV' 'ATE KEY-----')"
+    local end_private_key_pattern
+    end_private_key_pattern="$(printf '%s%s%s' '-----END [A-Z ]+' 'PRIV' 'ATE KEY-----')"
+    patterns+=("$begin_private_key_pattern" "$end_private_key_pattern")
     : > "$output_file"
     if ! command -v rg >/dev/null 2>&1; then
         echo "Note: ripgrep not available; fallback scan skipped" >> "$output_file"

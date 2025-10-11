@@ -1,0 +1,107 @@
+name: Server Integration Tests
+
+# Run only on merge to main branch, not on every PR/commit
+on:
+  push:
+    branches: [ "master" ]
+    paths:
+      # Only trigger if Rust or server-related code changes
+      - "**/*.rs"
+      - "**/Cargo.toml" 
+      - "Cargo.lock"
+      - "Makefile"
+      - "Makefile.toml"
+      - "db.sh"
+      - "ensure-db-ready.sh"
+      - "tests/server_integration_tests.rs"
+      - ".github/workflows/server-integration-tests.yml"
+  # Can also be triggered manually for testing
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Reduced verbosity settings for CI
+  CARGO_TERM_COLOR: never
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: 0
+  # Optimize for CI builds
+  CARGO_NET_RETRY: 3
+  CARGO_NET_TIMEOUT: 120
+  
+jobs:
+  server-integration-tests:
+    runs-on: ubuntu-latest
+    # Set longer timeout for resource-intensive integration tests
+    timeout-minutes: 90
+    steps:
+    - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+    - uses: dtolnay/rust-toolchain@55d80eb3c5a4228eec5390a083c092095115c6f1 # nightly
+
+    # Cache cargo registry
+    - name: Cache cargo registry
+      uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+      with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+    # Rust cache for compiled artifacts
+    - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
+      with:
+        shared-key: "server-integration-tests"
+        cache-targets: "true"
+        cache-on-failure: "true"
+        save-if: ${{ github.ref == 'refs/heads/master' }}
+        workspaces: "."
+        cache-all-crates: "true"
+
+    # Cache SurrealDB CLI
+    - name: Cache SurrealDB CLI
+      uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+      with:
+        path: ~/.surrealdb
+        key: surrealdb-cli-${{ runner.os }}-v3.0.0-alpha.10
+
+    # Install SurrealDB
+    - name: Install SurrealDB
+      timeout-minutes: 5
+      run: |
+        set -euo pipefail
+
+        if [ ! -f "$HOME/.surrealdb/surreal" ]; then
+          SURREAL_VERSION="v3.0.0-alpha.10"
+          SURREAL_URL="https://github.com/surrealdb/surrealdb/releases/download/${SURREAL_VERSION}/surreal-${SURREAL_VERSION}.linux-amd64.tgz"
+
+          mkdir -p "$HOME/.surrealdb"
+          cd "$HOME/.surrealdb"
+          timeout 120 curl -sSL "$SURREAL_URL" -o surreal.tgz
+          tar -xzf surreal.tgz
+          chmod +x surreal
+          rm surreal.tgz
+        fi
+        echo "$HOME/.surrealdb" >> $GITHUB_PATH
+
+    # Build the server binary in advance to save time
+    - name: Pre-build server binary
+      run: |
+        echo "🔨 Pre-building server binary..."
+        cargo build -p server
+        echo "✅ Server binary built"
+
+    # Run only server integration tests
+    - name: Run Server Integration Tests
+      timeout-minutes: 60  # Additional timeout on the test command itself
+      run: |
+        echo "🧪 Running server integration tests..."
+        echo "SurrealDB version: $(surreal --version 2>/dev/null || echo 'unknown')"
+        
+        # Run only server integration tests with specific flags
+        # Set environment variable to ensure they run even if normally disabled
+        export RUN_SERVER_INTEGRATION_TESTS=1
+        cargo test server_integration_tests -- --nocapture --test-threads=1
+        
+        echo "✅ Server integration tests completed"

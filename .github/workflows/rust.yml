@@ -203,8 +203,9 @@ jobs:
           echo "🗄️ Initializing database for tests..."
           make init-db || echo "Database initialization completed"
           echo "SurrealDB version: $(surreal --version 2>/dev/null || echo "unknown")"
-          echo "🧪 Running tests..."
-          cargo test --workspace --no-fail-fast --lib --bins
+          echo "🧪 Running fast unit and integration tests (excluding server integration tests)..."
+          # Run only unit tests, not resource-intensive server integration tests
+          cargo test --workspace --no-fail-fast --lib --bins -- --test-threads=4
           cargo test migration_core_tests --no-fail-fast
           cargo test schema_evolution_tests --no-fail-fast
           cargo test server_unit_tests --no-fail-fast

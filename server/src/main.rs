@@ -41,8 +41,7 @@ async fn main() {
         .with_max_level(tracing_level)
         .init();
 
-    let env_result = dotenv();
-    if env_result.is_err() {
+    if dotenv().is_err() {
         logging::warn!("There is no corresponding .env file");
     }
 
