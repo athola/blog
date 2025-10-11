@@ -1,7 +1,8 @@
 DEFINE TABLE OVERWRITE activity TYPE NORMAL SCHEMAFULL 
     PERMISSIONS 
         FOR select FULL
-        FOR create, update, delete NONE;
+        FOR create, update FULL
+        FOR delete NONE;
 
 DEFINE FIELD OVERWRITE content ON activity TYPE string ASSERT $value != NONE;
 DEFINE FIELD OVERWRITE tags ON activity TYPE array<string>;

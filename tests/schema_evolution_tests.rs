@@ -248,7 +248,7 @@ mod schema_evolution_tests {
         test_db.insert_basic_test_data().await.unwrap();
 
         // Verify initial data exists by checking if the post exists
-        let initial_post: Option<surrealdb::sql::Thing> =
+        let initial_post: Option<surrealdb::RecordId> =
             test_db.query_field_thing("post:test", "id").await.unwrap();
         assert!(initial_post.is_some(), "Initial post should exist");
 

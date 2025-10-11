@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 extern crate alloc;
 use alloc::sync::Arc;
 use app::types::{AppState, Post};
@@ -6,6 +7,7 @@ use axum::response::Response;
 use chrono::{DateTime, Utc};
 use core::fmt::Write as _;
 use leptos::prelude::ServerFnError;
+use leptos::server_fn::error::NoCustomError;
 use markdown::process_markdown;
 use rss::{ChannelBuilder, Item};
 use serde::{Deserialize, Serialize};
@@ -13,17 +15,29 @@ use std::env;
 use std::time::Duration;
 use surrealdb::Surreal;
 use surrealdb::engine::remote::http::{Client, Http, Https};
-use surrealdb::opt::auth::Root;
+use surrealdb::opt::auth::{Database, Namespace, Root};
 use tokio::sync::Mutex;
 use tokio_retry::{Retry, strategy::ExponentialBackoff};
 
-pub async fn connect() -> Surreal<Client> {
+pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
     let protocol = env::var("SURREAL_PROTOCOL").unwrap_or_else(|_| "http".to_owned());
     let host = env::var("SURREAL_HOST").unwrap_or_else(|_| "127.0.0.1:8000".to_owned());
-    let username = env::var("SURREAL_ROOT_USER").unwrap_or_else(|_| "root".to_owned());
-    let password = env::var("SURREAL_ROOT_PASS").unwrap_or_else(|_| "root".to_owned());
+    let username = env::var("SURREAL_ROOT_USER").unwrap_or_else(|_| "".to_owned());
+    let password = env::var("SURREAL_ROOT_PASS").unwrap_or_else(|_| "".to_owned());
+    let namespace_username = env::var("SURREAL_NAMESPACE_USER")
+        .ok()
+        .filter(|s| !s.is_empty());
+    let namespace_password = env::var("SURREAL_NAMESPACE_PASS").ok();
+    let database_username = env::var("SURREAL_USERNAME")
+        .or_else(|_| env::var("SURREAL_USER"))
+        .ok()
+        .filter(|s| !s.is_empty());
+    let database_password = env::var("SURREAL_PASSWORD")
+        .or_else(|_| env::var("SURREAL_PASS"))
+        .ok();
     let ns = env::var("SURREAL_NS").unwrap_or_else(|_| "rustblog".to_owned());
     let db_name = env::var("SURREAL_DB").unwrap_or_else(|_| "rustblog".to_owned());
+
 
     let retry_strategy = ExponentialBackoff::from_millis(100)
         .max_delay(Duration::from_secs(5))
@@ -45,24 +59,83 @@ pub async fn connect() -> Surreal<Client> {
     .map_err(|e| {
         tracing::error!("Failed to connect to SurrealDB after retries: {:?}", e);
         e
-    })
-    .unwrap();
+    })?;
 
     // Retry authentication with exponential backoff
     let auth_retry_strategy = ExponentialBackoff::from_millis(100)
         .max_delay(Duration::from_secs(3))
         .take(3);
 
+    let root_credentials = Some((username.clone(), password.clone()));
+    let namespace_credentials = namespace_username.clone().zip(namespace_password.clone());
+    let database_credentials = database_username.clone().zip(database_password.clone());
+
     Retry::spawn(auth_retry_strategy, || {
-        let username = username.clone();
-        let password = password.clone();
         let db = &db;
+        let root_credentials = root_credentials.clone();
+        let namespace_credentials = namespace_credentials.clone();
+        let database_credentials = database_credentials.clone();
+        let ns = ns.clone();
+        let db_name = db_name.clone();
         async move {
-            db.signin(Root {
-                username: &username,
-                password: &password,
-            })
-            .await
+            let mut last_err: Option<surrealdb::Error> = None;
+
+            if let Some((ref username, ref password)) = database_credentials {
+                match db
+                    .signin(Database {
+                        namespace: &ns,
+                        database: &db_name,
+                        username,
+                        password,
+                    })
+                    .await
+                {
+                    Ok(_) => return Ok(()),
+                    Err(e) => {
+                        tracing::debug!(
+                            "Database authentication attempt failed: {:?}",
+                            e
+                        );
+                        last_err = Some(e);
+                    }
+                }
+            }
+
+            if let Some((ref username, ref password)) = namespace_credentials {
+                match db
+                    .signin(Namespace {
+                        namespace: &ns,
+                        username,
+                        password,
+                    })
+                    .await
+                {
+                    Ok(_) => return Ok(()),
+                    Err(e) => {
+                        tracing::debug!(
+                            "Namespace authentication attempt failed: {:?}",
+                            e
+                        );
+                        last_err = Some(e);
+                    }
+                }
+            }
+
+            if let Some((ref username, ref password)) = root_credentials {
+                match db.signin(Root { username, password }).await {
+                    Ok(_) => return Ok(()),
+                    Err(e) => {
+                        tracing::debug!("Root authentication attempt failed: {:?}", e);
+                        last_err = Some(e);
+                    }
+                }
+            }
+
+            if let Some(err) = last_err {
+                Err(err)
+            } else {
+                panic!("No SurrealDB authentication methods succeeded")
+            }
         }
     })
     .await
@@ -71,9 +144,33 @@ pub async fn connect() -> Surreal<Client> {
             "Failed to authenticate with SurrealDB after retries: {:?}",
             e
         );
+
+        let database_credentials_present = database_credentials.is_some();
+        let namespace_credentials_present = namespace_credentials.is_some();
+        let root_credentials_present = root_credentials.is_some();
+
+        if database_credentials_present {
+            tracing::error!(
+                "Database-level credentials were provided but authentication still failed. Verify `SURREAL_USERNAME`/`SURREAL_PASSWORD` and ensure the user has access to namespace `{}` and database `{}`.",
+                ns,
+                db_name,
+            );
+        } else if namespace_credentials_present {
+            tracing::error!(
+                "Namespace-level credentials were provided but authentication still failed. Double-check `SURREAL_NAMESPACE_USER`/`SURREAL_NAMESPACE_PASS` values."
+            );
+        } else if root_credentials_present {
+            tracing::error!(
+                "Only root-level credentials were attempted. Set `SURREAL_ROOT_USER`/`SURREAL_ROOT_PASS` or provide application credentials via `SURREAL_NAMESPACE_USER`/`SURREAL_NAMESPACE_PASS` or `SURREAL_USERNAME`/`SURREAL_PASSWORD`."
+            );
+        } else {
+            tracing::error!(
+                "No authentication credentials were supplied; set one of the supported credential env vars before starting the server."
+            );
+        }
+
         e
-    })
-    .unwrap();
+    })?;
 
     // Retry namespace/database selection
     let ns_retry_strategy = ExponentialBackoff::from_millis(50)
@@ -90,11 +187,10 @@ pub async fn connect() -> Surreal<Client> {
     .map_err(|e| {
         tracing::error!("Failed to set namespace/database after retries: {:?}", e);
         e
-    })
-    .unwrap();
+    })?;
 
     tracing::info!("Successfully connected to SurrealDB with retries");
-    db
+    Ok(db)
 }
 
 async fn retry_query<F, Fut, T>(operation: F) -> Result<T, surrealdb::Error>
@@ -120,6 +216,7 @@ where
 
 pub async fn rss_handler(State(state): State<AppState>) -> Response<String> {
     let AppState { db, .. } = state;
+    let db = db.as_ref();
     let rss = generate_rss(db).await.unwrap();
     Response::builder()
         .header("Content-Type", "application/rss+xml")
@@ -127,7 +224,7 @@ pub async fn rss_handler(State(state): State<AppState>) -> Response<String> {
         .unwrap()
 }
 
-pub async fn generate_rss(db: Surreal<Client>) -> Result<String, ServerFnError> {
+pub async fn generate_rss(db: &Surreal<Client>) -> Result<String, ServerFnError> {
     let query = retry_query(|| async {
         db.query("SELECT *, author.* from post WHERE is_published = true ORDER BY created_at DESC;")
             .await
@@ -136,10 +233,12 @@ pub async fn generate_rss(db: Surreal<Client>) -> Result<String, ServerFnError> 
 
     let mut query = match query {
         Ok(q) => q,
-        Err(e) => return Err(ServerFnError::ServerError(e.to_string())),
+        Err(e) => return Err(ServerFnError::<NoCustomError>::ServerError(e.to_string())),
     };
 
-    let mut posts = query.take::<Vec<Post>>(0)?;
+    let mut posts = query
+        .take::<Vec<Post>>(0)
+        .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {}", e)))?;
     for post in &mut posts.iter_mut() {
         let date_time = DateTime::parse_from_rfc3339(&post.created_at)
             .unwrap()
@@ -202,6 +301,7 @@ pub async fn sitemap_handler(State(state): State<AppState>) -> Response<String> 
     }
 
     let AppState { db, .. } = state;
+    let db = db.as_ref();
     let query = retry_query(|| async {
         db.query(
             "SELECT slug, created_at FROM post WHERE is_published = true ORDER BY created_at DESC;",
@@ -289,9 +389,7 @@ mod tests {
                     let current_count = count.fetch_add(1, Ordering::SeqCst);
                     if current_count < 2 {
                         // Fail first two attempts
-                        Err(surrealdb::Error::Db(surrealdb::error::Db::Thrown(
-                            "Connection failed".to_string(),
-                        )))
+                        Err(surrealdb::Error::msg("Connection failed"))
                     } else {
                         // Succeed on third attempt
                         Ok::<String, surrealdb::Error>("success".to_string())
@@ -316,9 +414,7 @@ mod tests {
                 let count = call_count_clone.clone();
                 async move {
                     count.fetch_add(1, Ordering::SeqCst);
-                    Err::<String, surrealdb::Error>(surrealdb::Error::Db(
-                        surrealdb::error::Db::Thrown("Persistent failure".to_string()),
-                    ))
+                    Err::<String, surrealdb::Error>(surrealdb::Error::msg("Persistent failure"))
                 }
             })
             .await;
@@ -327,19 +423,6 @@ mod tests {
             // Should try exactly 4 times (initial + 3 retries based on our retry strategy)
             assert_eq!(call_count.load(Ordering::SeqCst), 4);
         });
-    }
-
-    #[tokio::test]
-    async fn test_generate_rss_handles_db_errors() {
-        // This test verifies the RSS generation handles database errors gracefully
-        // We can't easily mock SurrealDB, but we can test error handling patterns
-
-        // Test would require a mock database, which is complex with SurrealDB
-        // Instead, we test that the function signature and error handling compile correctly
-
-        // This is a placeholder that would be expanded with proper mocking
-        // For now, we just verify the function exists and has correct return type
-        let _: fn(Surreal<Client>) -> _ = generate_rss;
     }
 
     #[tokio::test]
@@ -354,9 +437,7 @@ mod tests {
             let count = call_count_clone.clone();
             async move {
                 count.fetch_add(1, Ordering::SeqCst);
-                Err::<String, surrealdb::Error>(surrealdb::Error::Db(surrealdb::error::Db::Thrown(
-                    "Always fail".to_string(),
-                )))
+                Err::<String, surrealdb::Error>(surrealdb::Error::msg("Always fail"))
             }
         })
         .await;

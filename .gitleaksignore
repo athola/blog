@@ -10,3 +10,6 @@ README.md:generic-api-key:569
 
 # Secret scanning result files (false positives from tool output)
 secret_scanning_results/trufflehog-report.json:private-key:76
+
+# False positive from our own secret scanning script (regex pattern)
+702baa300fd2059551b6a1322eee7ba6a6ac957f:run_secret_scan.sh:private-key:28

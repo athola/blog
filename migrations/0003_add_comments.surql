@@ -11,7 +11,7 @@ DEFINE TABLE OVERWRITE comment SCHEMAFULL
 
 DEFINE FIELD OVERWRITE content ON comment TYPE string ASSERT $value != NONE AND string::len($value) <= 2000;
 DEFINE FIELD OVERWRITE author_name ON comment TYPE string ASSERT $value != NONE AND string::len($value) <= 100;
-DEFINE FIELD OVERWRITE author_email ON comment TYPE string ASSERT string::is::email($value);
+DEFINE FIELD OVERWRITE author_email ON comment TYPE string ASSERT string::is_email($value);
 DEFINE FIELD OVERWRITE author_id ON comment TYPE option<record>;
 DEFINE FIELD OVERWRITE post_id ON comment TYPE record<post> ASSERT $value != NONE;
 DEFINE FIELD OVERWRITE parent_comment ON comment TYPE option<record<comment>>;

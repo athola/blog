@@ -5,6 +5,7 @@ failure-output = "immediate"
 success-output = "never"
 # Don't cancel other tests on failure
 fail-fast = false
+slow-timeout = { period = "180s" }
 
 [profile.ci]
 # For CI environments - more verbose output
@@ -13,12 +14,17 @@ success-output = "never"
 fail-fast = false
 # Store JUnit XML reports
 junit-path = "test-results/junit/junit.xml"
+slow-timeout = { period = "180s" }
 
 [profile.coverage]
 # Profile for coverage runs
 failure-output = "immediate"
 success-output = "never"
 fail-fast = false
+slow-timeout = { period = "180s" }
+
+[profile.server-integration-tests]
+slow-timeout = "120s"
 
 # Test discovery settings
 [test-groups]
@@ -36,3 +42,6 @@ component-tests = { filter = "test.*component", max-threads = 1 }
 
 # Group server integration tests - must run sequentially due to port conflicts
 server-tests = { filter = "test.*server", max-threads = 1 }
+
+# Group activity feed tests
+activity-tests = { filter = "test.*activity", max-threads = 1 }

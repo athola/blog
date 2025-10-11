@@ -18,12 +18,7 @@ on:
       # Frontend assets and styling (affects build output)
       - "style/**/*.css"
       - "style/**/*.js"
-
-permissions:
-  contents: read
-  pull-requests: write
       - "public/**"
-      # Configuration files that affect builds
       - ".config/**"
       - "audit.toml"
       # Exclude documentation changes from triggering review
@@ -35,6 +30,10 @@ permissions:
       - "!.gitleaksignore"
       - "!.semgrep.yml"
       - "!run_secret_scan.sh"
+
+permissions:
+  contents: read
+  pull-requests: write
 
 jobs:
   claude-review:

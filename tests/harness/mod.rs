@@ -42,6 +42,11 @@ impl MigrationTestFramework {
             ("initial", "migrations/0001_initial_schema.surql"),
             ("indexes", "migrations/0002_add_indexes.surql"),
             ("comments", "migrations/0003_add_comments.surql"),
+            ("activity", "migrations/0004_add_activity_table.surql"),
+            (
+                "post_activity",
+                "migrations/0005_add_post_activity_event.surql",
+            ),
         ];
 
         let mut migration_cache = HashMap::new();
@@ -65,6 +70,8 @@ impl MigrationTestFramework {
             "initial" => "migrations/0001_initial_schema.surql",
             "indexes" => "migrations/0002_add_indexes.surql",
             "comments" => "migrations/0003_add_comments.surql",
+            "activity" => "migrations/0004_add_activity_table.surql",
+            "post_activity" => "migrations/0005_add_post_activity_event.surql",
             _ => {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::NotFound,
@@ -94,10 +101,10 @@ impl MigrationTestFramework {
             if let Some(migration) = self.migration_cache.get(key).cloned() {
                 self.execute_migration(&migration).await?;
             } else {
-                return Err(surrealdb::Error::Db(surrealdb::error::Db::Thrown(format!(
+                return Err(surrealdb::Error::msg(format!(
                     "Migration not found: {}",
                     key
-                ))));
+                )));
             }
         }
         Ok(())
@@ -125,6 +132,8 @@ impl MigrationTestFramework {
                 PERMISSIONS FOR select, create, update, delete FULL;
             DEFINE TABLE OVERWRITE comment TYPE NORMAL SCHEMAFULL
                 PERMISSIONS FOR select, create, update, delete FULL;
+            DEFINE TABLE OVERWRITE activity TYPE NORMAL SCHEMAFULL
+                PERMISSIONS FOR select, create, update, delete FULL;
         "#,
             )
             .await?
@@ -139,7 +148,7 @@ impl MigrationTestFramework {
             .query(
                 r#"
             DEFINE FIELD OVERWRITE name ON author TYPE string ASSERT $value != NONE;
-            DEFINE FIELD OVERWRITE email ON author TYPE string ASSERT string::is::email($value);
+            DEFINE FIELD OVERWRITE email ON author TYPE string ASSERT string::is_email($value);
             DEFINE FIELD OVERWRITE bio ON author TYPE option<string>;
             
             DEFINE FIELD OVERWRITE title ON post TYPE string ASSERT $value != NONE;
@@ -172,7 +181,14 @@ impl MigrationTestFramework {
 
     /// Clean database state for test isolation
     pub async fn reset_database(&self) -> SurrealResult<()> {
-        let tables = ["comment", "post", "author", "reference", "script_migration"];
+        let tables = [
+            "comment",
+            "post",
+            "author",
+            "reference",
+            "script_migration",
+            "activity",
+        ];
         for table in tables {
             let _ = self.db.query(format!("REMOVE TABLE {};", table)).await;
         }
@@ -362,7 +378,7 @@ impl MigrationTestFramework {
         &self,
         table_record: &str,
         field: &str,
-    ) -> SurrealResult<Option<surrealdb::sql::Thing>> {
+    ) -> SurrealResult<Option<surrealdb::RecordId>> {
         let mut result = self
             .db
             .query(format!("SELECT VALUE {} FROM {}", field, table_record))

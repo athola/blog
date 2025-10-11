@@ -9,7 +9,7 @@
   - **Timeout Improvements**: Increased client timeout (15s → 30s), database startup timeout (30s → 90s), server startup timeout (90s → 120s)
   - **Process Management**: Enhanced cleanup and coordination of server/database processes
   - **Error Diagnostics**: Added detailed logging throughout startup process
-✅ **SurrealDB Version Compatibility**: Upgraded from 2.2.2 to 2.3.7 for proper functionality  
+✅ **SurrealDB Version Compatibility**: Upgraded from 2.2.2 to 3.0.0-alpha.10 for proper functionality  
 ✅ **Database Script Fixes**: Corrected log level in db.sh script (`--log info` not `--log strace`)
 ✅ **Process Coordination**: Enhanced shared server initialization and cleanup logic with better resource management
 ✅ **CI/CD Stability**: Improved test reliability with single server instance architecture and optimized timeouts
@@ -81,7 +81,7 @@ This is a Rust-powered blog engine built with:
 
 ### Current Limitations
 1. **Integration Tests**: ✅ **RESOLVED** - All tests now passing (62/62) with optimized three-tier testing architecture. **Recent Fix**: Resolved database connection timeout issues in integration tests by:
-   - Upgrading SurrealDB from 2.2.2 to 2.3.7
+   - Upgrading SurrealDB from 2.2.2 to 3.0.0-alpha.10
    - Fixing db.sh script log level from `--log strace` to `--log info`
    - Improving shared server coordination and process cleanup
    - Implementing resource-conscious three-tier testing strategy (unit, CI-optimized, full integration)
