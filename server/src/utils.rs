@@ -38,11 +38,6 @@ pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
     let ns = env::var("SURREAL_NS").unwrap_or_else(|_| "rustblog".to_owned());
     let db_name = env::var("SURREAL_DB").unwrap_or_else(|_| "rustblog".to_owned());
 
-    println!("SURREAL_HOST: {}", host);
-    println!("SURREAL_ROOT_USER: {}", username);
-    println!("SURREAL_ROOT_PASS: {}", password);
-    println!("SURREAL_NS: {}", ns);
-    println!("SURREAL_DB: {}", db_name);
 
     let retry_strategy = ExponentialBackoff::from_millis(100)
         .max_delay(Duration::from_secs(5))
