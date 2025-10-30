@@ -1,8 +1,7 @@
 #![allow(deprecated)]
-extern crate alloc;
-use alloc::sync::Arc;
-use app::types::{AppState, Post};
+use app::types::{AppState, Author, Post};
 use axum::extract::State;
+use axum::http::StatusCode;
 use axum::response::Response;
 use chrono::{DateTime, Utc};
 use core::fmt::Write as _;
@@ -11,13 +10,30 @@ use leptos::server_fn::error::NoCustomError;
 use markdown::process_markdown;
 use rss::{ChannelBuilder, Item};
 use serde::{Deserialize, Serialize};
+use shared_utils::{RetryConfig, retry_async};
 use std::env;
 use std::time::Duration;
 use surrealdb::Surreal;
 use surrealdb::engine::remote::http::{Client, Http, Https};
 use surrealdb::opt::auth::{Database, Namespace, Root};
-use tokio::sync::Mutex;
 use tokio_retry::{Retry, strategy::ExponentialBackoff};
+use tracing::{error, warn};
+
+fn build_response(body: String, content_type: &str, status: StatusCode) -> Response<String> {
+    match Response::builder()
+        .status(status)
+        .header("Content-Type", content_type)
+        .body(body)
+    {
+        Ok(response) => response,
+        Err(build_error) => {
+            error!(?build_error, "Failed to build HTTP response");
+            let mut fallback = Response::new(String::new());
+            *fallback.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+            fallback
+        }
+    }
+}
 
 pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
     let protocol = env::var("SURREAL_PROTOCOL").unwrap_or_else(|_| "http".to_owned());
@@ -37,7 +53,6 @@ pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
         .ok();
     let ns = env::var("SURREAL_NS").unwrap_or_else(|_| "rustblog".to_owned());
     let db_name = env::var("SURREAL_DB").unwrap_or_else(|_| "rustblog".to_owned());
-
 
     let retry_strategy = ExponentialBackoff::from_millis(100)
         .max_delay(Duration::from_secs(5))
@@ -193,39 +208,24 @@ pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
     Ok(db)
 }
 
-async fn retry_query<F, Fut, T>(operation: F) -> Result<T, surrealdb::Error>
-where
-    F: Fn() -> Fut,
-    Fut: std::future::Future<Output = Result<T, surrealdb::Error>>,
-{
-    let retry_strategy = ExponentialBackoff::from_millis(50)
-        .max_delay(Duration::from_secs(2))
-        .take(3); // Maximum 3 retry attempts for queries
-
-    Retry::spawn(retry_strategy, || async {
-        match operation().await {
-            Ok(result) => Ok(result),
-            Err(e) => {
-                tracing::warn!("Database query failed, retrying: {:?}", e);
-                Err(e)
-            }
-        }
-    })
-    .await
-}
-
 pub async fn rss_handler(State(state): State<AppState>) -> Response<String> {
     let AppState { db, .. } = state;
     let db = db.as_ref();
-    let rss = generate_rss(db).await.unwrap();
-    Response::builder()
-        .header("Content-Type", "application/rss+xml")
-        .body(rss)
-        .unwrap()
+    match generate_rss(db).await {
+        Ok(rss) => build_response(rss, "application/rss+xml", StatusCode::OK),
+        Err(err) => {
+            error!(?err, "Failed to generate RSS feed");
+            build_response(
+                "Failed to generate RSS feed".to_string(),
+                "text/plain; charset=utf-8",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
+    }
 }
 
 pub async fn generate_rss(db: &Surreal<Client>) -> Result<String, ServerFnError> {
-    let query = retry_query(|| async {
+    let query = retry_async("generate_rss", RetryConfig::default(), || async {
         db.query("SELECT *, author.* from post WHERE is_published = true ORDER BY created_at DESC;")
             .await
     })
@@ -239,55 +239,63 @@ pub async fn generate_rss(db: &Surreal<Client>) -> Result<String, ServerFnError>
     let mut posts = query
         .take::<Vec<Post>>(0)
         .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {}", e)))?;
-    for post in &mut posts.iter_mut() {
-        let date_time = DateTime::parse_from_rfc3339(&post.created_at)
-            .unwrap()
+    for post in &mut posts {
+        let post_id = post.id.to_string();
+        let raw_created_at = post.created_at.clone();
+        let date_time = DateTime::parse_from_rfc3339(&raw_created_at)
+            .map_err(|e| {
+                error!(
+                    %post_id,
+                    raw_created_at,
+                    "Failed to parse post created_at timestamp: {e}"
+                );
+                ServerFnError::<NoCustomError>::ServerError(format!(
+                    "Invalid created_at timestamp for post {post_id}: {e}"
+                ))
+            })?
             .with_timezone(&Utc);
         let naive_date = date_time.date_naive();
         let formatted_date = naive_date.format("%b %-d").to_string();
         post.created_at = formatted_date;
-    }
-    let posts = Arc::new(Mutex::new(posts));
-    let mut handles = vec![];
 
-    let post_len = posts.lock().await.len();
-    for _ in 0..post_len {
-        let posts_clone = Arc::clone(&posts);
-        let handle = tokio::spawn(async move {
-            let mut posts = posts_clone.lock().await;
-            if let Some(post) = posts.iter_mut().next() {
-                post.body = process_markdown(&post.body).unwrap();
+        let processed_body = process_markdown(&post.body).map_err(|e| {
+            error!(%post_id, "Failed to render Markdown for post: {e}");
+            e
+        })?;
+        post.body = processed_body;
+    }
+
+    let items = posts
+        .into_iter()
+        .map(|post| {
+            let Post {
+                author: Author {
+                    name: author_name, ..
+                },
+                title,
+                body,
+                slug,
+                created_at,
+                ..
+            } = post;
+
+            let mut item = Item::default();
+            item.set_author(author_name);
+            item.set_title(title);
+            item.set_description(body);
+            if let Some(slug) = slug {
+                item.set_link(format!("https://alexthola.com/post/{slug}"));
             }
-        });
-
-        handles.push(handle);
-    }
-
-    for handle in handles {
-        handle.await?;
-    }
+            item.set_pub_date(created_at);
+            item
+        })
+        .collect::<Vec<_>>();
 
     let channel = ChannelBuilder::default()
         .title("alexthola")
         .link("https://alexthola.com")
         .description("Alex Thola's Blog \u{2013} Tech Insights & Consulting")
-        .items(
-            posts
-                .lock()
-                .await
-                .clone()
-                .into_iter()
-                .map(|post| {
-                    let mut item = Item::default();
-                    item.set_author(post.author.name.to_string());
-                    item.set_title(post.title.to_string());
-                    item.set_description(post.body.to_string());
-                    item.set_link(format!("https://alexthola.com/post/{}", post.slug.unwrap()));
-                    item.set_pub_date(post.created_at);
-                    item
-                })
-                .collect::<Vec<_>>(),
-        )
+        .items(items)
         .build();
 
     Ok(channel.to_string())
@@ -302,14 +310,35 @@ pub async fn sitemap_handler(State(state): State<AppState>) -> Response<String> 
 
     let AppState { db, .. } = state;
     let db = db.as_ref();
-    let query = retry_query(|| async {
+    let query = retry_async("sitemap_query", RetryConfig::default(), || async {
         db.query(
             "SELECT slug, created_at FROM post WHERE is_published = true ORDER BY created_at DESC;",
         )
         .await
     })
     .await;
-    let posts = query.unwrap().take::<Vec<Post>>(0).unwrap();
+    let mut query = match query {
+        Ok(result) => result,
+        Err(err) => {
+            error!(?err, "Failed to fetch sitemap posts");
+            return build_response(
+                "Failed to build sitemap".to_string(),
+                "text/plain; charset=utf-8",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
+    let posts = match query.take::<Vec<Post>>(0) {
+        Ok(posts) => posts,
+        Err(err) => {
+            error!(?err, "Failed to deserialize sitemap posts");
+            return build_response(
+                "Failed to build sitemap".to_string(),
+                "text/plain; charset=utf-8",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
     let mut sitemap = String::new();
     sitemap.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
     sitemap.push_str("<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n");
@@ -324,132 +353,67 @@ pub async fn sitemap_handler(State(state): State<AppState>) -> Response<String> 
 
     for (url, freq, priority) in static_urls {
         sitemap.push_str("<url>\n");
-        writeln!(sitemap, "<loc>{url}</loc>").unwrap();
-        writeln!(sitemap, "<changefreq>{freq}</changefreq>").unwrap();
-        writeln!(sitemap, "<priority>{priority}</priority>").unwrap();
+        if let Err(err) = writeln!(sitemap, "<loc>{url}</loc>") {
+            error!(?err, url, "Failed to write sitemap static URL");
+            return build_response(
+                "Failed to build sitemap".to_string(),
+                "text/plain; charset=utf-8",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+        if let Err(err) = writeln!(sitemap, "<changefreq>{freq}</changefreq>") {
+            error!(?err, url, "Failed to write sitemap static changefreq");
+            return build_response(
+                "Failed to build sitemap".to_string(),
+                "text/plain; charset=utf-8",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+        if let Err(err) = writeln!(sitemap, "<priority>{priority}</priority>") {
+            error!(?err, url, "Failed to write sitemap static priority");
+            return build_response(
+                "Failed to build sitemap".to_string(),
+                "text/plain; charset=utf-8",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
         sitemap.push_str("</url>\n");
     }
 
     for post in posts {
+        let Some(slug) = post.slug.as_deref() else {
+            warn!("Skipping sitemap entry without slug");
+            continue;
+        };
+
         sitemap.push_str("<url>\n");
-        writeln!(
-            sitemap,
-            "<loc>https://alexthola.com/post/{}</loc>",
-            post.slug.unwrap()
-        )
-        .unwrap();
+        if let Err(err) = writeln!(sitemap, "<loc>https://alexthola.com/post/{slug}</loc>") {
+            error!(?err, slug, "Failed to write sitemap dynamic URL");
+            return build_response(
+                "Failed to build sitemap".to_string(),
+                "text/plain; charset=utf-8",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
         sitemap.push_str("<changefreq>monthly</changefreq>\n");
         sitemap.push_str("<priority>1.0</priority>\n");
-        writeln!(sitemap, "<lastmod>{}</lastmod>", post.created_at).unwrap();
+        if let Err(err) = writeln!(sitemap, "<lastmod>{}</lastmod>", post.created_at) {
+            error!(?err, slug, "Failed to write sitemap last modified date");
+            return build_response(
+                "Failed to build sitemap".to_string(),
+                "text/plain; charset=utf-8",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
         sitemap.push_str("</url>\n");
     }
     sitemap.push_str("</urlset>");
-    Response::builder()
-        .header("Content-Type", "application/xml")
-        .body(sitemap)
-        .unwrap()
+    build_response(sitemap, "application/xml", StatusCode::OK)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    #[test]
-    fn test_retry_query_success_first_attempt() {
-        tokio_test::block_on(async {
-            let call_count = Arc::new(AtomicUsize::new(0));
-            let call_count_clone = call_count.clone();
-
-            let result = retry_query(|| {
-                let count = call_count_clone.clone();
-                async move {
-                    count.fetch_add(1, Ordering::SeqCst);
-                    Ok::<String, surrealdb::Error>("success".to_string())
-                }
-            })
-            .await;
-
-            assert!(result.is_ok());
-            assert_eq!(result.unwrap(), "success");
-            assert_eq!(call_count.load(Ordering::SeqCst), 1);
-        });
-    }
-
-    #[test]
-    fn test_retry_query_success_after_failures() {
-        tokio_test::block_on(async {
-            let call_count = Arc::new(AtomicUsize::new(0));
-            let call_count_clone = call_count.clone();
-
-            let result = retry_query(|| {
-                let count = call_count_clone.clone();
-                async move {
-                    let current_count = count.fetch_add(1, Ordering::SeqCst);
-                    if current_count < 2 {
-                        // Fail first two attempts
-                        Err(surrealdb::Error::msg("Connection failed"))
-                    } else {
-                        // Succeed on third attempt
-                        Ok::<String, surrealdb::Error>("success".to_string())
-                    }
-                }
-            })
-            .await;
-
-            assert!(result.is_ok());
-            assert_eq!(result.unwrap(), "success");
-            assert_eq!(call_count.load(Ordering::SeqCst), 3);
-        });
-    }
-
-    #[test]
-    fn test_retry_query_exhausts_retries() {
-        tokio_test::block_on(async {
-            let call_count = Arc::new(AtomicUsize::new(0));
-            let call_count_clone = call_count.clone();
-
-            let result = retry_query(|| {
-                let count = call_count_clone.clone();
-                async move {
-                    count.fetch_add(1, Ordering::SeqCst);
-                    Err::<String, surrealdb::Error>(surrealdb::Error::msg("Persistent failure"))
-                }
-            })
-            .await;
-
-            assert!(result.is_err());
-            // Should try exactly 4 times (initial + 3 retries based on our retry strategy)
-            assert_eq!(call_count.load(Ordering::SeqCst), 4);
-        });
-    }
-
-    #[tokio::test]
-    async fn test_retry_mechanisms_timing() {
-        use std::time::Instant;
-
-        let start = Instant::now();
-        let call_count = Arc::new(AtomicUsize::new(0));
-        let call_count_clone = call_count.clone();
-
-        let _result = retry_query(|| {
-            let count = call_count_clone.clone();
-            async move {
-                count.fetch_add(1, Ordering::SeqCst);
-                Err::<String, surrealdb::Error>(surrealdb::Error::msg("Always fail"))
-            }
-        })
-        .await;
-
-        let elapsed = start.elapsed();
-
-        // With exponential backoff starting at 50ms, should have some delays
-        // Make timing assertions less strict to avoid flaky tests
-        assert!(elapsed.as_millis() >= 25); // Some delay expected
-        assert!(elapsed.as_secs() < 15); // But reasonable overall time  
-        assert_eq!(call_count.load(Ordering::SeqCst), 4);
-    }
 
     #[test]
     fn test_environment_variable_defaults() {

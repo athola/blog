@@ -39,7 +39,7 @@ db.setup_complete_testing().await?;
 
 **Test Categories**:
 - **Multi-stage Migrations**: Tests incremental schema changes
-- **Data Preservation**: Ensures data survives schema modifications
+- **Data Preservation**: Data survives schema modifications
 - **Integration Testing**: Real migration file execution
 - **Relationship Validation**: Tests foreign key constraints
 

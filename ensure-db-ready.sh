@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Comprehensive database readiness script for CI/CD environments
+# Database readiness script for CI/CD environments
 # This script ensures the database is running and initialized properly
 
 set -e
@@ -97,7 +97,7 @@ start_database() {
 # Function to initialize database
 initialize_database() {
     echo "Initializing database..."
-    
+
     # Try to create the root user
     if surreal sql --conn "$SURREAL_PROTOCOL://$SURREAL_HOST" \
         --query "DEFINE USER IF NOT EXISTS $SURREAL_ROOT_USER ON ROOT PASSWORD '$SURREAL_ROOT_PASS' ROLES OWNER" \
@@ -106,17 +106,25 @@ initialize_database() {
     else
         echo "Root user may already exist or was created differently"
     fi
-    
+
     # Create namespace
     surreal sql --conn "$SURREAL_PROTOCOL://$SURREAL_HOST" \
         --query "DEFINE NAMESPACE IF NOT EXISTS $SURREAL_NS;" \
         --user "$SURREAL_ROOT_USER" --pass "$SURREAL_ROOT_PASS" 2>/dev/null || echo "Namespace may already exist"
-    
+
     # Create database
     surreal sql --conn "$SURREAL_PROTOCOL://$SURREAL_HOST" --ns "$SURREAL_NS" \
         --query "DEFINE DATABASE IF NOT EXISTS $SURREAL_DB;" \
         --user "$SURREAL_ROOT_USER" --pass "$SURREAL_ROOT_PASS" 2>/dev/null || echo "Database may already exist"
-    
+
+    # Create namespace-level user if credentials are provided
+    if [ -n "$SURREAL_NAMESPACE_USER" ] && [ -n "$SURREAL_NAMESPACE_PASS" ]; then
+        echo "Creating namespace-level user: $SURREAL_NAMESPACE_USER"
+        surreal sql --conn "$SURREAL_PROTOCOL://$SURREAL_HOST" --ns "$SURREAL_NS" \
+            --query "DEFINE USER IF NOT EXISTS $SURREAL_NAMESPACE_USER ON NAMESPACE PASSWORD '$SURREAL_NAMESPACE_PASS' ROLES OWNER;" \
+            --user "$SURREAL_ROOT_USER" --pass "$SURREAL_ROOT_PASS" 2>/dev/null || echo "Namespace user may already exist or creation failed"
+    fi
+
     echo "Database initialization completed"
 }
 

@@ -83,6 +83,8 @@ pub fn component() -> impl IntoView {
                     }>
                         <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
                             <input
+                                id="name"
+                                name="name"
                                 placeholder="Your Name"
                                 type="text"
                                 prop:value=move || state.get().name
@@ -93,8 +95,10 @@ pub fn component() -> impl IntoView {
                                 class="py-3 px-4 w-full placeholder-gray-400 text-white transition-shadow focus:ring-2 focus:outline-none bg-[#1e1e1e] focus:ring-[#ffef5c]"
                             />
                             <input
+                                id="email"
+                                name="email"
                                 placeholder="Your Email"
-                                type="text"
+                                type="email"
                                 prop:value=move || state.get().email
                                 on:input=move |ev| {
                                     let email = event_target_value(&ev);
@@ -104,6 +108,8 @@ pub fn component() -> impl IntoView {
                             />
                         </div>
                         <input
+                            id="subject"
+                            name="subject"
                             placeholder="Subject"
                             type="text"
                             prop:value=move || state.get().subject
@@ -114,6 +120,8 @@ pub fn component() -> impl IntoView {
                             class="py-3 px-4 w-full placeholder-gray-400 text-white transition-shadow focus:ring-2 focus:outline-none bg-[#1e1e1e] focus:ring-[#ffef5c]"
                         />
                         <textarea
+                            id="message"
+                            name="message"
                             placeholder="Your Message"
                             prop:value=move || state.get().message
                             on:input=move |ev| {

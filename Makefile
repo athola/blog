@@ -15,7 +15,7 @@ include .config.mk
 export OPENSSL_NO_VENDOR := 1
 
 CARGO_MAKE_CMD := cargo make --makefile Makefile.toml
-ECHO_PREFIX := @echo "[$@]:"
+ECHO_PREFIX := @echo '[$@]:'
 
 define BRIDGE_CARGO_MAKE
 $1:
@@ -62,15 +62,15 @@ help:
 	@echo "  server-release      : Run the server binary (release)"
 
 build:
-	$(ECHO_PREFIX) Building $(PROJECT) (debug)
+	@echo '[$@]: Building $(PROJECT) (debug)'
 	@cargo build --workspace
 
 build-release:
-	$(ECHO_PREFIX) Building $(PROJECT) (release)
+	@echo '[$@]: Building $(PROJECT) (release)'
 	@cargo build --workspace --release
 
 rebuild:
-	$(ECHO_PREFIX) Rebuilding $(PROJECT)
+	@echo '[$@]: Rebuilding $(PROJECT)'
 	@$(CARGO_MAKE_CMD) rebuild
 
 rebuild-clean:
@@ -219,7 +219,7 @@ init-db:
 	fi
 
 start-db:
-	$(ECHO_PREFIX) Starting SurrealDB (background)
+	$(ECHO_PREFIX) Starting SurrealDB {background}
 	@./ensure-db-ready.sh
 
 stop-db:
@@ -235,24 +235,36 @@ reset-db: stop-db
 ## --- Development workflow -------------------------------------------------
 
 watch:
-	$(ECHO_PREFIX) Starting development watch (Ctrl+C to stop)
+	$(ECHO_PREFIX) Starting development watch {Ctrl+C to stop}
 	@set -e; \
 	$(MAKE) start-db; \
-	trap '$(MAKE) teardown' EXIT INT TERM; \
-	cargo leptos watch
+	trap 'echo "Stopping..."; $(MAKE) teardown; exit 0' INT TERM; \
+	cargo leptos watch; \
+	$(MAKE) teardown
 
 teardown:
 	$(ECHO_PREFIX) Stopping development processes
+	@echo "Terminating cargo leptos watch..."
 	@pkill -f "cargo leptos watch" 2>/dev/null || true
+	@pkill -f "leptos watch" 2>/dev/null || true
+	@echo "Terminating database processes..."
 	@pkill -f "surreal start" 2>/dev/null || true
 	@pkill -f "surrealkv" 2>/dev/null || true
+	@pkill -f "ensure-db-ready.sh" 2>/dev/null || true
+	@sleep 1
+	@echo "Force-killing any remaining processes..."
+	@pkill -9 -f "cargo leptos watch" 2>/dev/null || true
+	@pkill -9 -f "leptos watch" 2>/dev/null || true
+	@pkill -9 -f "surreal start" 2>/dev/null || true
+	@pkill -9 -f "surrealkv" 2>/dev/null || true
+	@echo "Development processes stopped"
 
 server:
-	$(ECHO_PREFIX) Running server (debug)
+	$(ECHO_PREFIX) Running server {debug}
 	@cargo run -p server
 
 server-release:
-	$(ECHO_PREFIX) Running server (release)
+	$(ECHO_PREFIX) Running server {release}
 	@cargo run -p server --release
 
 ## --- Validation -----------------------------------------------------------
@@ -282,10 +294,9 @@ validate: fmt lint test
 	@echo "Running test coverage..."
 	@if command -v cargo-llvm-cov >/dev/null 2>&1 && command -v cargo-nextest >/dev/null 2>&1; then \
 		mkdir -p test-results/coverage/html; \
-		if ! cargo llvm-cov clean --workspace >/dev/null 2>&1; then \
-			echo "Note: cargo llvm-cov clean failed, continuing"; \
-		fi; \
-		if cargo llvm-cov nextest --workspace --html --output-dir test-results/coverage/html; then \
+		echo "Cleaning previous coverage data..."; \
+		cargo llvm-cov clean --workspace >/dev/null 2>&1 || true; \
+		if cargo llvm-cov nextest --workspace --html --output-dir test-results/coverage/html 2>&1 | grep -v "functions have mismatched data"; then \
 			echo "Coverage report available at: test-results/coverage/html/index.html"; \
 		else \
 			echo "Warning: cargo llvm-cov nextest failed; skipping coverage report generation"; \

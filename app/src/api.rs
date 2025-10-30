@@ -8,40 +8,13 @@ use leptos::server_fn::error::NoCustomError;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "ssr")]
+use shared_utils::{RetryConfig, retry_async};
+#[cfg(feature = "ssr")]
 use std::time::Duration;
 #[cfg(feature = "ssr")]
 use tokio_retry::{Retry, strategy::ExponentialBackoff};
 
 use crate::types::{Post, Reference};
-
-#[cfg(feature = "ssr")]
-async fn retry_db_operation<F, Fut, T>(operation: F) -> Result<T, ServerFnError>
-where
-    F: Fn() -> Fut,
-    Fut: std::future::Future<Output = Result<T, surrealdb::Error>>,
-{
-    let retry_strategy = ExponentialBackoff::from_millis(50)
-        .max_delay(Duration::from_secs(2))
-        .take(3); // Maximum 3 retry attempts
-
-    match Retry::spawn(retry_strategy, || async {
-        operation().await.map_err(|e| {
-            tracing::warn!("Database operation failed, retrying: {:?}", e);
-            e
-        })
-    })
-    .await
-    {
-        Ok(result) => Ok(result),
-        Err(e) => {
-            tracing::error!("Database operation failed after retries: {:?}", e);
-            Err(ServerFnError::<NoCustomError>::ServerError(format!(
-                "Database error: {}",
-                e
-            )))
-        }
-    }
-}
 
 #[server(endpoint = "/posts")]
 pub async fn select_posts(
@@ -53,7 +26,7 @@ pub async fn select_posts(
 
     let AppState { db, .. } = expect_context::<AppState>();
     let db = db.as_ref();
-    let query = if tags.is_empty() {
+    let query_str = if tags.is_empty() {
         String::from(
             "SELECT *, author.* from post WHERE is_published = true ORDER BY created_at DESC;",
         )
@@ -68,7 +41,11 @@ pub async fn select_posts(
         )
     };
 
-    let mut query = retry_db_operation(|| async { db.query(&query).await }).await?;
+    let mut query = retry_async("select_posts", RetryConfig::default(), || async {
+        db.query(&query_str).await
+    })
+    .await
+    .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Database error: {e}")))?;
     let mut posts = query
         .take::<Vec<Post>>(0)
         .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {}", e)))?;
@@ -97,7 +74,11 @@ pub async fn select_tags() -> Result<BTreeMap<String, usize>, ServerFnError> {
     array::flatten($tags.map(|$t| $t.tags));
     "
     .to_owned();
-    let mut query = retry_db_operation(|| async { db.query(&query).await }).await?;
+    let mut query = retry_async("select_tags", RetryConfig::default(), || async {
+        db.query(&query).await
+    })
+    .await
+    .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Database error: {e}")))?;
     let tags = query
         .take::<Vec<String>>(1)
         .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {}", e)))?;
@@ -120,7 +101,11 @@ pub async fn select_post(slug: String) -> Result<Post, ServerFnError> {
     let db = db.as_ref();
 
     let query_str = format!(r#"SELECT *, author.* from post WHERE slug = "{slug}""#);
-    let mut query = retry_db_operation(|| async { db.query(&query_str).await }).await?;
+    let mut query = retry_async("select_post", RetryConfig::default(), || async {
+        db.query(&query_str).await
+    })
+    .await
+    .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Database error: {e}")))?;
     let post = query
         .take::<Vec<Post>>(0)
         .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {}", e)))?;
@@ -151,7 +136,11 @@ pub async fn increment_views(id: String) -> Result<(), ServerFnError> {
     let db = db.as_ref();
 
     let query_str = format!("UPDATE post:{id} SET total_views = total_views + 1;");
-    retry_db_operation(|| async { db.query(&query_str).await }).await?;
+    retry_async("increment_views", RetryConfig::default(), || async {
+        db.query(&query_str).await
+    })
+    .await
+    .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Database error: {e}")))?;
 
     Ok(())
 }
@@ -225,7 +214,11 @@ pub async fn select_references() -> Result<Vec<Reference>, ServerFnError> {
     let db = db.as_ref();
 
     let query_str = "SELECT * from reference WHERE is_published = true ORDER BY created_at DESC;";
-    let mut query = retry_db_operation(|| async { db.query(query_str).await }).await?;
+    let mut query = retry_async("select_references", RetryConfig::default(), || async {
+        db.query(query_str).await
+    })
+    .await
+    .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Database error: {e}")))?;
     let references = query
         .take::<Vec<Reference>>(0)
         .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {}", e)))?;
@@ -246,8 +239,11 @@ pub async fn create_activity(activity: crate::types::Activity) -> Result<(), Ser
     let db = db.as_ref();
 
     let _created: Option<crate::types::Activity> =
-        retry_db_operation(|| async { db.create("activity").content(activity.clone()).await })
-            .await?;
+        retry_async("create_activity", RetryConfig::default(), || async {
+            db.create("activity").content(activity.clone()).await
+        })
+        .await
+        .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Database error: {e}")))?;
 
     Ok(())
 }
@@ -269,7 +265,11 @@ pub async fn select_activities(
         activities_per_page, start
     );
 
-    let mut query = retry_db_operation(|| async { db.query(&query).await }).await?;
+    let mut query = retry_async("select_activities", RetryConfig::default(), || async {
+        db.query(&query).await
+    })
+    .await
+    .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Database error: {e}")))?;
     let activities = query
         .take::<Vec<crate::types::Activity>>(0)
         .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {}", e)))?;
@@ -281,119 +281,8 @@ pub async fn select_activities(
 mod tests {
     use super::*;
     use crate::types::Activity;
-    use std::sync::Arc;
-    use std::sync::atomic::{AtomicUsize, Ordering};
     #[cfg(feature = "ssr")]
     use tokio_test::block_on;
-
-    #[cfg(feature = "ssr")]
-    #[test]
-    fn test_retry_db_operation_success_first_attempt() {
-        block_on(async {
-            let call_count = Arc::new(AtomicUsize::new(0));
-            let call_count_clone = call_count.clone();
-
-            let result = retry_db_operation(|| {
-                let count = call_count_clone.clone();
-                async move {
-                    count.fetch_add(1, Ordering::SeqCst);
-                    Ok::<String, surrealdb::Error>("success".to_string())
-                }
-            })
-            .await;
-
-            assert!(result.is_ok());
-            assert_eq!(result.unwrap(), "success");
-            assert_eq!(call_count.load(Ordering::SeqCst), 1);
-        });
-    }
-
-    #[cfg(feature = "ssr")]
-    #[test]
-    fn test_retry_db_operation_success_after_failures() {
-        block_on(async {
-            let call_count = Arc::new(AtomicUsize::new(0));
-            let call_count_clone = call_count.clone();
-
-            let result = retry_db_operation(|| {
-                let count = call_count_clone.clone();
-                async move {
-                    let current_count = count.fetch_add(1, Ordering::SeqCst);
-                    if current_count < 2 {
-                        // Fail first two attempts
-                        Err(surrealdb::Error::msg("Temporary failure"))
-                    } else {
-                        // Succeed on third attempt
-                        Ok::<String, surrealdb::Error>("success_after_retry".to_string())
-                    }
-                }
-            })
-            .await;
-
-            assert!(result.is_ok());
-            assert_eq!(result.unwrap(), "success_after_retry");
-            assert_eq!(call_count.load(Ordering::SeqCst), 3);
-        });
-    }
-
-    #[cfg(feature = "ssr")]
-    #[test]
-    fn test_retry_db_operation_exhausts_retries() {
-        block_on(async {
-            let call_count = Arc::new(AtomicUsize::new(0));
-            let call_count_clone = call_count.clone();
-
-            let result = retry_db_operation(|| {
-                let count = call_count_clone.clone();
-                async move {
-                    count.fetch_add(1, Ordering::SeqCst);
-                    Err::<String, surrealdb::Error>(surrealdb::Error::msg("Persistent failure"))
-                }
-            })
-            .await;
-
-            assert!(result.is_err());
-            // Should try exactly 4 times (initial + 3 retries based on our retry strategy)
-            assert_eq!(call_count.load(Ordering::SeqCst), 4);
-
-            // Verify it's converted to ServerFnError
-            match result.unwrap_err() {
-                ServerFnError::<NoCustomError>::ServerError(_) => {
-                    // Successfully converted to ServerFnError::<NoCustomError>::ServerError as expected
-                }
-                _ => panic!("Expected ServerFnError::<NoCustomError>::ServerError"),
-            }
-        });
-    }
-
-    #[cfg(feature = "ssr")]
-    #[test]
-    fn test_retry_db_operation_timing() {
-        use std::time::Instant;
-
-        block_on(async {
-            let start = Instant::now();
-            let call_count = Arc::new(AtomicUsize::new(0));
-            let call_count_clone = call_count.clone();
-
-            let _result = retry_db_operation(|| {
-                let count = call_count_clone.clone();
-                async move {
-                    count.fetch_add(1, Ordering::SeqCst);
-                    Err::<String, surrealdb::Error>(surrealdb::Error::msg("Always fail"))
-                }
-            })
-            .await;
-
-            let elapsed = start.elapsed();
-
-            // With exponential backoff starting at 50ms, should take some time but not too long
-            // Make timing assertions less strict to avoid flaky tests
-            assert!(elapsed.as_millis() >= 25); // Some delay expected
-            assert!(elapsed.as_secs() < 10); // But reasonable overall time
-            assert_eq!(call_count.load(Ordering::SeqCst), 4);
-        });
-    }
 
     #[test]
     fn test_contact_request_default() {
@@ -549,35 +438,6 @@ mod tests {
             let page = 1;
             let start = page * activities_per_page;
             assert_eq!(start, 10);
-        });
-    }
-
-    #[cfg(feature = "ssr")]
-    #[test]
-    fn test_retry_with_different_error_types() {
-        tokio_test::block_on(async {
-            // Test retry behavior with different SurrealDB error types
-            let network_error_count = Arc::new(AtomicUsize::new(0));
-            let network_count_clone = network_error_count.clone();
-
-            let result = retry_db_operation(|| {
-                let count = network_count_clone.clone();
-                async move {
-                    let current = count.fetch_add(1, Ordering::SeqCst);
-                    if current == 0 {
-                        Err(surrealdb::Error::msg("Network timeout"))
-                    } else if current == 1 {
-                        Err(surrealdb::Error::msg("Connection lost"))
-                    } else {
-                        Ok::<&str, surrealdb::Error>("recovered")
-                    }
-                }
-            })
-            .await;
-
-            assert!(result.is_ok());
-            assert_eq!(result.unwrap(), "recovered");
-            assert_eq!(network_error_count.load(Ordering::SeqCst), 3);
         });
     }
 

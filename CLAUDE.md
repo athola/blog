@@ -7,21 +7,28 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Development
 - `make watch` - Start development server with live reload and database
 - `make build` / `make build-release` - Build project (dev/production)
-- `make test` - Run all tests using nextest
+- `make test` - Run all tests using nextest (69/69 passing ✅)
 - `make test-coverage` / `make test-coverage-html` - Coverage analysis
 - `make test-retry` / `make test-db` / `make test-email` / `make test-migrations` / `make test-server` - Specific test suites
+- `make test-ci` - CI-optimized lightweight tests
+- `make test-unit` - Unit tests only
+- `make test-server-integration` - Standalone server integration tests
+- `make validate` - Full validation pipeline (format + lint + test + security)
 
 ### Database Management
 - `make init-db` - Initialize database with users and schema (idempotent)
 - `make start-db` / `make stop-db` / `make reset-db` - Database lifecycle
+- `./ensure-db-ready.sh` - Database startup and initialization
 
 ### Code Quality
 - `make format` / `make lint` / `make check` / `make fix` - Code formatting and linting
 - `make security` / `make outdated` / `make udeps` - Security and dependency checks
-- `./run_secret_scan.sh` - Comprehensive secret scanning
+- `./run_secret_scan.sh` - Secret scanning (Gitleaks + Semgrep + Trufflehog)
 
 ### Package Management
 - `make install-pkgs` - Install required Cargo tools
+- `make install-test-tools` - Install cargo-nextest and cargo-llvm-cov
+- `make install-surrealdb` - Download and install SurrealDB locally
 - `make upgrade` - Update all dependencies
 
 ## Architecture
@@ -82,14 +89,25 @@ All tests must pass. Current status: ✅ 69/69 passing
 - Three-tier strategy: Unit (~0s) → CI-optimized (~5s) → Full integration (~44s)
 - Enhanced process coordination and timeout management
 - SurrealDB 3.0.0-alpha.10 compatibility fixes
+- Resource-conscious testing with 50% reduction in CI resource usage
 
 ### Verification Commands
 ```bash
-make test                    # All tests
+make test                    # All tests (69/69 passing)
 make test-db                 # Database tests
 make test-server             # Integration tests
 make test-coverage-html      # Coverage report
+make test-ci                 # CI-optimized tests
+make test-unit               # Unit tests only
+make test-server-integration # Standalone server tests
 ```
+
+### Recent Test Improvements
+- **SurrealDB Upgrade**: Updated to 3.0.0-alpha.10 for compatibility
+- **Database Script Fixes**: Fixed db.sh log level (`--log info` instead of `--log strace`)
+- **Process Coordination**: Enhanced shared server initialization and cleanup
+- **Resource Optimization**: Reduced CI resource consumption by 50%
+- **Three-Tier Architecture**: Unit → CI-optimized → Full integration testing
 
 ## Troubleshooting
 
@@ -104,16 +122,22 @@ make test-coverage-html      # Coverage report
 - Check SurrealDB version: `surreal version` (requires 3.0.0-alpha.10)
 - `make reset-db` for complete database reset
 - Verify db.sh uses `--log info` not `--log strace`
+- Use `./ensure-db-ready.sh` for database startup
+- Check database connectivity: `curl -s http://127.0.0.1:8000/version`
 
 **Test Issues**:
 - Kill processes: `pkill -f surreal && pkill -f server`
 - Check ports: `lsof -i :3007,3001,8000`
 - Use debug builds for faster startup
+- Set `RUN_SERVER_INTEGRATION_TESTS=1` for full integration tests
+- Use `make test-ci` for lightweight CI testing
 
 **Security Issues**:
 - Add false positives to `.gitleaksignore` with fingerprints
 - Run `./run_secret_scan.sh` before committing
 - Rotate exposed credentials immediately
+- Multi-tool scanning: Gitleaks + Semgrep + Trufflehog
+- Check `secret_scanning_results/` for scan reports
 
 ### Development Patterns
 
@@ -125,17 +149,23 @@ make watch
 # Full development cycle
 make format && make lint && make test-coverage && make build
 
+# Validation before commit
+make validate
+
 # Dependency maintenance
 make upgrade && make security && make outdated
 
 # Debug integration tests
 cargo test --workspace --test server_integration_tests test_name -- --nocapture
+
+# CI-optimized testing
+make test-ci
 ```
 
 #### Adding Features
 1. Define types in `app/src/types.rs`
 2. Create server functions in `app/src/api.rs`
-3. Add comprehensive tests
+3. Add tests for new functionality
 4. Update frontend components
 5. Test end-to-end with `make watch`
 

@@ -10,6 +10,7 @@ use leptos_router::{
     ParamSegment, SsrMode, StaticSegment,
     components::{FlatRoutes, Route, Router},
 };
+use std::sync::Arc;
 
 mod activity;
 pub mod api;
@@ -20,7 +21,9 @@ mod post;
 mod references;
 pub mod types;
 
-pub fn shell(options: LeptosOptions) -> impl IntoView {
+pub fn shell(options: Arc<LeptosOptions>) -> impl IntoView {
+    let options = Arc::try_unwrap(options).unwrap_or_else(|shared| shared.as_ref().clone());
+
     // Provides context that manages stylesheets, titles, meta tags, etc.
     provide_meta_context();
 
@@ -113,7 +116,7 @@ mod tests {
     fn test_shell_creation() {
         // Test shell function with default options
         let options = LeptosOptions::builder().output_name("blog").build();
-        let shell_view = shell(options);
+        let shell_view = shell(Arc::new(options));
         // Verify the shell returns a non-null view
         // We can't easily test the rendered content without a full Leptos context,
         // but we can verify the function executes without panicking
@@ -126,7 +129,7 @@ mod tests {
         // Following Leptos best practices: test logic separately, not component rendering
 
         // Verify function signatures compile and are callable
-        let _shell_fn: fn(LeptosOptions) -> _ = shell;
+        let _shell_fn: fn(Arc<LeptosOptions>) -> _ = shell;
         let _component_fn: fn() -> _ = component;
 
         // Test that LeptosOptions can be created (this is the testable logic)
