@@ -99,30 +99,26 @@ initialize_database() {
     echo "Initializing database..."
 
     # Try to create the root user
-    if surreal sql --conn "$SURREAL_PROTOCOL://$SURREAL_HOST" \
-        --query "DEFINE USER IF NOT EXISTS $SURREAL_ROOT_USER ON ROOT PASSWORD '$SURREAL_ROOT_PASS' ROLES OWNER" \
-        --user "$SURREAL_ROOT_USER" --pass "$SURREAL_ROOT_PASS" 2>/dev/null; then
+    if echo "DEFINE USER IF NOT EXISTS $SURREAL_ROOT_USER ON ROOT PASSWORD '$SURREAL_ROOT_PASS' ROLES OWNER;" | surreal sql --endpoint "$SURREAL_PROTOCOL://$SURREAL_HOST" \
+        --username "$SURREAL_ROOT_USER" --password "$SURREAL_ROOT_PASS" 2>/dev/null; then
         echo "Root user created successfully"
     else
         echo "Root user may already exist or was created differently"
     fi
 
     # Create namespace
-    surreal sql --conn "$SURREAL_PROTOCOL://$SURREAL_HOST" \
-        --query "DEFINE NAMESPACE IF NOT EXISTS $SURREAL_NS;" \
-        --user "$SURREAL_ROOT_USER" --pass "$SURREAL_ROOT_PASS" 2>/dev/null || echo "Namespace may already exist"
+    echo "DEFINE NAMESPACE IF NOT EXISTS $SURREAL_NS;" | surreal sql --endpoint "$SURREAL_PROTOCOL://$SURREAL_HOST" \
+        --username "$SURREAL_ROOT_USER" --password "$SURREAL_ROOT_PASS" 2>/dev/null || echo "Namespace may already exist"
 
     # Create database
-    surreal sql --conn "$SURREAL_PROTOCOL://$SURREAL_HOST" --ns "$SURREAL_NS" \
-        --query "DEFINE DATABASE IF NOT EXISTS $SURREAL_DB;" \
-        --user "$SURREAL_ROOT_USER" --pass "$SURREAL_ROOT_PASS" 2>/dev/null || echo "Database may already exist"
+    echo "DEFINE DATABASE IF NOT EXISTS $SURREAL_DB;" | surreal sql --endpoint "$SURREAL_PROTOCOL://$SURREAL_HOST" --namespace "$SURREAL_NS" \
+        --username "$SURREAL_ROOT_USER" --password "$SURREAL_ROOT_PASS" 2>/dev/null || echo "Database may already exist"
 
     # Create namespace-level user if credentials are provided
     if [ -n "$SURREAL_NAMESPACE_USER" ] && [ -n "$SURREAL_NAMESPACE_PASS" ]; then
         echo "Creating namespace-level user: $SURREAL_NAMESPACE_USER"
-        surreal sql --conn "$SURREAL_PROTOCOL://$SURREAL_HOST" --ns "$SURREAL_NS" \
-            --query "DEFINE USER IF NOT EXISTS $SURREAL_NAMESPACE_USER ON NAMESPACE PASSWORD '$SURREAL_NAMESPACE_PASS' ROLES OWNER;" \
-            --user "$SURREAL_ROOT_USER" --pass "$SURREAL_ROOT_PASS" 2>/dev/null || echo "Namespace user may already exist or creation failed"
+        echo "DEFINE USER IF NOT EXISTS $SURREAL_NAMESPACE_USER ON NAMESPACE PASSWORD '$SURREAL_NAMESPACE_PASS' ROLES OWNER;" | surreal sql --endpoint "$SURREAL_PROTOCOL://$SURREAL_HOST" --namespace "$SURREAL_NS" \
+            --username "$SURREAL_ROOT_USER" --password "$SURREAL_ROOT_PASS" 2>/dev/null || echo "Namespace user may already exist or creation failed"
     fi
 
     echo "Database initialization completed"

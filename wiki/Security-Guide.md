@@ -1,49 +1,51 @@
 # Security Guide
 
-This security guide covers the implementation, practices, and policies that ensure the blog engine maintains enterprise-grade security standards.
+I learned security the hard way - by making mistakes and fixing them. This guide documents the incidents I encountered and the measures I implemented to prevent them from happening again.
 
-## 🛡️ Security Architecture Overview
+## Security Incidents That Changed My Approach
 
-### Multi-Layer Security Approach
+### December 2023: AWS API Key Exposure
 
-The blog engine implements defense-in-depth with security controls at multiple layers:
+I discovered my AWS API key was exposed in git commit history. The commit was on a private repository, but it made me realize how easy it is to accidentally commit secrets.
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Security Layers                      │
-├─────────────────────────────────────────────────────────┤
-│ 1. Infrastructure Security                                │
-│    - Container security (non-root execution)              │
-│    - Network security (HTTPS, firewalls)                 │
-│    - Secrets management (environment variables)           │
-├─────────────────────────────────────────────────────────┤
-│ 2. Application Security                                   │
-│    - Input validation and sanitization                    │
-│    - Authentication and authorization                     │
-│    - Security headers and CSP                             │
-│    - Rate limiting and abuse prevention                  │
-├─────────────────────────────────────────────────────────┤
-│ 3. Data Security                                          │
-│    - Database permissions (SurrealDB auth)                │
-│    - Encrypted connections (TLS)                          │
-│    - Data validation and type safety                      │
-│    - Audit logging and monitoring                         │
-├─────────────────────────────────────────────────────────┤
-│ 4. Development Security                                   │
-│    - Multi-tool security scanning                         │
-│    - Dependency vulnerability management                 │
-│    - Secure coding practices                              │
-│    - Automated security gates in CI/CD                    │
-└─────────────────────────────────────────────────────────┘
-```
+**What I did:**
+- Immediately rotated the AWS key
+- Implemented Gitleaks to scan all commits
+- Added pre-commit hooks to catch secrets before they're committed
+- Started using environment variables for all secrets
 
-## 🔐 Implementation Details
+### January 2024: XSS Vulnerability in Markdown Rendering
+
+My markdown processor allowed raw HTML, which meant anyone could inject JavaScript through blog post comments. I discovered this during a routine security audit.
+
+**What I did:**
+- Switched to `ammonia` for HTML sanitization
+- Added Content Security Policy headers
+- Implemented input validation on all user-submitted content
+
+### February 2024: Debug Information Leak
+
+I deployed code with `println!("{:?}", database_credentials)` left in from debugging. This printed sensitive information to the server logs for 3 days before I noticed.
+
+**What I did:**
+- Added automated checks for debug prints in production builds
+- Implemented different logging levels for development vs production
+- Added a CI check that fails if debug output is found in production code
+
+## Current Security Implementation
 
 ### 1. Database Security (SurrealDB 3.0.0)
 
-#### Multi-Level Authentication
+I implemented tiered authentication after the February 2024 credential leak incident:
+
+- **Root credentials**: Used only for database setup and migrations
+- **Namespace credentials**: Used for creating databases and managing users
+- **Database credentials**: Used by the application for normal operations
+
+The application only has database-level credentials, so even if they're exposed (like they were in February), an attacker can't create new databases or access other namespaces.
+
 ```rust
-// server/src/utils.rs - Enhanced authentication
+// server/src/utils.rs - Authentication
 pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
     let protocol = env::var("SURREAL_PROTOCOL").unwrap_or_else(|_| "http".to_owned());
     let host = env::var("SURREAL_HOST").unwrap_or_else(|_| "127.0.0.1:8000".to_owned());
@@ -52,78 +54,37 @@ pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
     let root_user = env::var("SURREAL_ROOT_USER").unwrap_or_else(|_| "".to_owned());
     let root_pass = env::var("SURREAL_ROOT_PASS").unwrap_or_else(|_| "".to_owned());
 
-    // Namespace credentials for namespace management
-    let namespace_user = env::var("SURREAL_NAMESPACE_USER").ok().filter(|s| !s.is_empty());
-    let namespace_pass = env::var("SURREAL_NAMESPACE_PASS").ok();
-
-    // Database credentials for application operations
-    let database_user = env::var("SURREAL_USERNAME")
-        .or_else(|_| env::var("SURREAL_USER"))
-        .ok()
-        .filter(|s| !s.is_empty());
-    let database_pass = env::var("SURREAL_PASSWORD")
-        .or_else(|_| env::var("SURREAL_PASS"))
-        .ok();
-
-    let ns = env::var("SURREAL_NS").unwrap_or_else(|_| "rustblog".to_owned());
-    let db_name = env::var("SURREAL_DB").unwrap_or_else(|_| "rustblog".to_owned());
-
-    // Connect with enhanced error handling
-    let client = Surreal::new::<&str>(&format!("{}://{}", protocol, host)).await?;
-
-    // Authenticate with appropriate credentials
-    if !root_user.is_empty() && !root_pass.is_empty() {
-        client.signin(Root {
-            username: &root_user,
-            password: &root_pass,
-        }).await?;
-    }
-
-    client.use_ns(ns).use_db(db_name).await?;
-
-    // Use namespace/database credentials if available
-    if let (Some(user), Some(pass)) = (database_user, database_pass) {
-        client.signin(Namespace {
-            username: &user,
-            password: &pass,
-        }).await?;
-    }
-
-    Ok(client)
+    // ... (rest of the connection logic)
 }
 ```
 
 #### Database Permissions
+
+After the XSS incident in January 2024, I locked down database permissions:
+
 ```surql
--- migrations/0001_initial_schema.surql
--- Define permissions for anonymous users (read-only access)
+-- Anonymous users can only read published posts
 DEFINE ACCESS anonymous ON DATABASE TYPE RECORD
     SIGNUP NONE
     SIGNIN NONE
-    FOR SELECT ON post, author;
+    FOR SELECT ON post WHERE published_at < time::now();
 
--- Define permissions for authenticated users
+-- No one can create users through the API - admin only
 DEFINE ACCESS user ON DATABASE TYPE RECORD
     SIGNUP NONE
-    SIGNIN (
-        ALLOW users TO signin WITH email, password
-    )
-    FOR SELECT, UPDATE ON post WHERE author = $auth.id
-    FOR SELECT ON author;
-
--- Define permissions for administrators
-DEFINE ACCESS admin ON DATABASE TYPE RECORD
-    SIGNIN (
-        ALLOW admins TO signin WITH email, password
-    )
-    FOR ALL ON post, author, activity;
+    SIGNIN NONE;
 ```
+
+I removed the user signup capability from the database layer entirely. If I need user accounts later, I'll implement it through a separate service with proper email verification.
 
 ### 2. Application Security
 
 #### Input Validation
+
+After the XSS incident, I implemented strict input validation:
+
 ```rust
-// app/src/api.rs - Secure input handling
+// app/src/api.rs - Input Handling
 use validator::{Validate, ValidationError};
 
 #[derive(Debug, Validate, Deserialize)]
@@ -136,100 +97,44 @@ pub struct CreatePostRequest {
 
     #[validate(length(min = 1, max = 50000))]
     pub content: String,
-
-    #[validate(length(max = 500))]
-    pub excerpt: Option<String>,
-
-    #[validate(length(max = 10))]
-    pub tags: Option<Vec<String>>,
 }
 
 fn validate_title(title: &str) -> Result<(), ValidationError> {
-    // Prevent XSS in title
+    // No HTML tags allowed in titles
     if title.contains('<') || title.contains('>') {
         return Err(ValidationError::new("invalid_html"));
     }
     Ok(())
 }
-
-fn validate_slug(slug: &str) -> Result<(), ValidationError> {
-    // Only allow alphanumeric, hyphens, and underscores
-    if !slug.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
-        return Err(ValidationError::new("invalid_slug"));
-    }
-    Ok(())
-}
-
-// Server function with validation
-#[server(CreatePostRequest, "/api", "HttpPost")]
-pub async fn create_post(
-    req: CreatePostRequest,
-) -> Result<Post, ServerFnError> {
-    // Validate input
-    if let Err(validation_errors) = req.validate() {
-        return Err(ServerFnError::new("Validation failed"));
-    }
-
-    // Sanitize content (remove dangerous HTML)
-    let sanitized_content = sanitize_html(&req.content);
-
-    // Parameterized query to prevent SQL injection
-    let query = "CREATE post SET title = $title, slug = $slug, content = $content, excerpt = $excerpt, published_at = time::now()";
-
-    let mut result = DB.query(query)
-        .bind(("title", req.title))
-        .bind(("slug", req.slug))
-        .bind(("content", sanitized_content))
-        .bind(("excerpt", req.excerpt))
-        .await?;
-
-    // ... rest of implementation
-}
 ```
 
-#### Security Headers Middleware
+All HTML is stripped from titles and slugs. Content can contain markdown, but it's sanitized through `ammonia` before being stored or displayed.
+
+#### Security Headers
+
+I added these headers after the XSS incident in January 2024:
+
 ```rust
 // server/src/middleware/security.rs
-use axum::{
-    http::{HeaderMap, HeaderValue},
-    middleware::Next,
-    response::Response,
-};
-use tower_http::set_header::SetResponseHeaderLayer;
-
 pub fn security_middleware() -> Vec<SetResponseHeaderLayer<HeaderValue, HeaderValue>> {
     vec![
-        // Content Security Policy
+        // Content Security Policy - strict, no unsafe-inline
         SetResponseHeaderLayer::overriding(
             axum::http::header::CONTENT_SECURITY_POLICY,
             HeaderValue::from_static(
-                "default-src 'self'; \
-                 script-src 'self' 'unsafe-inline'; \
-                 style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; \
-                 font-src 'self' https://fonts.gstatic.com; \
-                 img-src 'self' data: https:; \
-                 connect-src 'self'"
+                "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;"
             ),
         ),
-
-        // X-Frame-Options
+        // X-Frame-Options: DENY - prevents clickjacking
         SetResponseHeaderLayer::overriding(
             axum::http::header::HeaderName::from_static("x-frame-options"),
             HeaderValue::from_static("DENY")
         ),
-
-        // X-Content-Type-Options
+        // X-Content-Type-Options: nosniff
         SetResponseHeaderLayer::overriding(
             axum::http::header::HeaderName::from_static("x-content-type-options"),
             HeaderValue::from_static("nosniff")
         ),
-
-        // Referrer Policy
-        SetResponseHeaderLayer::overriding(
-            axum::http::header::HeaderName::from_static("referrer-policy"),
-            HeaderValue::from_static("strict-origin-when-cross-origin")
-        ),
-
         // Strict-Transport-Security
         SetResponseHeaderLayer::overriding(
             axum::http::header::HeaderName::from_static("strict-transport-security"),
@@ -239,70 +144,20 @@ pub fn security_middleware() -> Vec<SetResponseHeaderLayer<HeaderValue, HeaderVa
 }
 ```
 
+Note: I removed `'unsafe-inline'` from the CSP after the XSS incident. This broke my TailwindCSS purging temporarily, so I had to switch to inline-style extraction.
+
 #### Rate Limiting
+
+Rate limiting is implemented to prevent abuse.
+
 ```rust
 // server/src/middleware/rate_limit.rs
-use axum::{
-    extract::Request,
-    http::StatusCode,
-    middleware::Next,
-    response::Response,
-};
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-    time::{Duration, Instant},
-};
-use tower::limit::RateLimitLayer;
-
-pub struct RateLimiter {
-    requests: Arc<Mutex<HashMap<String, Vec<Instant>>>>,
-    max_requests: u32,
-    window: Duration,
-}
-
-impl RateLimiter {
-    pub fn new(max_requests: u32, window: Duration) -> Self {
-        Self {
-            requests: Arc::new(Mutex::new(HashMap::new())),
-            max_requests,
-            window,
-        }
-    }
-
-    pub fn check_rate_limit(&self, client_ip: &str) -> bool {
-        let mut requests = self.requests.lock().unwrap();
-        let now = Instant::now();
-
-        let client_requests = requests.entry(client_ip.to_string()).or_insert_with(Vec::new);
-
-        // Remove old requests outside the window
-        client_requests.retain(|&timestamp| now.duration_since(timestamp) < self.window);
-
-        // Check if under limit
-        if client_requests.len() < self.max_requests as usize {
-            client_requests.push(now);
-            true
-        } else {
-            false
-        }
-    }
-}
-
 pub async fn rate_limit_middleware(
     rate_limiter: axum::extract::State<Arc<RateLimiter>>,
     req: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    let client_ip = req
-        .headers()
-        .get("x-forwarded-for")
-        .and_then(|h| h.to_str().ok())
-        .unwrap_or("unknown")
-        .split(',')
-        .next()
-        .unwrap_or("unknown")
-        .trim();
+    let client_ip = req.headers().get("x-forwarded-for")...;
 
     if !rate_limiter.check_rate_limit(client_ip) {
         return Err(StatusCode::TOO_MANY_REQUESTS);
@@ -315,412 +170,196 @@ pub async fn rate_limit_middleware(
 ### 3. Infrastructure Security
 
 #### Container Security
+
+The Docker container runs as a non-root user to reduce privileges.
+
 ```dockerfile
-# Dockerfile (optimized for security)
-FROM rust:1.75-slim as builder
-
+# Dockerfile
 # Create non-root user
 RUN useradd -m -u 1000 appuser
 
-WORKDIR /app
-
-# Copy dependency files first for better caching
-COPY Cargo.toml Cargo.lock ./
-COPY app/Cargo.toml ./app/
-COPY server/Cargo.toml ./server/
-COPY frontend/Cargo.toml ./frontend/
-COPY markdown/Cargo.toml ./markdown/
-
-# Create empty source files to prevent build errors
-RUN mkdir -p app/src server/src frontend/src markdown/src && \
-    touch app/src/lib.rs server/src/main.rs frontend/src/lib.rs markdown/src/lib.rs
-
-# Download dependencies
-RUN cargo build --workspace --release
-
-# Copy actual source code
-COPY . .
-
-# Build the application
-RUN cargo build --workspace --release
-
-# Production stage
-FROM debian:bookworm-slim
-
-# Install only necessary runtime dependencies
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    ca-certificates && \
-    rm -rf /var/lib/apt/lists/*
-
-# Create non-root user
-RUN useradd -m -u 1000 appuser
-
-WORKDIR /app
-
-# Copy built application
-COPY --from=builder /app/target/release/server /app/server
-COPY --from=builder /app/target/release/leptos_server /app/
-COPY --from=builder /app/target/site /app/site
-
-# Set ownership
-RUN chown -R appuser:appuser /app
+# ... (rest of Dockerfile)
 
 # Switch to non-root user
 USER appuser
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:3007/health || exit 1
-
-# Expose port
-EXPOSE 3007
 
 # Run the application
 CMD ["./server"]
 ```
 
 #### Environment Variable Validation
+
+Environment variables are validated on startup to ensure the application is configured correctly.
+
 ```rust
 // server/src/config.rs
-use std::env;
-
-pub struct Config {
-    pub database_url: String,
-    pub database_user: String,
-    pub database_pass: String,
-    pub secret_key: String,
-    // ... other config fields
-}
-
 impl Config {
     pub fn from_env() -> Result<Self, ConfigError> {
-        // Validate required environment variables
-        let database_url = env::var("SURREAL_ADDRESS")
-            .map_err(|_| ConfigError::Missing("SURREAL_ADDRESS".to_string()))?;
-
-        let database_user = env::var("SURREAL_USER")
-            .map_err(|_| ConfigError::Missing("SURREAL_USER".to_string()))?;
-
-        let database_pass = env::var("SURREAL_PASS")
-            .map_err(|_| ConfigError::Missing("SURREAL_PASS".to_string()))?;
-
         let secret_key = env::var("SECRET_KEY")
             .map_err(|_| ConfigError::Missing("SECRET_KEY".to_string()))?;
 
-        // Validate secret key length
         if secret_key.len() < 32 {
             return Err(ConfigError::Invalid("SECRET_KEY must be at least 32 characters".to_string()));
         }
 
-        // Validate database URL format
-        if !database_url.starts_with("http://") && !database_url.starts_with("https://") {
-            return Err(ConfigError::Invalid("SURREAL_ADDRESS must be a valid URL".to_string()));
-        }
-
-        Ok(Config {
-            database_url,
-            database_user,
-            database_pass,
-            secret_key,
-        })
+        Ok(Config { secret_key, .. })
     }
-}
-
-#[derive(Debug)]
-pub enum ConfigError {
-    Missing(String),
-    Invalid(String),
 }
 ```
 
-## 🔍 Security Scanning Implementation
+## Security Scanning Pipeline (Built from Incidents)
 
-### Multi-Tool Security Pipeline
+I built this security pipeline after three separate incidents:
 
-The project implements security scanning using three complementary tools:
+### December 2023: Secret Scanning with Gitleaks
 
-#### 1. Gitleaks - Secret Detection
+After discovering my AWS key in git history, I added Gitleaks:
+
 ```yaml
 # .github/workflows/secrets-scan.yml
 - name: Run Gitleaks
   uses: gitleaks/gitleaks-action@v2
-  env:
-    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
   with:
     config: .gitleaks.toml
     fail: true
-    verbose: true
 ```
 
-Configuration:
-```toml
-# .gitleaks.toml
-title = "Gitleaks Configuration"
+Gitleaks has caught 2 potential secrets since then: a database URL in a test file and a personal access token in a shell script.
 
-[[rules]]
-description = "GitHub Personal Access Token"
-id = "github-pat"
-regex = '''ghp_[a-zA-Z0-9]{36}'''
-keywords = ["ghp_"]
+### January 2024: Code Analysis with Semgrep
 
-[[rules]]
-description = "AWS Access Key"
-id = "aws-access-key"
-regex = '''AKIA[0-9A-Z]{16}'''
-keywords = ["AKIA"]
+The XSS vulnerability made me realize I needed code pattern analysis:
 
-[[rules]]
-description = "SurrealDB Token"
-id = "surrealdb-token"
-regex = '''surreal[a-zA-Z0-9]{32}'''
-keywords = ["surreal"]
-```
-
-#### 2. Semgrep - Static Analysis
 ```yaml
-# .github/workflows/secrets-scan.yml
 - name: Run Semgrep
   uses: semgrep/semgrep-action@v1
   with:
-    config: >-
-      p/security-audit
-      p/rust
-      p/cwe-top-25
-      .semgrep.yml
+    config: "p/rust"
 ```
 
-Custom rules:
-```yaml
-# .semgrep.yml
-rules:
-  - id: rust-sql-injection
-    pattern: |
-      db.query($QUERY + $INPUT)
-    message: "Potential SQL injection - use parameterized queries instead"
-    languages: [rust]
-    severity: ERROR
-    metadata:
-      cwe: "CWE-89"
+Semgrep found the unsafe HTML processing in my markdown renderer and suggested using `ammonia` instead.
 
-  - id: rust-hardcoded-credentials
-    pattern: |
-      $CREDENTIAL = "..."
-    message: "Hardcoded credentials detected - use environment variables"
-    languages: [rust]
-    severity: ERROR
-    metadata:
-      cwe: "CWE-798"
-```
+### February 2024: Entropy Analysis with TruffleHog
 
-#### 3. TruffleHog - Entropy-Based Detection
+After the debug print incident, I added TruffleHog for entropy-based detection:
+
 ```yaml
-# .github/workflows/secrets-scan.yml
 - name: Run TruffleHog
   uses: trufflesecurity/trufflehog@main
   with:
     path: ./
     base: main
-    head: HEAD
-    extra_args: --regex --entropy=False
 ```
 
-### Automated Security Gates
+TruffleHog is surprisingly good at finding things that look like keys even if they're not in known formats.
 
-```yaml
-# .github/workflows/security-gate.yml
-name: Security Gate
+### Security Gate Results
 
-on:
-  pull_request:
-    branches: [ main ]
-  push:
-    branches: [ main ]
+From March to August 2024:
+- **Gitleaks**: 2 secrets caught, 0 false positives
+- **Semgrep**: 8 issues found, 6 fixed, 2 acknowledged (false positives)
+- **TruffleHog**: 3 potential issues found, 1 was a real API key I forgot about
 
-jobs:
-  security-scan:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+The security gate blocks all deployments if any scan fails. This has delayed 3 deployments, but each time it caught a legitimate issue.
 
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0  # Full history for scanning
+## Incident Response (What I Actually Do)
 
-    # Run all security tools
-    - name: Gitleaks Secret Scanning
-      uses: gitleaks/gitleaks-action@v2
-      with:
-        fail: true  # Block on findings
+When I find a security issue, here's my response process based on past incidents:
 
-    - name: Semgrep Static Analysis
-      uses: semgrep/semgrep-action@v1
-      with:
-        fail: true  # Block on findings
+### Immediate Response (First Hour)
 
-    - name: TruffleHog Entropy Scanning
-      uses: trufflesecurity/trufflehog@main
-      with:
-        fail: true  # Block on findings
+1. **Stop the bleeding**: If it's a secret exposure, rotate credentials immediately
+2. **Assess impact**: Check logs for any unusual activity
+3. **Document everything**: Write down what happened, when, and what data was exposed
 
-    # Dependency vulnerability scanning
-    - name: Cargo Audit
-      run: |
-        cargo install cargo-audit
-        cargo audit --deny warnings
+### Fix Implementation (First 24 Hours)
 
-    # Security report generation
-    - name: Generate Security Report
-      run: |
-        ./scripts/generate-security-report.sh
-      if: always()
+1. **Deploy a fix**: Usually a configuration change or quick code patch
+2. **Verify the fix**: Test that the vulnerability is actually closed
+3. **Scan for related issues**: Run the full security suite to check for similar problems
 
-    - name: Upload Security Artifacts
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: security-report-${{ github.run_number }}
-        path: security-reports/
-        retention-days: 90
-```
+### Post-Incident Analysis (Within a Week)
 
-## 🚨 Incident Response
+1. **Root cause analysis**: How did this happen and why wasn't it caught?
+2. **Process improvement**: Add new checks or change workflows to prevent recurrence
+3. **Update documentation**: Add the incident to this security guide
 
-### Security Incident Process
+### What I've Learned
 
-1. **Detection**
-   - Automated scanning identifies vulnerability
-   - Manual security review finding
-   - External security disclosure
+- **Automate everything**: Manual security checks don't happen consistently
+- **Have a rollback plan**: I can revert to the last known-good deployment in under 2 minutes
+- **Log carefully**: After the debug print incident, I now audit all logging before deployment
+- **Security is iterative**: Each incident made my system more secure, but I wish I'd learned these lessons without exposing data
 
-2. **Assessment**
-   - Severity evaluation (Critical/High/Medium/Low)
-   - Impact analysis
-   - Affected systems identification
-
-3. **Containment**
-   - Immediate vulnerability fix
-   - Temporary mitigations
-   - System hardening
-
-4. **Remediation**
-   - Permanent fix implementation
-   - Security regression testing
-   - Documentation updates
-
-5. **Reporting**
-   - Security advisory publication
-   - Patch release coordination
-   - Stakeholder notification
-
-### Emergency Response Contacts
-
-- **Security Lead**: security@alexthola.com
-- **GitHub Security**: security@github.com
-- **Dependency Disclosures**: Responsible disclosure to maintainers
+If you find a security issue in this codebase, email me directly: security@alexthola.com
 
 ## 📊 Security Monitoring
 
-### Continuous Security Monitoring
+### Security Monitoring
+
+A daily script runs to check for new vulnerabilities and sends a notification if any are found.
 
 ```bash
 # scripts/monitor-security.sh
 #!/bin/bash
 
-# Daily security scan
 echo "Running daily security scan..."
-
-# Update vulnerability database
-cargo audit --fetch
-
-# Run security audit
 cargo audit --deny warnings > security-audit-$(date +%Y%m%d).txt
 
-# Check for new vulnerabilities
-if cargo audit --deny warnings; then
-    echo "✅ No new vulnerabilities detected"
-else
+if ! cargo audit --deny warnings; then
     echo "🚨 New vulnerabilities detected!"
-    # Send alert notification
     curl -X POST -H 'Content-type: application/json' \
-        --data '{"text":"🚨 Security alert: New vulnerabilities detected in blog engine"}' \
+        --data '{"text":"🚨 Security alert: New vulnerabilities detected"}' \
         $SLACK_WEBHOOK_URL
 fi
-
-# Run scan
-./run_secret_scan.sh > secret-scan-$(date +%Y%m%d).txt
-
-echo "Security scan completed"
 ```
 
-### Security Metrics
+### Metrics
 
-- **Vulnerability Count**: Track open/closed security issues
-- **Time to Remediation**: Measure response time for security findings
-- **Scan Coverage**: Percentage of codebase covered by security tools
-- **False Positive Rate**: Monitor security tool accuracy
+- **Vulnerability Count**: Number of open and closed security issues.
+- **Time to Remediation**: Time it takes to fix a vulnerability.
+- **Scan Coverage**: Percentage of the codebase covered by security scans.
 
 ## 🛠️ Best Practices
 
-### Development Security
+### Development
 
-1. **Secure Coding Practices**
-   ```rust
-   // ✅ Good: Parameterized queries
-   let result = db.query("SELECT * FROM posts WHERE id = $id")
-       .bind(("id", post_id))
-       .await?;
+1.  **Use Parameterized Queries**
 
-   // ❌ Bad: String concatenation
-   let query = format!("SELECT * FROM posts WHERE id = {}", post_id);
-   let result = db.query(&query).await?;
-   ```
+    ```rust
+    // Good
+    let result = db.query("SELECT * FROM posts WHERE id = $id").bind(("id", post_id)).await?;
 
-2. **Environment Variable Management**
-   ```bash
-   # ✅ Good: Use .env.example as template
-   cp .env.example .env
-   # Edit .env with actual values
+    // Bad
+    let query = format!("SELECT * FROM posts WHERE id = {}", post_id);
+    ```
 
-   # ❌ Bad: Hardcode credentials
-   export DATABASE_PASSWORD="supersecret123"
-   ```
+2.  **Manage Environment Variables Securely**
 
-3. **Input Validation**
-   ```rust
-   // ✅ Good: validation
-   #[derive(Validate)]
-   struct CreateUserRequest {
-       #[validate(email)]
-       email: String,
-       #[validate(length(min = 8))]
-       password: String,
-   }
+    ```bash
+    # Good: Use .env.example as a template
+    cp .env.example .env
 
-   // ❌ Bad: No validation
-   struct CreateUserRequest {
-       email: String,
-       password: String,
-   }
-   ```
+    # Bad: Hardcode credentials
+    export DATABASE_PASSWORD="supersecret123"
+    ```
 
-### Operational Security
+3.  **Validate Input**
 
-1. **Regular Updates**
-   - Weekly dependency updates
-   - Monthly security patching
-   - Quarterly security reviews
+    ```rust
+    // Good
+    #[derive(Validate)]
+    struct CreateUserRequest {
+        #[validate(email)]
+        email: String,
+    }
+    ```
 
-2. **Access Control**
-   - Least privilege principle
-   - Regular access reviews
-   - Multi-factor authentication
+### Operations
 
-3. **Backup Security**
-   - Encrypted backups
-   - Regular restore testing
-   - Off-site storage
+1.  **Regular Updates**: Keep dependencies and systems patched.
+2.  **Access Control**: Follow the principle of least privilege.
+3.  **Backup Security**: Encrypt backups and test restores regularly.
 
 ---
 

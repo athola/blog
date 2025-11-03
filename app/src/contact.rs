@@ -28,9 +28,7 @@ pub fn component() -> impl IntoView {
                         <br/>
                         "for the Modern Era"
                     </h1>
-                    <p class="mb-8 max-w-2xl text-xl text-gray-300">
-                        "I work on high-performance, reliable systems with Rust. Of particular interest to me are network and OS projects utilizing cutting-edge technology."
-                    </p>
+                            <p class="mb-6 text-gray-300">"I design scalable architectures that are built for performance and reliability."</p>
                     <div class="inline-flex items-center text-lg font-semibold hover:underline text-[#ffef5c]">
                         <A href="/references">
                             "Explore my work"
@@ -42,21 +40,7 @@ pub fn component() -> impl IntoView {
                 </div>
             </section>
 
-            <section class="py-20 px-4 sm:px-6 lg:px-8 bg-[#2a2a2a]">
-                <div class="mx-auto max-w-5xl">
-                    <h2 class="mb-12 text-3xl font-bold text-[#ffef5c]">"Our Expertise"</h2>
-                    <div class="grid grid-cols-1 gap-12 md:grid-cols-2">
-                        <div>
-                            <h3 class="mb-4 text-2xl font-semibold text-white">"Rust Development"</h3>
-                            <p class="mb-6 text-gray-300">"Specializing in efficient, safe, and concurrent systems. From low-level programming to high-performance web services, we leverage Rust's power to deliver exceptional solutions."</p>
-                        </div>
-                        <div>
-                            <h3 class="mb-4 text-2xl font-semibold text-white">"System Architecture"</h3>
-                            <p class="mb-6 text-gray-300">"Designing robust and scalable architectures that stand the test of time. Our expertise ensures your systems are built for performance, reliability, and future growth."</p>
-                        </div>
-                    </div>
-                </div>
-            </section>
+
 
             <section class="py-20 px-4 sm:px-6 lg:px-8">
                 <div class="mx-auto max-w-5xl">
@@ -87,6 +71,7 @@ pub fn component() -> impl IntoView {
                                 name="name"
                                 placeholder="Your Name"
                                 type="text"
+                                autocomplete="name"
                                 prop:value=move || state.get().name
                                 on:input=move |ev| {
                                     let name = event_target_value(&ev);
@@ -99,6 +84,7 @@ pub fn component() -> impl IntoView {
                                 name="email"
                                 placeholder="Your Email"
                                 type="email"
+                                autocomplete="email"
                                 prop:value=move || state.get().email
                                 on:input=move |ev| {
                                     let email = event_target_value(&ev);
@@ -112,6 +98,7 @@ pub fn component() -> impl IntoView {
                             name="subject"
                             placeholder="Subject"
                             type="text"
+                            autocomplete="subject"
                             prop:value=move || state.get().subject
                             on:input=move |ev| {
                                 let subject = event_target_value(&ev);
@@ -123,6 +110,7 @@ pub fn component() -> impl IntoView {
                             id="message"
                             name="message"
                             placeholder="Your Message"
+                            autocomplete="off"
                             prop:value=move || state.get().message
                             on:input=move |ev| {
                                 let message = event_target_value(&ev);

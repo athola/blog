@@ -6,14 +6,13 @@ echo "Running server integration tests sequentially..."
 
 # List of test functions to run
 TESTS=(
-    "test_server_startup_and_connectivity"
-    "test_page_navigation"
-    "test_navigation_elements"
-    "test_page_specific_content"
+    "test_server_connectivity"
+    "test_page_navigation_and_content"
     "test_static_asset_serving"
     "test_server_performance"
     "test_error_handling"
     "test_complete_development_workflow"
+    "test_server_coordination_management"
 )
 
 # Counter for passed/failed tests
@@ -38,18 +37,10 @@ for TEST in "${TESTS[@]}"; do
         ((FAILED++))
     fi
     
-    # Wait a bit between tests to ensure cleanup
+    # Wait between tests to ensure cleanup
     echo "Waiting for cleanup..."
     sleep 5
-    
-    # Kill any remaining processes
-    pkill -f "cargo leptos" 2>/dev/null || true
-    pkill -f "make.*watch" 2>/dev/null || true
-    pkill -f "tailwindcss" 2>/dev/null || true
-    pkill -f "wasm-bindgen" 2>/dev/null || true
-    
-    # Wait a bit more for processes to terminate
-    sleep 2
+
 done
 
 # Print summary

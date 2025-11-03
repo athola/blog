@@ -70,7 +70,7 @@ pub fn component() -> impl IntoView {
     view! {
         <Router>
             <div class="overflow-auto text-white font-poppins">
-                {header::component}
+                {move || header::component}
                 <main class="container flex flex-col gap-8 px-4 pt-10 pb-14 mx-auto mt-16 max-w-4xl md:px-0">
                     <FlatRoutes fallback=|| {
                         let mut outside_errors = Errors::default();

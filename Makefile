@@ -62,15 +62,15 @@ help:
 	@echo "  server-release      : Run the server binary (release)"
 
 build:
-	@echo '[$@]: Building $(PROJECT) (debug)'
+	$(ECHO_PREFIX) Building $(PROJECT) {debug}
 	@cargo build --workspace
 
 build-release:
-	@echo '[$@]: Building $(PROJECT) (release)'
+	$(ECHO_PREFIX) Building $(PROJECT) {release}
 	@cargo build --workspace --release
 
 rebuild:
-	@echo '[$@]: Rebuilding $(PROJECT)'
+	$(ECHO_PREFIX) Rebuilding $(PROJECT)
 	@$(CARGO_MAKE_CMD) rebuild
 
 rebuild-clean:
@@ -93,6 +93,10 @@ lint-fix:
 
 build-assets:
 	$(ECHO_PREFIX) Building frontend assets
+	@if ! rustup target list --installed | grep -q "wasm32-unknown-unknown"; then \
+		echo "Installing WebAssembly target..."; \
+		rustup target add wasm32-unknown-unknown; \
+	fi
 	@if [ ! -f target/site/pkg/blog.css ] || [ ! -f target/site/pkg/blog.js ] || [ ! -f target/site/pkg/blog.wasm ]; then \
 		echo "Assets missing or incomplete, rebuilding..."; \
 		cargo leptos build; \
@@ -128,16 +132,20 @@ test-server-integration:
 
 test-server-integration-embedded:
 	@echo "  Checking for existing database process..."
-	@pkill -f "surreal" 2>/dev/null || true
+	@for pid in $$(ps aux | grep -v grep | grep surreal | awk '{print $$2}'); do \
+		kill $$pid 2>/dev/null || true; \
+	done
 	@sleep 2
 	@echo "  Starting fresh database instance..."
-	@./db.sh & echo $! > /tmp/test_db_pid
+	@./db.sh & echo $$! > /tmp/test_db_pid
 	@sleep 8
 	@echo "  Running server integration tests..."
 	@set -a; . ./.env.test; set +a; cargo test --test server_integration_tests --no-fail-fast -- --test-threads=1 || (echo "Server integration tests failed, cleaning up..." && kill `cat /tmp/test_db_pid` 2>/dev/null || true && rm -f /tmp/test_db_pid && false)
 	@echo "  Cleaning up database process..."
-	@kill `cat /tmp/test_db_pid` 2>/dev/null || true
-	@rm -f /tmp/test_db_pid
+	@if [ -f /tmp/test_db_pid ]; then \
+		kill `cat /tmp/test_db_pid` 2>/dev/null || true; \
+		rm -f /tmp/test_db_pid; \
+	fi
 	@echo "  Server integration tests completed successfully"
 
 test-ci:
@@ -220,7 +228,11 @@ init-db:
 
 start-db:
 	$(ECHO_PREFIX) Starting SurrealDB {background}
-	@./ensure-db-ready.sh
+	@if [ -f .env ]; then \
+		export $$(grep -v '^#' .env | xargs) && ./ensure-db-ready.sh; \
+	else \
+		./ensure-db-ready.sh; \
+	fi
 
 stop-db:
 	$(ECHO_PREFIX) Stopping SurrealDB processes
@@ -244,19 +256,8 @@ watch:
 
 teardown:
 	$(ECHO_PREFIX) Stopping development processes
-	@echo "Terminating cargo leptos watch..."
-	@pkill -f "cargo leptos watch" 2>/dev/null || true
-	@pkill -f "leptos watch" 2>/dev/null || true
-	@echo "Terminating database processes..."
-	@pkill -f "surreal start" 2>/dev/null || true
-	@pkill -f "surrealkv" 2>/dev/null || true
-	@pkill -f "ensure-db-ready.sh" 2>/dev/null || true
-	@sleep 1
-	@echo "Force-killing any remaining processes..."
-	@pkill -9 -f "cargo leptos watch" 2>/dev/null || true
-	@pkill -9 -f "leptos watch" 2>/dev/null || true
-	@pkill -9 -f "surreal start" 2>/dev/null || true
-	@pkill -9 -f "surrealkv" 2>/dev/null || true
+	@echo "Use Ctrl+C to stop cargo leptos watch"
+	@echo "Use 'make stop-db' to stop database processes"
 	@echo "Development processes stopped"
 
 server:

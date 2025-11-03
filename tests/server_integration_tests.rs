@@ -64,7 +64,7 @@ mod server_integration_tests {
     use super::*;
 
     /// Test timeouts
-    const CLIENT_TIMEOUT: Duration = Duration::from_secs(15);
+    const CLIENT_TIMEOUT: Duration = Duration::from_secs(5);
 
     /// Core application pages for testing
     const CORE_PAGES: &[(&str, &str)] = &[
@@ -346,6 +346,10 @@ mod server_integration_tests {
                 .stderr(Stdio::piped())
                 .env("LEPTOS_SITE_ADDR", format!("127.0.0.1:{}", port))
                 .env("SURREAL_HOST", format!("127.0.0.1:{}", db_port))
+                .env("SURREAL_ROOT_USER", "root")
+                .env("SURREAL_ROOT_PASS", "root")
+                .env("SURREAL_NS", "rustblog")
+                .env("SURREAL_DB", "rustblog")
                 .spawn()
                 .map_err(|e| format!("Failed to start server binary: {}", e))?;
 
@@ -463,6 +467,11 @@ mod server_integration_tests {
             while Instant::now() < timeout {
                 if Self::test_database_connection(db_port).await {
                     eprintln!("Database on port {} is ready!", db_port);
+                    // Skip explicit database initialization - SurrealDB will auto-create namespace/database on first use
+                    // This avoids authentication API complexities with SurrealDB 3.0
+                    eprintln!(
+                        "Skipping explicit database initialization - relying on auto-creation"
+                    );
                     // Give it a bit more time to fully initialize
                     tokio::time::sleep(Duration::from_secs(1)).await;
                     return Ok(db_process);
@@ -956,6 +965,9 @@ mod server_integration_tests {
             "text/html; charset=utf-8"
         );
 
+        // Consume response body to prevent hanging
+        let _body = response.text().await?;
+
         Ok(())
     }
 
@@ -1090,6 +1102,8 @@ mod server_integration_tests {
             let elapsed = start.elapsed();
 
             assert!(response.status().is_success());
+            // Consume response body to prevent hanging
+            let _body = response.text().await?;
             response_times.push(elapsed);
 
             tokio::time::sleep(Duration::from_millis(25)).await;
@@ -1156,6 +1170,8 @@ mod server_integration_tests {
             response.status().is_success(),
             "Server should be responsive"
         );
+        // Consume response body to prevent hanging
+        let _body = response.text().await?;
 
         // Verify all core pages are accessible
         for &(path, _) in CORE_PAGES {
@@ -1165,6 +1181,8 @@ mod server_integration_tests {
                 "Page {} should be accessible",
                 path
             );
+            // Consume response body to prevent hanging
+            let _body = response.text().await?;
         }
 
         // Verify critical assets are available
@@ -1175,6 +1193,8 @@ mod server_integration_tests {
                 "Asset {} should be available",
                 path
             );
+            // Consume response body to prevent hanging (for assets, just to be safe)
+            let _body = response.text().await?;
         }
 
         Ok(())
@@ -1196,6 +1216,8 @@ mod server_integration_tests {
             response1.status().is_success(),
             "First server should be responsive"
         );
+        // Consume response body to prevent hanging
+        let _body1 = response1.text().await?;
 
         let Some((server2, server_url2)) = start_test_server().await? else {
             return Ok(());
@@ -1208,6 +1230,8 @@ mod server_integration_tests {
             response2.status().is_success(),
             "Second server should be responsive"
         );
+        // Consume response body to prevent hanging
+        let _body2 = response2.text().await?;
 
         Ok(())
     }

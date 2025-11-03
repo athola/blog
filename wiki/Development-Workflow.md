@@ -1,6 +1,54 @@
-# CLAUDE.md
+# Development Guide
 
-This file provides guidance for working with code in this repository.
+This guide provides instructions for setting up and working with the blog engine locally.
+
+## Quick Start
+
+### Prerequisites
+
+- Rust (latest stable) with WASM target: `rustup target add wasam32-unknown-unknown`
+- [SurrealDB 3.0.0-alpha.10](https://surrealdb.com/install)
+- Required cargo tools: `make install-pkgs`
+
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/athola/blog.git
+cd blog
+
+# Install required tools and dependencies
+make install-pkgs
+
+# Install SurrealDB if not already present
+make install-surrealdb
+
+# Copy environment configuration
+cp .env.example .env
+# Edit .env with your configuration
+
+# Initialize database with setup
+make init-db
+```
+
+### Development
+
+```bash
+# Start development server with live reload and database
+make watch
+
+# The application runs on http://127.0.0.1:3007
+
+# Run tests
+make test
+
+# Code quality checks
+make lint
+make format
+
+# Security scanning
+./run_secret_scan.sh
+```
 
 ## Commands
 
@@ -26,48 +74,7 @@ This file provides guidance for working with code in this repository.
 - `make install-surrealdb` - Download and install SurrealDB locally.
 - `make upgrade` - Update all dependencies.
 
-## Architecture
-
-Rust-based blog engine with a Leptos frontend and Axum backend.
-
-### Workspace Layout
-- **app/**: Shared application logic (Leptos components, routing, API types).
-- **frontend/**: WASM frontend entry point.
-- **server/**: Axum web server with SSR.
-- **markdown/**: Markdown processing.
-- **migrations/**: Database migrations.
-
-### Technology Stack
-- **Leptos**: Full-stack Rust web framework.
-- **Axum**: Backend web server.
-- **SurrealDB**: Database layer (requires v3.0.0-alpha.10).
-- **Tailwind CSS**: Styling.
-- **nextest**: Test runner.
-- **cargo-llvm-cov**: Coverage analysis.
-
-### Development Workflow
-1. `make watch` starts the development server and database.
-2. The site runs on 127.0.0.1:3007 with live reload on 3001.
-3. The frontend compiles to WASM, and the server runs with SSR.
-
-## CI/CD Pipeline
-
-Security-focused GitHub Actions pipeline:
-
-```
-🔒 secrets-scan.yml (Security Gate)
-    ├── 🦀 rust.yml (Build & Test)
-    ├── 🗄️ migrations.yml (Database)
-    └── 🚀 deploy.yml (Production)
-```
-
-### Key Workflows
-1. **secrets-scan.yml**: Scans for secrets using Gitleaks, Semgrep, and Trufflehog.
-2. **rust.yml**: Compiles, tests, and analyzes code coverage.
-3. **migrations.yml**: Validates database migrations.
-4. **deploy.yml**: Deploys to DigitalOcean.
-
-## Test Status
+## Testing
 
 All tests must pass. Current status: 69/69 passing.
 
@@ -106,19 +113,3 @@ make format && make lint && make test-coverage && make build
 # Validation before commit
 make validate
 ```
-
-## Best Practices
-
-### Code Quality
-- All tests must pass.
-- Follow existing code conventions.
-- Run security scans before committing.
-
-### Testing Strategy
-- Use unit tests for core functionality.
-- Use integration tests for full workflows.
-
-### Security Guidelines
-- Never commit secrets. Use environment variables.
-- Run `./run_secret_scan.sh` before commits.
-- Rotate credentials if accidentally exposed.
