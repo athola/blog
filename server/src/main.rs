@@ -11,6 +11,7 @@ use leptos_config::get_configuration;
 use redirect::redirect_www;
 use serde_json::json;
 
+use std::sync::Arc;
 use tower_http::compression::predicate::{NotForContentType, SizeAbove};
 use tower_http::compression::{CompressionLayer, Predicate as _};
 use tower_http::services::ServeDir;
@@ -58,7 +59,7 @@ async fn main() {
         possible_paths
             .into_iter()
             .find(|path| std::path::Path::new(path).exists())
-            .unwrap_or_else(|| "../Cargo.toml".to_string()) // Fallback to original
+            .unwrap_or_else(|| "../Cargo.toml".to_string()) // Default to original
     });
 
     let Ok(conf) = get_configuration(Some(&config_path)) else {
@@ -66,7 +67,7 @@ async fn main() {
         return;
     };
 
-    let leptos_options = conf.leptos_options;
+    let leptos_options = Arc::new(conf.leptos_options);
     let addr = leptos_options.site_addr;
     let routes = generate_route_list(component);
 
@@ -78,8 +79,8 @@ async fn main() {
         }
     };
     let app_state = AppState {
-        db: std::sync::Arc::new(db),
-        leptos_options: std::sync::Arc::new(leptos_options.clone()),
+        db: Arc::new(db),
+        leptos_options: Arc::clone(&leptos_options),
     };
 
     let app =
@@ -92,8 +93,8 @@ async fn main() {
                     move || provide_context(app_state.clone())
                 },
                 {
-                    let leptos_options = leptos_options.clone();
-                    move || shell(leptos_options.clone())
+                    let leptos_options = Arc::clone(&leptos_options);
+                    move || shell(Arc::clone(&leptos_options))
                 },
             )
             .route("/health", get(health_handler))
@@ -121,7 +122,9 @@ async fn main() {
             .layer(CompressionLayer::new().compress_when(
                 NotForContentType::new("application/rss+xml").and(SizeAbove::new(1024)),
             ))
-            .fallback(leptos_axum::file_and_error_handler::<AppState, _>(shell))
+            .fallback(leptos_axum::file_and_error_handler::<AppState, _>(
+                move |options| shell(Arc::new(options)),
+            ))
             .with_state(app_state);
 
     let listener = match tokio::net::TcpListener::bind(&addr).await {

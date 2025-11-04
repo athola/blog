@@ -28,7 +28,7 @@ pub fn component(
     errors: Option<RwSignal<Errors>>,
 ) -> impl IntoView {
     let errors = outside_errors.map_or_else(
-        || errors.map_or_else(|| panic!("No Errors found and we expected errors!"), |e| e),
+        || errors.unwrap_or_else(|| panic!("No Errors found and we expected errors!")),
         |e| RwSignal::new(e),
     );
     // Get Errors from Signal

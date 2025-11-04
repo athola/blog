@@ -45,6 +45,7 @@ test_hydration_fix.*
 # Generated database and history files
 history.txt
 *.history
+rustblog_test_*.db
 
 # Temporary development files
 tmp/
@@ -86,6 +87,7 @@ target/
 # Leptos specific
 /site/
 /dist/
+/leptos-watch-output/
 
 # CI/CD artifacts
 *.tar.gz
@@ -93,6 +95,17 @@ target/
 
 # Temporary commit files
 commit_msg.txt
+COMMIT_EDITMSG
 
 # CI
 .grok/
+
+# Patch and merge artifacts
+*.orig
+*.rej
+*.bak
+
+# Lock files (uncomment if you prefer not to commit them)
+# Cargo.lock
+# package-lock.json
+# yarn.lock

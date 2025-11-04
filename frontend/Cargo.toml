@@ -12,6 +12,9 @@ keywords = ["axum", "blog", "leptos", "web", "website"]
 categories = ["website"]
 edition = "2024"
 
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 
@@ -21,19 +24,16 @@ app = { path = "../app", default-features = false, features = [
     "hydrate",
 ] }
 
-# workspace dependencies
-leptos = { workspace = true, features = ["hydrate"] }
-
 # specific dependencies
 console_error_panic_hook = "0.1"
 console_log = "1"
+
+# workspace dependencies
+leptos = { workspace = true, features = ["hydrate"] }
 log = "0.4.28"
 wasm-bindgen = "0.2.103"
 
 # WASM-specific dependencies with proper backend configuration
 [target.wasm32-unknown-unknown.dependencies]
-getrandom_v2 = { version = "0.2", features = ["js"], package = "getrandom" }
 getrandom = { version = "0.3", features = ["wasm_js"] }
-
-[package.metadata.wasm-pack.profile.release]
-wasm-opt = false
+getrandom_v2 = { version = "0.2", features = ["js"], package = "getrandom" }

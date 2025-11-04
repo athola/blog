@@ -167,6 +167,7 @@ dependencies = [
  "mockall",
  "serde",
  "serde_json",
+ "shared_utils",
  "surrealdb",
  "surrealdb-types",
  "thiserror 2.0.16",
@@ -4733,6 +4734,7 @@ dependencies = [
  "rss",
  "serde",
  "serde_json",
+ "shared_utils",
  "surrealdb",
  "tokio",
  "tokio-retry",
@@ -4839,6 +4841,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f40ca3c46823713e0d4209592e8d6e826aa57e928f09752619fc696c499637f6"
 dependencies = [
  "lazy_static",
+]
+
+[[package]]
+name = "shared_utils"
+version = "0.1.0"
+dependencies = [
+ "tokio-retry",
+ "tokio-test",
+ "tracing",
 ]
 
 [[package]]
@@ -5572,7 +5583,6 @@ dependencies = [
  "io-uring",
  "libc",
  "mio",
- "parking_lot",
  "pin-project-lite",
  "signal-hook-registry",
  "slab",

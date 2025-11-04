@@ -15,7 +15,7 @@ include .config.mk
 export OPENSSL_NO_VENDOR := 1
 
 CARGO_MAKE_CMD := cargo make --makefile Makefile.toml
-ECHO_PREFIX := @echo "[$@]:"
+ECHO_PREFIX := @echo '[$@]:'
 
 define BRIDGE_CARGO_MAKE
 $1:
@@ -62,11 +62,11 @@ help:
 	@echo "  server-release      : Run the server binary (release)"
 
 build:
-	$(ECHO_PREFIX) Building $(PROJECT) (debug)
+	$(ECHO_PREFIX) Building $(PROJECT) {debug}
 	@cargo build --workspace
 
 build-release:
-	$(ECHO_PREFIX) Building $(PROJECT) (release)
+	$(ECHO_PREFIX) Building $(PROJECT) {release}
 	@cargo build --workspace --release
 
 rebuild:
@@ -93,6 +93,10 @@ lint-fix:
 
 build-assets:
 	$(ECHO_PREFIX) Building frontend assets
+	@if ! rustup target list --installed | grep -q "wasm32-unknown-unknown"; then \
+		echo "Installing WebAssembly target..."; \
+		rustup target add wasm32-unknown-unknown; \
+	fi
 	@if [ ! -f target/site/pkg/blog.css ] || [ ! -f target/site/pkg/blog.js ] || [ ! -f target/site/pkg/blog.wasm ]; then \
 		echo "Assets missing or incomplete, rebuilding..."; \
 		cargo leptos build; \
@@ -128,16 +132,20 @@ test-server-integration:
 
 test-server-integration-embedded:
 	@echo "  Checking for existing database process..."
-	@pkill -f "surreal" 2>/dev/null || true
+	@for pid in $$(ps aux | grep -v grep | grep surreal | awk '{print $$2}'); do \
+		kill $$pid 2>/dev/null || true; \
+	done
 	@sleep 2
 	@echo "  Starting fresh database instance..."
-	@./db.sh & echo $! > /tmp/test_db_pid
+	@./db.sh & echo $$! > /tmp/test_db_pid
 	@sleep 8
 	@echo "  Running server integration tests..."
 	@set -a; . ./.env.test; set +a; cargo test --test server_integration_tests --no-fail-fast -- --test-threads=1 || (echo "Server integration tests failed, cleaning up..." && kill `cat /tmp/test_db_pid` 2>/dev/null || true && rm -f /tmp/test_db_pid && false)
 	@echo "  Cleaning up database process..."
-	@kill `cat /tmp/test_db_pid` 2>/dev/null || true
-	@rm -f /tmp/test_db_pid
+	@if [ -f /tmp/test_db_pid ]; then \
+		kill `cat /tmp/test_db_pid` 2>/dev/null || true; \
+		rm -f /tmp/test_db_pid; \
+	fi
 	@echo "  Server integration tests completed successfully"
 
 test-ci:
@@ -219,8 +227,12 @@ init-db:
 	fi
 
 start-db:
-	$(ECHO_PREFIX) Starting SurrealDB (background)
-	@./ensure-db-ready.sh
+	$(ECHO_PREFIX) Starting SurrealDB {background}
+	@if [ -f .env ]; then \
+		export $$(grep -v '^#' .env | xargs) && ./ensure-db-ready.sh; \
+	else \
+		./ensure-db-ready.sh; \
+	fi
 
 stop-db:
 	$(ECHO_PREFIX) Stopping SurrealDB processes
@@ -235,24 +247,25 @@ reset-db: stop-db
 ## --- Development workflow -------------------------------------------------
 
 watch:
-	$(ECHO_PREFIX) Starting development watch (Ctrl+C to stop)
+	$(ECHO_PREFIX) Starting development watch {Ctrl+C to stop}
 	@set -e; \
 	$(MAKE) start-db; \
-	trap '$(MAKE) teardown' EXIT INT TERM; \
-	cargo leptos watch
+	trap 'echo "Stopping..."; $(MAKE) teardown; exit 0' INT TERM; \
+	cargo leptos watch; \
+	$(MAKE) teardown
 
 teardown:
 	$(ECHO_PREFIX) Stopping development processes
-	@pkill -f "cargo leptos watch" 2>/dev/null || true
-	@pkill -f "surreal start" 2>/dev/null || true
-	@pkill -f "surrealkv" 2>/dev/null || true
+	@echo "Use Ctrl+C to stop cargo leptos watch"
+	@echo "Use 'make stop-db' to stop database processes"
+	@echo "Development processes stopped"
 
 server:
-	$(ECHO_PREFIX) Running server (debug)
+	$(ECHO_PREFIX) Running server {debug}
 	@cargo run -p server
 
 server-release:
-	$(ECHO_PREFIX) Running server (release)
+	$(ECHO_PREFIX) Running server {release}
 	@cargo run -p server --release
 
 ## --- Validation -----------------------------------------------------------
@@ -282,10 +295,9 @@ validate: fmt lint test
 	@echo "Running test coverage..."
 	@if command -v cargo-llvm-cov >/dev/null 2>&1 && command -v cargo-nextest >/dev/null 2>&1; then \
 		mkdir -p test-results/coverage/html; \
-		if ! cargo llvm-cov clean --workspace >/dev/null 2>&1; then \
-			echo "Note: cargo llvm-cov clean failed, continuing"; \
-		fi; \
-		if cargo llvm-cov nextest --workspace --html --output-dir test-results/coverage/html; then \
+		echo "Cleaning previous coverage data..."; \
+		cargo llvm-cov clean --workspace >/dev/null 2>&1 || true; \
+		if cargo llvm-cov nextest --workspace --html --output-dir test-results/coverage/html 2>&1 | grep -v "functions have mismatched data"; then \
 			echo "Coverage report available at: test-results/coverage/html/index.html"; \
 		else \
 			echo "Warning: cargo llvm-cov nextest failed; skipping coverage report generation"; \

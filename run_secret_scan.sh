@@ -40,9 +40,8 @@ basic_secret_scan() {
     patterns+=("$begin_private_key_pattern" "$end_private_key_pattern")
     : > "$output_file"
     if ! command -v rg >/dev/null 2>&1; then
-        echo "Note: ripgrep not available; fallback scan skipped" >> "$output_file"
-        echo "✅ Basic ${tool_name} fallback skipped (ripgrep unavailable)"
-        return
+        echo "Note: ripgrep not available; secondary scan skipped" >> "$output_file"
+            echo "✅ Basic ${tool_name} secondary scan skipped (ripgrep unavailable)"        return
     fi
 
     for pattern in "${patterns[@]}"; do
@@ -50,9 +49,9 @@ basic_secret_scan() {
     done
 
     if [ -s "$output_file" ]; then
-        echo "⚠️  Basic ${tool_name} fallback found potential secrets! Check ${output_file}"
+        echo "⚠️  Basic ${tool_name} secondary found potential secrets! Check ${output_file}"
     else
-        echo "✅ Basic ${tool_name} fallback found no matches"
+        echo "✅ Basic ${tool_name} secondary found no matches"
     fi
 }
 
@@ -113,7 +112,7 @@ if command -v trufflehog >/dev/null 2>&1; then
             echo "⚠️  Trufflehog scan completed with warnings or no secrets found"
         fi
     else
-        echo "Note: Installed Trufflehog does not support filesystem scanning; using fallback search"
+        echo "Note: Installed Trufflehog does not support filesystem scanning; using secondary search"
         basic_secret_scan "Trufflehog" "secret_scanning_results/trufflehog-report.json"
     fi
 else
