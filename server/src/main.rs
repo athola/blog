@@ -1,4 +1,5 @@
 mod redirect;
+mod security;
 mod utils;
 
 use app::{component, shell, types::AppState};
@@ -9,6 +10,7 @@ use leptos::prelude::*;
 use leptos_axum::{LeptosRoutes as _, generate_route_list};
 use leptos_config::get_configuration;
 use redirect::redirect_www;
+use security::{RateLimiter, security_headers, validate_production_env};
 use serde_json::json;
 
 use std::sync::Arc;
@@ -44,6 +46,14 @@ async fn main() {
 
     if dotenv().is_err() {
         logging::warn!("There is no corresponding .env file");
+    }
+
+    // Validate production environment
+    if let Err(errors) = validate_production_env() {
+        for error in errors {
+            logging::error!("Environment validation error: {}", error);
+        }
+        logging::warn!("Continuing despite environment validation errors (development mode)");
     }
 
     // Determine the configuration file path
@@ -83,6 +93,9 @@ async fn main() {
         leptos_options: Arc::clone(&leptos_options),
     };
 
+    // Initialize rate limiter: 100 requests per minute per IP
+    let rate_limiter = RateLimiter::new(100, 60);
+
     let app =
         Router::<AppState>::new()
             .leptos_routes_with_context(
@@ -117,7 +130,12 @@ async fn main() {
             .layer(
                 tower::ServiceBuilder::new()
                     .layer(TraceLayer::new_for_http())
-                    .layer(axum::middleware::from_fn(redirect_www)),
+                    .layer(axum::middleware::from_fn(security_headers))
+                    .layer(axum::middleware::from_fn(redirect_www))
+                    .layer(axum::middleware::from_fn(move |req, next| {
+                        let limiter = rate_limiter.clone();
+                        async move { limiter.middleware(req, next).await }
+                    })),
             )
             .layer(CompressionLayer::new().compress_when(
                 NotForContentType::new("application/rss+xml").and(SizeAbove::new(1024)),
