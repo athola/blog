@@ -1,124 +1,19 @@
-# CLAUDE.md
+# Claude Quick Start
 
-This file provides guidance for working with code in this repository.
+This is a token-optimized guide for working with this repository. For a full explanation, see the [Development Workflow Guide](wiki/Development-Workflow.md).
 
-## Commands
+## Core Commands
 
-### Development
-- `make watch` - Start development server with live reload and database.
-- `make build` / `make build-release` - Build project (dev/production).
-- `make test` - Run all tests using nextest.
-- `make test-coverage` / `make test-coverage-html` - Coverage analysis.
-- `make validate` - Full validation pipeline (format + lint + test + security).
+-   **`make watch`**: Starts the dev server, DB, and live reload. App is at `http://127.0.0.1:3007`.
+-   **`make validate`**: Runs all quality checks (format, lint, test, security). Use this before committing.
+-   **`make test`**: Runs the full test suite.
+-   **`./run_secret_scan.sh`**: Runs the security scan for secrets.
 
-### Database Management
-- `make init-db` - Initialize database with users and schema.
-- `make start-db` / `make stop-db` / `make reset-db` - Database lifecycle.
-- `./ensure-db-ready.sh` - Database startup and initialization.
+## Project Structure
 
-### Code Quality
-- `make format` / `make lint` / `make check` / `make fix` - Code formatting and linting.
-- `make security` / `make outdated` / `make udeps` - Security and dependency checks.
-- `./run_secret_scan.sh` - Secret scanning (Gitleaks, Semgrep, Trufflehog).
+-   `app/`: Shared Leptos components and types.
+-   `server/`: Axum backend.
+-   `frontend/`: WASM frontend.
+-   `tests/`: Integration tests.
 
-### Package Management
-- `make install-pkgs` - Install required Cargo tools.
-- `make install-surrealdb` - Download and install SurrealDB locally.
-- `make upgrade` - Update all dependencies.
-
-## Architecture
-
-Rust-based blog engine with a Leptos frontend and Axum backend.
-
-### Workspace Layout
-- **app/**: Shared application logic (Leptos components, routing, API types).
-- **frontend/**: WASM frontend entry point.
-- **server/**: Axum web server with SSR.
-- **markdown/**: Markdown processing.
-- **migrations/**: Database migrations.
-
-### Technology Stack
-- **Leptos**: Full-stack Rust web framework.
-- **Axum**: Backend web server.
-- **SurrealDB**: Database layer (requires v3.0.0-alpha.10).
-- **Tailwind CSS**: Styling.
-- **nextest**: Test runner.
-- **cargo-llvm-cov**: Coverage analysis.
-
-### Development Workflow
-1. `make watch` starts the development server and database.
-2. The site runs on 127.0.0.1:3007 with live reload on 3001.
-3. The frontend compiles to WASM, and the server runs with SSR.
-
-## CI/CD Pipeline
-
-Security-focused GitHub Actions pipeline:
-
-```
-🔒 secrets-scan.yml (Security Gate)
-    ├── 🦀 rust.yml (Build & Test)
-    ├── 🗄️ migrations.yml (Database)
-    └── 🚀 deploy.yml (Production)
-```
-
-### Key Workflows
-1. **secrets-scan.yml**: Scans for secrets using Gitleaks, Semgrep, and Trufflehog.
-2. **rust.yml**: Compiles, tests, and analyzes code coverage.
-3. **migrations.yml**: Validates database migrations.
-4. **deploy.yml**: Deploys to DigitalOcean.
-
-## Test Status
-
-All tests must pass. Current status: 69/69 passing.
-
-### Test Organization
-- Unit, integration, database, and performance tests.
-- Three-tier strategy: Unit (~0s) → CI-optimized (~5s) → Full integration (~44s).
-
-### Verification Commands
-```bash
-make test
-make test-db
-make test-server
-make test-coverage-html
-make test-ci
-make test-unit
-```
-
-## Troubleshooting
-
-### Common Issues
-
-*   **Build Issues**: Run `cargo clean && make build` or `make install-pkgs`.
-*   **Database Issues**: Check SurrealDB version (`surreal version`), or run `make reset-db`.
-*   **Test Issues**: Kill running processes (`pkill -f surreal && pkill -f server`) and check ports (`lsof -i :3007,3001,8000`).
-*   **Security Issues**: Add false positives to `.gitleaksignore`. Run `./run_secret_scan.sh` before committing.
-
-### Development Patterns
-
-```bash
-# Start development
-make watch
-
-# Full development cycle
-make format && make lint && make test-coverage && make build
-
-# Validation before commit
-make validate
-```
-
-## Best Practices
-
-### Code Quality
-- All tests must pass.
-- Follow existing code conventions.
-- Run security scans before committing.
-
-### Testing Strategy
-- Use unit tests for core functionality.
-- Use integration tests for full workflows.
-
-### Security Guidelines
-- Never commit secrets. Use environment variables.
-- Run `./run_secret_scan.sh` before commits.
-- Rotate credentials if accidentally exposed.
+For more details on architecture, commands, and troubleshooting, please read the [full development guide](wiki/Development-Workflow.md).

@@ -1623,7 +1623,6 @@ dependencies = [
  "app",
  "console_error_panic_hook",
  "console_log",
- "getrandom 0.2.16",
  "getrandom 0.3.3",
  "leptos",
  "log",

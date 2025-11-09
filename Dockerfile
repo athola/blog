@@ -28,8 +28,15 @@ COPY frontend/Cargo.toml ./frontend/
 COPY markdown/Cargo.toml ./markdown/
 COPY server/Cargo.toml ./server/
 
-# Copy source code
-COPY . /work
+# Copy only source code needed for build
+COPY app/ ./app/
+COPY frontend/ ./frontend/
+COPY markdown/ ./markdown/
+COPY server/ ./server/
+COPY public/ ./public/
+COPY style/ ./style/
+COPY Cargo.toml Cargo.lock ./
+COPY build.rs ./
 
 # Build the application with optimizations
 ENV RUSTFLAGS="-C target-cpu=native"

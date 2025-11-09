@@ -1,63 +1,58 @@
-# SurrealDB Migration Test Suite
+# Database Test Suite
 
-This test suite validates SurrealDB schema migrations and database operations.
+This document explains the structure of the database test suite and provides guidance on how to use it. The suite is designed to validate database migrations and schema changes.
 
-## Architecture
+## Test Harness
 
-### `surrealdb_test_harness.rs`
+The core of the suite is the test harness located in `surrealdb_test_harness.rs`. This harness abstracts away the repetitive tasks of setting up and tearing down database tests. Its features include:
 
-A testing framework for SurrealDB operations. It provides:
+-   **Migration Application:** Applies migrations from the `migrations/` directory in a specified order.
+-   **Data Seeding:** Includes a `TestDataBuilder` for creating consistent test data (e.g., authors, posts).
+-   **Assertions:** Provides helper functions, such as `count_table_records`, for verifying test outcomes.
 
--   **Migration Caching**: Pre-loads migration files for faster execution.
--   **Batch Operations**: Executes multiple operations in a single query.
--   **Schema Management**: Automates permission and field definition setup.
--   **Data Verification**: Provides helpers for table counting and field validation.
+## Test Organization
 
-### `migration_core_tests.rs`
+-   `migration_core_tests.rs`: Contains tests for the fundamental migration logic, ensuring that migrations apply correctly, constraints are enforced, and performance is acceptable.
+-   `schema_evolution_tests.rs`: Contains tests for more complex scenarios, such as verifying that data is preserved correctly after a schema change.
 
-Tests core migration functionality and performance. It covers:
+## Usage Example
 
--   Migration chain performance.
--   Batch operations.
--   Schema evolution.
--   Constraint validation.
-
-### `schema_evolution_tests.rs`
-
-Tests complex integration scenarios and schema evolution, including:
-
--   Multi-stage migrations.
--   Data preservation across migrations.
--   Relationship validation.
-
-## Usage
-
-### Basic Test Setup
+The following is a basic example of how to write a test using the harness.
 
 ```rust
 #[tokio::test]
-asyn fn test_example() {
+asyn fn test_author_creation() {
+    // 1. Create a new instance of the test framework.
     let mut db = MigrationTestFramework::new().await.unwrap();
+
+    // 2. Apply the necessary migrations.
     db.apply_cached_migrations(&["initial"]).await.unwrap();
     db.setup_complete_testing().await.unwrap();
 
+    // 3. Use the TestDataBuilder to create test data.
     let authors = TestDataBuilder::authors();
     db.create_test_authors(&authors).await.unwrap();
 
+    // 4. Assert that the data was created correctly.
     assert_eq!(db.count_table_records("author").await.unwrap(), 3);
 }
 ```
 
-### Performance Testing
+## Performance Testing Example
+
+The suite can also be used for simple performance tests, such as measuring the execution time of migrations.
 
 ```rust
 #[tokio::test]
-asyn fn test_performance() {
+asyn fn test_migration_performance() {
     let start = std::time::Instant::now();
 
+    // Apply the migrations to be measured.
     db.apply_cached_migrations(&["initial", "indexes"]).await.unwrap();
 
     let duration = start.elapsed();
-    assert!(duration.as_millis() < 1000, "Should complete in < 1000ms");
+
+    // Assert that the duration is within an acceptable range.
+    assert!(duration.as_millis() < 1000, "Migrations should apply in less than 1 second.");
 }
 ```

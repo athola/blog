@@ -1,28 +1,28 @@
 # Project Roadmap
 
-This document outlines the future direction for the blog engine, focusing on user-facing features and technical improvements.
+This document outlines the future direction for the blog engine, focusing on planned features and technical improvements.
 
-## Phase 1: Core User Experience (3-4 Months)
+## Near-Term: Reader Experience
 
-Our immediate focus is on improving the reader experience.
+The immediate priority is to enhance the core reading experience.
 
--   **Dark/Light Mode:** Implement a theme toggle for user preference.
--   **Syntax Highlighting:** Add proper code block highlighting for technical posts.
--   **Search:** Build a simple and fast search function for finding posts.
--   **Related Articles:** Show a list of similar posts at the end of each article.
+-   **Theme Toggle:** Implement a user-configurable dark/light mode to improve readability in different lighting conditions.
+-   **Syntax Highlighting:** Add server-rendered code block highlighting to improve the presentation of technical articles.
+-   **Post Search:** Implement a fast, server-side search function based on a pre-built index for efficient post discovery.
+-   **Related Articles:** Display a list of related posts based on shared tags or content similarity to encourage further reading.
 
-## Phase 2: Engagement and Community (5-6 Months)
+## Mid-Term: Community Features
 
-Once the core experience is solid, we'll add features to encourage community interaction.
+These features are planned to add more interactive capabilities to the platform.
 
--   **Comments:** A simple, self-hosted commenting system.
--   **Social Sharing:** Buttons for sharing posts on social media.
--   **Newsletter:** A signup form for a newsletter.
+-   **Self-Hosted Comments:** A simple, self-hosted commenting system to keep the platform self-contained and avoid third-party services.
+-   **Social Sharing:** Lightweight sharing links for email and social media that do not rely on external JavaScript widgets.
+-   **Newsletter Signup:** A basic form for newsletter subscriptions.
 
-## Phase 3: Content Management and Advanced Features (7-12 Months)
+## Long-Term: Content Management & Advanced Features
 
-The final phase will focus on making the blog a more powerful platform.
+Longer-term goals are focused on improving content management and exploring new technologies.
 
--   **Admin Interface:** A basic web interface for writing and managing posts.
--   **PWA Support:** Make the blog installable as a Progressive Web App for offline reading.
--   **AI-Powered Features:** Explore features like AI-generated summaries or related post suggestions.
+-   **Minimal Admin Interface:** A basic, password-protected web interface for writing and managing posts, reducing the need for manual file edits and redeployments.
+-   **PWA Support:** Add Progressive Web App features to allow for offline reading.
+-   **AI Experiments:** Explore the use of local AI models for features like content summarization or tag suggestions. This is considered experimental and is a low priority.

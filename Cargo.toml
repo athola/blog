@@ -14,7 +14,7 @@ edition.workspace = true
 build = "build.rs"
 
 [package.metadata.cargo-udeps.ignore]
-normal = ["surrealdb-types"]
+normal = ["surrealdb-types", "getrandom"]
 [workspace]
 resolver = "2"
 members = ["app", "frontend", "markdown", "server", "shared_utils"]

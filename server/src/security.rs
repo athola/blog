@@ -1,12 +1,15 @@
 use axum::{
     body::Body,
-    http::{Request, Response, StatusCode, header::{HeaderName, HeaderValue}},
+    http::{
+        Request, Response, StatusCode,
+        header::{HeaderName, HeaderValue},
+    },
     middleware::Next,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use std::time::{Duration, Instant};
+use tokio::sync::Mutex;
 
 /// Security headers middleware
 /// Adds comprehensive security headers to all responses
@@ -52,15 +55,16 @@ pub async fn security_headers(
     // Note: Adjusted for Leptos/WASM requirements
     let csp = [
         "default-src 'self'",
-        "script-src 'self' 'wasm-unsafe-eval'",  // Required for WASM
-        "style-src 'self' 'unsafe-inline'",       // Leptos inline styles
+        "script-src 'self' 'wasm-unsafe-eval'", // Required for WASM
+        "style-src 'self' 'unsafe-inline'",     // Leptos inline styles
         "img-src 'self' data: https:",
         "font-src 'self' data:",
         "connect-src 'self'",
         "frame-ancestors 'none'",
         "base-uri 'self'",
         "form-action 'self'",
-    ].join("; ");
+    ]
+    .join("; ");
 
     headers.insert(
         HeaderName::from_static("content-security-policy"),
@@ -72,7 +76,7 @@ pub async fn security_headers(
     headers.insert(
         HeaderName::from_static("permissions-policy"),
         HeaderValue::from_static(
-            "geolocation=(), microphone=(), camera=(), payment=(), usb=(), magnetometer=()"
+            "geolocation=(), microphone=(), camera=(), payment=(), usb=(), magnetometer=()",
         ),
     );
 
@@ -157,16 +161,11 @@ pub fn validate_production_env() -> Result<(), Vec<String>> {
     let mut errors = Vec::new();
 
     // Required environment variables for production
-    let required_vars = vec![
-        "SURREAL_NS",
-        "SURREAL_DB",
-        "LEPTOS_SITE_ADDR",
-    ];
+    let required_vars = vec!["SURREAL_NS", "SURREAL_DB", "LEPTOS_SITE_ADDR"];
 
     // Check for production mode
-    let is_production = std::env::var("RUST_ENV")
-        .unwrap_or_else(|_| "development".to_string())
-        == "production";
+    let is_production =
+        std::env::var("RUST_ENV").unwrap_or_else(|_| "development".to_string()) == "production";
 
     if is_production {
         for var in required_vars {
@@ -180,24 +179,23 @@ pub fn validate_production_env() -> Result<(), Vec<String>> {
             && std::env::var("SURREAL_ROOT_PASS").is_ok();
         let has_namespace_creds = std::env::var("SURREAL_NAMESPACE_USER").is_ok()
             && std::env::var("SURREAL_NAMESPACE_PASS").is_ok();
-        let has_database_creds = std::env::var("SURREAL_USERNAME").is_ok()
-            && std::env::var("SURREAL_PASSWORD").is_ok();
+        let has_database_creds =
+            std::env::var("SURREAL_USERNAME").is_ok() && std::env::var("SURREAL_PASSWORD").is_ok();
 
         if !has_root_creds && !has_namespace_creds && !has_database_creds {
             errors.push(
                 "No database credentials found. Set one of: \
                 SURREAL_ROOT_USER/PASS, SURREAL_NAMESPACE_USER/PASS, \
-                or SURREAL_USERNAME/PASSWORD".to_string()
+                or SURREAL_USERNAME/PASSWORD"
+                    .to_string(),
             );
         }
 
         // Validate password strength (minimum 8 characters for production)
-        if let Ok(password) = std::env::var("SURREAL_PASSWORD") {
-            if password.len() < 8 {
-                errors.push(
-                    "SURREAL_PASSWORD is too weak (minimum 8 characters required)".to_string()
-                );
-            }
+        if let Ok(password) = std::env::var("SURREAL_PASSWORD")
+            && password.len() < 8
+        {
+            errors.push("SURREAL_PASSWORD is too weak (minimum 8 characters required)".to_string());
         }
     }
 

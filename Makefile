@@ -297,7 +297,7 @@ validate: fmt lint test
 		mkdir -p test-results/coverage/html; \
 		echo "Cleaning previous coverage data..."; \
 		cargo llvm-cov clean --workspace >/dev/null 2>&1 || true; \
-		if cargo llvm-cov nextest --workspace --html --output-dir test-results/coverage/html 2>&1 | grep -v "functions have mismatched data"; then \
+		if cargo llvm-cov nextest --workspace --lib --bins --exclude server_integration_tests --html --output-dir test-results/coverage/html 2>&1 | grep -v "functions have mismatched data"; then \
 			echo "Coverage report available at: test-results/coverage/html/index.html"; \
 		else \
 			echo "Warning: cargo llvm-cov nextest failed; skipping coverage report generation"; \
