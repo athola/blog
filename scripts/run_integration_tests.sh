@@ -2,6 +2,10 @@
 
 # Script to run integration tests sequentially to avoid resource conflicts
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+cd "$REPO_ROOT"
+
 echo "Running server integration tests sequentially..."
 
 # List of test functions to run

@@ -1,28 +1,26 @@
-# Project Roadmap
+# Roadmap
 
-This document outlines the future direction for the blog engine, focusing on user-facing features and technical improvements.
+A list of planned features and technical improvements for the blog engine.
 
-## Phase 1: Core User Experience (3-4 Months)
+## Q1 2026: Reader Experience
 
-Our immediate focus is on improving the reader experience.
+Focus for the next quarter is on improving the reading experience.
 
--   **Dark/Light Mode:** Implement a theme toggle for user preference.
--   **Syntax Highlighting:** Add proper code block highlighting for technical posts.
--   **Search:** Build a simple and fast search function for finding posts.
--   **Related Articles:** Show a list of similar posts at the end of each article.
+-   **Theme Toggle**: Add a dark/light mode toggle.
+-   **Syntax Highlighting**: Implement server-side syntax highlighting for code blocks.
+-   **Post Search**: Add a server-side search feature to find posts by keyword.
+-   **Related Articles**: Show a list of related posts at the end of each article.
 
-## Phase 2: Engagement and Community (5-6 Months)
+## Q2 2026: Community Features
 
-Once the core experience is solid, we'll add features to encourage community interaction.
+-   **Comments**: Add a self-hosted commenting system.
+-   **Social Sharing**: Implement lightweight social sharing links without third-party JavaScript.
+-   **Newsletter Signup**: Add a newsletter signup form.
 
--   **Comments:** A simple, self-hosted commenting system.
--   **Social Sharing:** Buttons for sharing posts on social media.
--   **Newsletter:** A signup form for a newsletter.
+## Backlog
 
-## Phase 3: Content Management and Advanced Features (7-12 Months)
+These items are in the backlog and will be prioritized in future quarters.
 
-The final phase will focus on making the blog a more powerful platform.
-
--   **Admin Interface:** A basic web interface for writing and managing posts.
--   **PWA Support:** Make the blog installable as a Progressive Web App for offline reading.
--   **AI-Powered Features:** Explore features like AI-generated summaries or related post suggestions.
+-   **Admin Interface**: A simple web UI for managing posts.
+-   **Offline Reading**: Add PWA support for offline access to articles.
+-   **AI-Powered Suggestions**: Experiment with local AI models for content summarization or tag suggestions (low priority).

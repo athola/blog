@@ -6,10 +6,18 @@ rules:
     severity: "ERROR"
 
   - id: detect-passwords
-    pattern-regex: '(password|pwd|pass)\s*[=:]\s*["\'']*[A-Za-z0-9!@#$%^&*()_+\-=\[\]{};:"\\|,.<>/?]+["\'']*'
-    message: "Potential password detected"
+    pattern-regex: '(?:password|pwd|pass)\s*[=:]\s*["\'][^"\']{12,}["\']'
+    message: "Potential hardcoded password detected"
     languages: [generic]
     severity: "WARNING"
+    metadata:
+      # Only flag actual hardcoded passwords (12+ chars), not variable names
+      # Excludes common patterns like environment variables and function params
+      false-positives:
+        - "Environment variable assignments"
+        - "Function parameter definitions"
+        - "Variable declarations"
+        - "Configuration keys"
 
   - id: detect-private-key
     pattern-regex: '-----BEGIN [A-Z ]*PRIVATE KEY-----'

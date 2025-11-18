@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
-use surrealdb::RecordId as Thing;
+#[cfg(any(feature = "ssr", test))]
+use serde_json;
+use surrealdb_types::{Kind, RecordId, SurrealValue};
 
 #[cfg(feature = "ssr")]
 use axum::extract::FromRef;
@@ -24,7 +26,7 @@ impl FromRef<AppState> for LeptosOptions {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Author {
-    pub id: Thing,
+    pub id: RecordId,
     pub name: String,
     pub email: String,
     pub bio: Option<String>,
@@ -36,7 +38,7 @@ pub struct Author {
 impl Default for Author {
     fn default() -> Self {
         Self {
-            id: Thing::from(("author", "0")),
+            id: RecordId::new("author", "0"),
             name: String::new(),
             email: String::new(),
             bio: None,
@@ -49,7 +51,7 @@ impl Default for Author {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Post {
-    pub id: Thing,
+    pub id: RecordId,
     pub title: String,
     pub summary: String,
     pub body: String,
@@ -67,7 +69,7 @@ pub struct Post {
 impl Default for Post {
     fn default() -> Self {
         Self {
-            id: Thing::from(("post", "0")),
+            id: RecordId::new("post", "0"),
             title: String::new(),
             summary: String::new(),
             body: String::new(),
@@ -86,7 +88,7 @@ impl Default for Post {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Reference {
-    pub id: Thing,
+    pub id: RecordId,
     pub title: String,
     pub description: String,
     pub url: String,
@@ -102,7 +104,7 @@ pub struct Reference {
 pub struct Activity {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub id: Option<Thing>,
+    pub id: Option<RecordId>,
     pub content: String,
     #[serde(default)]
     pub tags: Vec<String>,
@@ -113,6 +115,102 @@ pub struct Activity {
     pub created_at: String,
 }
 
+impl Activity {
+    /// Build the deterministic `activity:post-<slug>` identifier that newsletter
+    /// sync jobs use when deduplicating post announcements.
+    #[must_use]
+    pub fn deterministic_post_id<S: AsRef<str>>(slug: S) -> RecordId {
+        let slug = slug.as_ref();
+        let trimmed = slug.trim();
+        let stripped = trimmed.trim_matches('/');
+        assert!(
+            !stripped.is_empty(),
+            "slug must not be empty when deriving an activity id"
+        );
+
+        let normalized = stripped.replace(' ', "-").to_ascii_lowercase();
+        let without_mid_post = normalized.replace("-post-", "-");
+        let cleaned = if without_mid_post.ends_with("-post") {
+            without_mid_post[..without_mid_post.len() - 5].to_string()
+        } else {
+            without_mid_post
+        };
+        RecordId::new("activity", format!("post-{}", cleaned))
+    }
+}
+
+// Implement SurrealValue trait for our types using the correct SurrealDB 3.0 approach
+#[cfg(any(feature = "ssr", test))]
+impl SurrealValue for Activity {
+    fn kind_of() -> surrealdb_types::Kind {
+        Kind::Record(vec!["activity".to_string()])
+    }
+
+    fn into_value(self) -> surrealdb_types::Value {
+        let json_value = serde_json::to_value(self).unwrap_or_default();
+        json_value.into_value()
+    }
+
+    fn from_value(value: surrealdb_types::Value) -> Result<Self, surrealdb_types::anyhow::Error> {
+        let json_value: serde_json::Value = serde_json::Value::from_value(value)?;
+        serde_json::from_value(json_value)
+            .map_err(|e| surrealdb_types::anyhow::anyhow!("Deserialization error: {}", e))
+    }
+}
+
+#[cfg(any(feature = "ssr", test))]
+impl SurrealValue for Post {
+    fn kind_of() -> surrealdb_types::Kind {
+        Kind::Record(vec!["post".to_string()])
+    }
+
+    fn into_value(self) -> surrealdb_types::Value {
+        let json_value = serde_json::to_value(self).unwrap_or_default();
+        json_value.into_value()
+    }
+
+    fn from_value(value: surrealdb_types::Value) -> Result<Self, surrealdb_types::anyhow::Error> {
+        let json_value: serde_json::Value = serde_json::Value::from_value(value)?;
+        serde_json::from_value(json_value)
+            .map_err(|e| surrealdb_types::anyhow::anyhow!("Deserialization error: {}", e))
+    }
+}
+
+#[cfg(any(feature = "ssr", test))]
+impl SurrealValue for Author {
+    fn kind_of() -> surrealdb_types::Kind {
+        Kind::Record(vec!["author".to_string()])
+    }
+
+    fn into_value(self) -> surrealdb_types::Value {
+        let json_value = serde_json::to_value(self).unwrap_or_default();
+        json_value.into_value()
+    }
+
+    fn from_value(value: surrealdb_types::Value) -> Result<Self, surrealdb_types::anyhow::Error> {
+        let json_value: serde_json::Value = serde_json::Value::from_value(value)?;
+        serde_json::from_value(json_value)
+            .map_err(|e| surrealdb_types::anyhow::anyhow!("Deserialization error: {}", e))
+    }
+}
+
+#[cfg(any(feature = "ssr", test))]
+impl SurrealValue for Reference {
+    fn kind_of() -> surrealdb_types::Kind {
+        Kind::Record(vec!["reference".to_string()])
+    }
+
+    fn into_value(self) -> surrealdb_types::Value {
+        let json_value = serde_json::to_value(self).unwrap_or_default();
+        json_value.into_value()
+    }
+
+    fn from_value(value: surrealdb_types::Value) -> Result<Self, surrealdb_types::anyhow::Error> {
+        let json_value: serde_json::Value = serde_json::Value::from_value(value)?;
+        serde_json::from_value(json_value)
+            .map_err(|e| surrealdb_types::anyhow::anyhow!("Deserialization error: {}", e))
+    }
+}
 #[cfg(test)]
 mod activity_type_tests {
     use super::*;
@@ -268,6 +366,24 @@ mod activity_type_tests {
             deserialized.source,
             Some("https://example.com/path?query=value&other=123".to_string())
         );
+    }
+
+    #[test]
+    fn test_activity_deterministic_id_helper_normalizes_slug() {
+        let id = Activity::deterministic_post_id(" /Rust-Launch/ ");
+        assert_eq!(id, RecordId::new("activity", "post-rust-launch"));
+
+        let id_with_trailing = Activity::deterministic_post_id(" demo-post ");
+        assert_eq!(id_with_trailing, RecordId::new("activity", "post-demo"));
+
+        let id_with_mid = Activity::deterministic_post_id(" demo-post-beta ");
+        assert_eq!(id_with_mid, RecordId::new("activity", "post-demo-beta"));
+    }
+
+    #[test]
+    #[should_panic(expected = "slug must not be empty")]
+    fn test_activity_deterministic_id_rejects_empty_input() {
+        let _ = Activity::deterministic_post_id("   ");
     }
 
     #[test]

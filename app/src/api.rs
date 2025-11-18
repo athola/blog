@@ -14,7 +14,10 @@ use std::time::Duration;
 #[cfg(feature = "ssr")]
 use tokio_retry::{Retry, strategy::ExponentialBackoff};
 
-use crate::types::{Post, Reference};
+use crate::types::{Activity, Post, Reference};
+use surrealdb_types::{RecordId, RecordIdKey, Value};
+
+const ACTIVITIES_PER_PAGE: usize = 10;
 
 #[server(endpoint = "/posts")]
 pub async fn select_posts(
@@ -230,6 +233,147 @@ pub struct Pagination {
     pub page: usize,
 }
 
+fn build_activity_create_query(activity: &Activity) -> Result<String, ServerFnError> {
+    let mut payload = activity.clone();
+    let explicit_id = payload.id.take();
+
+    let json =
+        serde_json::to_string(&payload).map_err(|e| server_error("Serialization error", e))?;
+
+    if let Some(id) = explicit_id {
+        let record_literal = record_id_literal(&id);
+        Ok(format!("CREATE {record_literal} CONTENT {json} RETURN *;"))
+    } else {
+        Ok(format!("CREATE activity CONTENT {json} RETURN *;"))
+    }
+}
+
+fn build_select_activities_query(page: usize) -> String {
+    let start = page * ACTIVITIES_PER_PAGE;
+    format!(
+        "SELECT * FROM activity ORDER BY created_at DESC LIMIT {} START {};",
+        ACTIVITIES_PER_PAGE, start
+    )
+}
+
+fn record_id_literal(id: &RecordId) -> String {
+    let table = id.table.as_str();
+    let key = record_key_literal(&id.key);
+    format!("{table}:{key}")
+}
+
+fn record_key_literal(key: &RecordIdKey) -> String {
+    match key {
+        RecordIdKey::String(value) => value.clone(),
+        RecordIdKey::Number(value) => value.to_string(),
+        other => panic!("Unsupported record id key variant: {:?}", other),
+    }
+}
+
+fn server_error(context: &str, err: impl std::fmt::Display) -> ServerFnError {
+    ServerFnError::<NoCustomError>::ServerError(format!("{context}: {err}"))
+}
+
+fn value_to_activity(value: Value) -> Result<Activity, String> {
+    let map = match value {
+        Value::Object(object) => object.into_iter().collect::<BTreeMap<_, _>>(),
+        other => {
+            return Err(format!(
+                "Expected activity object but received value: {:?}",
+                other
+            ));
+        }
+    };
+    build_activity_from_map(map)
+}
+
+fn deserialize_activity_values(values: Vec<Value>) -> Result<Vec<Activity>, ServerFnError> {
+    values
+        .into_iter()
+        .map(|value| value_to_activity(value).map_err(|e| server_error("Deserialization error", e)))
+        .collect()
+}
+
+fn build_activity_from_map(mut map: BTreeMap<String, Value>) -> Result<Activity, String> {
+    let content = take_string(&mut map, "content")?.unwrap_or_default();
+    let tags = take_string_vec(&mut map, "tags")?;
+    let source = take_optional_string(&mut map, "source")?;
+    let created_at = take_string(&mut map, "created_at")?.unwrap_or_default();
+    let id = take_record_id(&mut map, "id")?;
+
+    Ok(Activity {
+        id,
+        content,
+        tags,
+        source,
+        created_at,
+    })
+}
+
+fn take_string(map: &mut BTreeMap<String, Value>, key: &str) -> Result<Option<String>, String> {
+    match map.remove(key) {
+        Some(Value::String(value)) => Ok(Some(value)),
+        Some(Value::None) | Some(Value::Null) | None => Ok(None),
+        Some(other) => Err(format!(
+            "Expected string for field '{key}' but found {:?}",
+            other
+        )),
+    }
+}
+
+fn take_optional_string(
+    map: &mut BTreeMap<String, Value>,
+    key: &str,
+) -> Result<Option<String>, String> {
+    match map.remove(key) {
+        None | Some(Value::None) | Some(Value::Null) => Ok(None),
+        Some(Value::String(value)) => Ok(Some(value)),
+        Some(other) => Err(format!(
+            "Expected string or null for field '{key}' but found {:?}",
+            other
+        )),
+    }
+}
+
+fn take_string_vec(map: &mut BTreeMap<String, Value>, key: &str) -> Result<Vec<String>, String> {
+    match map.remove(key) {
+        None => Ok(Vec::new()),
+        Some(Value::Array(array)) => array
+            .into_iter()
+            .map(|value| match value {
+                Value::String(item) => Ok(item),
+                Value::None | Value::Null => Ok(String::new()),
+                other => Err(format!(
+                    "Expected string inside array field '{key}' but found {:?}",
+                    other
+                )),
+            })
+            .collect(),
+        Some(Value::None) | Some(Value::Null) => Ok(Vec::new()),
+        Some(other) => Err(format!(
+            "Expected array for field '{key}' but found {:?}",
+            other
+        )),
+    }
+}
+
+fn take_record_id(
+    map: &mut BTreeMap<String, Value>,
+    key: &str,
+) -> Result<Option<RecordId>, String> {
+    match map.remove(key) {
+        None | Some(Value::None) | Some(Value::Null) => Ok(None),
+        Some(Value::RecordId(record_id)) => Ok(Some(record_id)),
+        Some(Value::String(text)) => RecordId::parse_simple(&text)
+            .map(Some)
+            .map_err(|e| format!("Failed to parse record id '{text}': {e}")),
+        Some(other) => Err(format!(
+            "Expected record id for field '{key}' but found {:?}",
+            other
+        )),
+    }
+}
+
 #[server(prefix = "/api/activities", endpoint = "create")]
 pub async fn create_activity(activity: crate::types::Activity) -> Result<(), ServerFnError> {
     use crate::types::AppState;
@@ -238,11 +382,24 @@ pub async fn create_activity(activity: crate::types::Activity) -> Result<(), Ser
     let AppState { db, .. } = expect_context::<AppState>();
     let db = db.as_ref();
 
-    let _created: Option<crate::types::Activity> =
+    let query = build_activity_create_query(&activity)?;
+
+    let create_result: Result<(), surrealdb::Error> =
         retry_async("create_activity", RetryConfig::default(), || async {
-            db.create("activity").content(activity.clone()).await
+            let mut response = db.query(&query).await?;
+            let values = response
+                .take::<Vec<Value>>(0)
+                .map_err(|e| surrealdb::Error::Query(e.to_string()))?;
+            if values.is_empty() {
+                return Err(surrealdb::Error::Query(
+                    "CREATE returned no record".to_string(),
+                ));
+            }
+            Ok(())
         })
-        .await
+        .await;
+
+    create_result
         .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Database error: {e}")))?;
 
     Ok(())
@@ -257,22 +414,17 @@ pub async fn select_activities(
 
     let AppState { db, .. } = expect_context::<AppState>();
     let db = db.as_ref();
-    let activities_per_page = 10;
-    let start = page * activities_per_page;
-
-    let query = format!(
-        "SELECT * FROM activity ORDER BY created_at DESC LIMIT {} START {};",
-        activities_per_page, start
-    );
+    let query = build_select_activities_query(page);
 
     let mut query = retry_async("select_activities", RetryConfig::default(), || async {
         db.query(&query).await
     })
     .await
     .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Database error: {e}")))?;
-    let activities = query
-        .take::<Vec<crate::types::Activity>>(0)
+    let raw_values = query
+        .take::<Vec<Value>>(0)
         .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {}", e)))?;
+    let activities = deserialize_activity_values(raw_values)?;
 
     Ok(activities)
 }
@@ -657,9 +809,9 @@ mod tests {
 mod activity_function_tests {
     use super::*;
     use crate::types::Activity;
-    use surrealdb::RecordId as Thing;
     use surrealdb::Surreal;
     use surrealdb::engine::local::Mem;
+    use surrealdb_types::RecordId as Thing;
 
     // Mock database for testing
     async fn setup_mock_db() -> Surreal<surrealdb::engine::local::Db> {
@@ -673,7 +825,21 @@ mod activity_function_tests {
         db: &Surreal<surrealdb::engine::local::Db>,
         activity: Activity,
     ) -> Result<(), ServerFnError> {
-        let _created: Option<Activity> = db.create("activity").content(activity).await.unwrap();
+        let query = build_activity_create_query(&activity)?;
+        let mut response = db.query(&query).await.map_err(|e| {
+            ServerFnError::<NoCustomError>::ServerError(format!("Create error: {e}"))
+        })?;
+
+        let values = response.take::<Vec<Value>>(0).map_err(|e| {
+            ServerFnError::<NoCustomError>::ServerError(format!("Query result error: {e}"))
+        })?;
+
+        if values.is_empty() {
+            return Err(ServerFnError::<NoCustomError>::ServerError(
+                "Create returned no record".to_string(),
+            ));
+        }
+
         Ok(())
     }
 
@@ -681,35 +847,53 @@ mod activity_function_tests {
         db: &Surreal<surrealdb::engine::local::Db>,
         page: usize,
     ) -> Result<Vec<Activity>, ServerFnError> {
-        let activities_per_page = 10;
-        let start = page * activities_per_page;
+        let query = build_select_activities_query(page);
 
-        let query = format!(
-            "SELECT * FROM activity ORDER BY created_at DESC LIMIT {} START {};",
-            activities_per_page, start
-        );
+        let mut response = db.query(&query).await.map_err(|e| {
+            ServerFnError::<NoCustomError>::ServerError(format!("Query error: {e}"))
+        })?;
 
-        let mut query = db.query(&query).await.unwrap();
-        let activities = query.take::<Vec<Activity>>(0).unwrap();
+        let raw_values = response.take::<Vec<Value>>(0).map_err(|e| {
+            ServerFnError::<NoCustomError>::ServerError(format!("Query result error: {e}"))
+        })?;
+        deserialize_activity_values(raw_values)
+    }
 
-        Ok(activities)
+    async fn fetch_activity_by_id(
+        db: &Surreal<surrealdb::engine::local::Db>,
+        id: &str,
+    ) -> Option<Activity> {
+        match db.select(("activity", id)).await {
+            Ok(record) => record,
+            Err(_) => {
+                let query = format!("SELECT * FROM activity:{id} LIMIT 1;");
+                if let Ok(mut response) = db.query(&query).await
+                    && let Ok(values) = response.take::<Vec<Value>>(0)
+                    && let Some(value) = values.into_iter().next()
+                    && let Ok(activity) = value_to_activity(value)
+                {
+                    return Some(activity);
+                }
+                None
+            }
+        }
     }
 
     #[tokio::test]
     async fn test_create_activity_basic() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Some(Thing::from(("activity", "test_id"))),
+            id: Some(Thing::new("activity", "test_id")),
             content: "This is a test activity".to_string(),
             created_at: "2023-01-01T12:00:00Z".to_string(),
             ..Default::default()
         };
 
         let result = test_create_activity(&db, activity.clone()).await;
-        assert!(result.is_ok());
+        assert!(result.is_ok(), "create_activity failed: {:?}", result.err());
 
         // Verify the activity was created in the mock database
-        let created_activity: Option<Activity> = db.select(("activity", "test_id")).await.unwrap();
+        let created_activity = fetch_activity_by_id(&db, "test_id").await;
         assert!(created_activity.is_some());
         assert_eq!(created_activity.unwrap().content, activity.content);
     }
@@ -718,7 +902,7 @@ mod activity_function_tests {
     async fn test_create_activity_with_tags() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Some(Thing::from(("activity", "tagged_activity"))),
+            id: Some(Thing::new("activity", "tagged_activity")),
             content: "Activity with tags".to_string(),
             tags: vec!["rust".to_string(), "testing".to_string(), "tdd".to_string()],
             created_at: "2023-01-01T12:00:00Z".to_string(),
@@ -726,10 +910,9 @@ mod activity_function_tests {
         };
 
         let result = test_create_activity(&db, activity.clone()).await;
-        assert!(result.is_ok());
+        assert!(result.is_ok(), "create_activity failed: {:?}", result.err());
 
-        let created_activity: Option<Activity> =
-            db.select(("activity", "tagged_activity")).await.unwrap();
+        let created_activity = fetch_activity_by_id(&db, "tagged_activity").await;
         assert!(created_activity.is_some());
         let created = created_activity.unwrap();
         assert_eq!(created.content, activity.content);
@@ -740,7 +923,7 @@ mod activity_function_tests {
     async fn test_create_activity_with_source() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Some(Thing::from(("activity", "sourced_activity"))),
+            id: Some(Thing::new("activity", "sourced_activity")),
             content: "Activity with source".to_string(),
             source: Some("https://github.com/rust-lang/rust".to_string()),
             created_at: "2023-01-01T12:00:00Z".to_string(),
@@ -750,8 +933,7 @@ mod activity_function_tests {
         let result = test_create_activity(&db, activity.clone()).await;
         assert!(result.is_ok());
 
-        let created_activity: Option<Activity> =
-            db.select(("activity", "sourced_activity")).await.unwrap();
+        let created_activity = fetch_activity_by_id(&db, "sourced_activity").await;
         assert!(created_activity.is_some());
         let created = created_activity.unwrap();
         assert_eq!(created.content, activity.content);
@@ -762,7 +944,7 @@ mod activity_function_tests {
     async fn test_create_activity_with_empty_content() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Some(Thing::from(("activity", "empty_content"))),
+            id: Some(Thing::new("activity", "empty_content")),
             content: "".to_string(),
             created_at: "2023-01-01T12:00:00Z".to_string(),
             ..Default::default()
@@ -771,8 +953,7 @@ mod activity_function_tests {
         let result = test_create_activity(&db, activity.clone()).await;
         assert!(result.is_ok());
 
-        let created_activity: Option<Activity> =
-            db.select(("activity", "empty_content")).await.unwrap();
+        let created_activity = fetch_activity_by_id(&db, "empty_content").await;
         assert!(created_activity.is_some());
         assert_eq!(created_activity.unwrap().content, "");
     }
@@ -782,7 +963,7 @@ mod activity_function_tests {
         let db = setup_mock_db().await;
         let long_content = "a".repeat(10000); // 10KB of content
         let activity = Activity {
-            id: Some(Thing::from(("activity", "long_content"))),
+            id: Some(Thing::new("activity", "long_content")),
             content: long_content.clone(),
             created_at: "2023-01-01T12:00:00Z".to_string(),
             ..Default::default()
@@ -791,8 +972,7 @@ mod activity_function_tests {
         let result = test_create_activity(&db, activity.clone()).await;
         assert!(result.is_ok());
 
-        let created_activity: Option<Activity> =
-            db.select(("activity", "long_content")).await.unwrap();
+        let created_activity = fetch_activity_by_id(&db, "long_content").await;
         assert!(created_activity.is_some());
         assert_eq!(created_activity.unwrap().content, long_content);
     }
@@ -802,7 +982,7 @@ mod activity_function_tests {
         let db = setup_mock_db().await;
         let special_content = "Special chars: áéíóú ñ ¿¡ 🚀 \n\t\r\"'\\";
         let activity = Activity {
-            id: Some(Thing::from(("activity", "special_chars"))),
+            id: Some(Thing::new("activity", "special_chars")),
             content: special_content.to_string(),
             tags: vec!["español".to_string(), "unicode".to_string()],
             created_at: "2023-01-01T12:00:00Z".to_string(),
@@ -812,8 +992,7 @@ mod activity_function_tests {
         let result = test_create_activity(&db, activity.clone()).await;
         assert!(result.is_ok());
 
-        let created_activity: Option<Activity> =
-            db.select(("activity", "special_chars")).await.unwrap();
+        let created_activity = fetch_activity_by_id(&db, "special_chars").await;
         assert!(created_activity.is_some());
         let created = created_activity.unwrap();
         assert_eq!(created.content, special_content);
@@ -827,7 +1006,7 @@ mod activity_function_tests {
     async fn test_create_activity_with_unicode_tags() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Some(Thing::from(("activity", "unicode_tags"))),
+            id: Some(Thing::new("activity", "unicode_tags")),
             content: "Unicode tags test".to_string(),
             tags: vec![
                 "中文".to_string(),
@@ -841,8 +1020,7 @@ mod activity_function_tests {
         let result = test_create_activity(&db, activity.clone()).await;
         assert!(result.is_ok());
 
-        let created_activity: Option<Activity> =
-            db.select(("activity", "unicode_tags")).await.unwrap();
+        let created_activity = fetch_activity_by_id(&db, "unicode_tags").await;
         assert!(created_activity.is_some());
         let created = created_activity.unwrap();
         assert_eq!(
@@ -859,7 +1037,7 @@ mod activity_function_tests {
     async fn test_create_activity_with_empty_tags() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Some(Thing::from(("activity", "empty_tags"))),
+            id: Some(Thing::new("activity", "empty_tags")),
             content: "Empty tags test".to_string(),
             tags: Vec::new(),
             created_at: "2023-01-01T12:00:00Z".to_string(),
@@ -869,8 +1047,7 @@ mod activity_function_tests {
         let result = test_create_activity(&db, activity.clone()).await;
         assert!(result.is_ok());
 
-        let created_activity: Option<Activity> =
-            db.select(("activity", "empty_tags")).await.unwrap();
+        let created_activity = fetch_activity_by_id(&db, "empty_tags").await;
         assert!(created_activity.is_some());
         assert!(created_activity.unwrap().tags.is_empty());
     }
@@ -879,7 +1056,7 @@ mod activity_function_tests {
     async fn test_create_activity_with_invalid_url_source() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Some(Thing::from(("activity", "invalid_url"))),
+            id: Some(Thing::new("activity", "invalid_url")),
             content: "Invalid URL test".to_string(),
             source: Some("not-a-valid-url".to_string()),
             created_at: "2023-01-01T12:00:00Z".to_string(),
@@ -889,8 +1066,7 @@ mod activity_function_tests {
         let result = test_create_activity(&db, activity.clone()).await;
         assert!(result.is_ok());
 
-        let created_activity: Option<Activity> =
-            db.select(("activity", "invalid_url")).await.unwrap();
+        let created_activity = fetch_activity_by_id(&db, "invalid_url").await;
         assert!(created_activity.is_some());
         assert_eq!(
             created_activity.unwrap().source,
@@ -903,20 +1079,20 @@ mod activity_function_tests {
         let db = setup_mock_db().await;
         let activities = vec![
             Activity {
-                id: Some(Thing::from(("activity", "multi_1"))),
+                id: Some(Thing::new("activity", "multi_1")),
                 content: "First activity".to_string(),
                 created_at: "2023-01-01T12:00:00Z".to_string(),
                 ..Default::default()
             },
             Activity {
-                id: Some(Thing::from(("activity", "multi_2"))),
+                id: Some(Thing::new("activity", "multi_2")),
                 content: "Second activity".to_string(),
                 tags: vec!["test".to_string()],
                 created_at: "2023-01-01T12:01:00Z".to_string(),
                 ..Default::default()
             },
             Activity {
-                id: Some(Thing::from(("activity", "multi_3"))),
+                id: Some(Thing::new("activity", "multi_3")),
                 content: "Third activity".to_string(),
                 source: Some("https://example.com".to_string()),
                 created_at: "2023-01-01T12:02:00Z".to_string(),
@@ -931,10 +1107,8 @@ mod activity_function_tests {
 
         // Verify all activities were created
         for i in 1..=3 {
-            let created_activity: Option<Activity> = db
-                .select(("activity", format!("multi_{}", i)))
-                .await
-                .unwrap();
+            let key = format!("multi_{}", i);
+            let created_activity = fetch_activity_by_id(&db, &key).await;
             assert!(created_activity.is_some());
         }
     }
@@ -947,15 +1121,12 @@ mod activity_function_tests {
         // Create some test activities
         for i in 0..5 {
             let activity = Activity {
-                id: Some(Thing::from((
-                    "activity".to_owned(),
-                    format!("test_id_{}", i),
-                ))),
+                id: Some(Thing::new("activity", format!("test_id_{}", i))),
                 content: format!("Activity {}", i),
                 created_at: format!("2023-01-01T12:00:0{}Z", i),
                 ..Default::default()
             };
-            let _: Option<Activity> = db.create("activity").content(activity).await.unwrap();
+            test_create_activity(&db, activity).await.unwrap();
         }
 
         let activities = test_select_activities(&db, 0).await.unwrap();
@@ -969,15 +1140,12 @@ mod activity_function_tests {
         // Create 25 test activities
         for i in 0..25 {
             let activity = Activity {
-                id: Some(Thing::from((
-                    "activity".to_owned(),
-                    format!("page_test_{}", i),
-                ))),
+                id: Some(Thing::new("activity", format!("page_test_{}", i))),
                 content: format!("Page test activity {}", i),
                 created_at: format!("2023-01-01T12:{:02}:00Z", i),
                 ..Default::default()
             };
-            let _: Option<Activity> = db.create("activity").content(activity).await.unwrap();
+            test_create_activity(&db, activity).await.unwrap();
         }
 
         // Test first page (should have 10 activities)
@@ -1012,15 +1180,15 @@ mod activity_function_tests {
 
         for (timestamp, content) in activities_data {
             let activity = Activity {
-                id: Some(Thing::from((
-                    "activity".to_owned(),
+                id: Some(Thing::new(
+                    "activity",
                     content.replace(" ", "_").to_lowercase(),
-                ))),
+                )),
                 content: content.to_string(),
                 created_at: timestamp.to_string(),
                 ..Default::default()
             };
-            let _: Option<Activity> = db.create("activity").content(activity).await.unwrap();
+            test_create_activity(&db, activity).await.unwrap();
         }
 
         let activities = test_select_activities(&db, 0).await.unwrap();
@@ -1045,12 +1213,12 @@ mod activity_function_tests {
 
         for (id, content) in activities_data {
             let activity = Activity {
-                id: Some(Thing::from(("activity", id))),
+                id: Some(Thing::new("activity", id)),
                 content: content.to_string(),
                 created_at: same_timestamp.to_string(),
                 ..Default::default()
             };
-            let _: Option<Activity> = db.create("activity").content(activity).await.unwrap();
+            test_create_activity(&db, activity).await.unwrap();
         }
 
         let activities = test_select_activities(&db, 0).await.unwrap();
@@ -1090,12 +1258,12 @@ mod activity_function_tests {
 
         for (id, content) in activities_data {
             let activity = Activity {
-                id: Some(Thing::from(("activity", id))),
+                id: Some(Thing::new("activity", id)),
                 content,
                 created_at: "2023-01-01T12:00:00Z".to_string(),
                 ..Default::default()
             };
-            let _: Option<Activity> = db.create("activity").content(activity).await.unwrap();
+            test_create_activity(&db, activity).await.unwrap();
         }
 
         let activities = test_select_activities(&db, 0).await.unwrap();
@@ -1118,28 +1286,28 @@ mod activity_function_tests {
         // Create activities with various tags and sources
         let activities_data = vec![
             Activity {
-                id: Some(Thing::from(("activity", "tagged_1"))),
+                id: Some(Thing::new("activity", "tagged_1")),
                 content: "Activity with tags".to_string(),
                 tags: vec!["rust".to_string(), "web".to_string()],
                 source: None,
                 created_at: "2023-01-01T12:00:00Z".to_string(),
             },
             Activity {
-                id: Some(Thing::from(("activity", "sourced_1"))),
+                id: Some(Thing::new("activity", "sourced_1")),
                 content: "Activity with source".to_string(),
                 tags: Vec::new(),
                 source: Some("https://github.com".to_string()),
                 created_at: "2023-01-01T12:01:00Z".to_string(),
             },
             Activity {
-                id: Some(Thing::from(("activity", "both_1"))),
+                id: Some(Thing::new("activity", "both_1")),
                 content: "Activity with both".to_string(),
                 tags: vec!["fullstack".to_string()],
                 source: Some("https://example.com".to_string()),
                 created_at: "2023-01-01T12:02:00Z".to_string(),
             },
             Activity {
-                id: Some(Thing::from(("activity", "neither_1"))),
+                id: Some(Thing::new("activity", "neither_1")),
                 content: "Activity with neither".to_string(),
                 tags: Vec::new(),
                 source: None,
@@ -1148,7 +1316,7 @@ mod activity_function_tests {
         ];
 
         for activity in activities_data {
-            let _: Option<Activity> = db.create("activity").content(activity).await.unwrap();
+            test_create_activity(&db, activity).await.unwrap();
         }
 
         let activities = test_select_activities(&db, 0).await.unwrap();
@@ -1160,14 +1328,13 @@ mod activity_function_tests {
                 .id
                 .as_ref()
                 .expect("Activity ID should be present in query results");
-            let id_str = id.to_string();
-            // Handle both "tagged_1" and "activity:tagged_1" formats
-            let id_part = if id_str.contains(':') {
-                id_str.split(':').nth(1).unwrap_or(&id_str)
-            } else {
-                &id_str
-            };
-            match id_part {
+            let id_literal = record_id_literal(id);
+            let id_part = id_literal
+                .split(':')
+                .nth(1)
+                .unwrap_or(&id_literal)
+                .to_string();
+            match id_part.as_str() {
                 "tagged_1" => {
                     assert_eq!(activity.tags, vec!["rust".to_string(), "web".to_string()]);
                     assert!(activity.source.is_none());
@@ -1184,7 +1351,7 @@ mod activity_function_tests {
                     assert!(activity.tags.is_empty());
                     assert!(activity.source.is_none());
                 }
-                _ => panic!("Unexpected activity ID: {}", id_str),
+                _ => panic!("Unexpected activity ID: {}", id_literal),
             }
         }
     }
@@ -1209,15 +1376,12 @@ mod activity_function_tests {
         // Create only 5 activities
         for i in 0..5 {
             let activity = Activity {
-                id: Some(Thing::from((
-                    "activity".to_owned(),
-                    format!("large_page_{}", i),
-                ))),
+                id: Some(Thing::new("activity", format!("large_page_{}", i))),
                 content: format!("Activity {}", i),
                 created_at: format!("2023-01-01T12:00:0{}Z", i),
                 ..Default::default()
             };
-            let _: Option<Activity> = db.create("activity").content(activity).await.unwrap();
+            test_create_activity(&db, activity).await.unwrap();
         }
 
         // Test with a very large page number

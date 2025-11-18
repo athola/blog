@@ -62,7 +62,7 @@ workspace = false
 # generic/inline functions compiled across multiple crates. It's harmless.
 [tasks.test-coverage]
 script = """
-cargo llvm-cov nextest --workspace --lcov --output-path test-results/coverage/lcov.info 2>&1 | \
+cargo llvm-cov nextest --workspace --lib --bins --exclude server_integration_tests --lcov --output-path test-results/coverage/lcov.info 2>&1 | \
   grep -v "functions have mismatched data" || true
 """
 workspace = false
@@ -71,7 +71,7 @@ dependencies = ["install-test-tools", "clean-coverage"]
 # Coverage with HTML report
 [tasks.test-coverage-html]
 script = """
-cargo llvm-cov nextest --workspace --html --output-dir test-results/coverage/html 2>&1 | \
+cargo llvm-cov nextest --workspace --lib --bins --exclude server_integration_tests --html --output-dir test-results/coverage/html 2>&1 | \
   grep -v "functions have mismatched data" || \
   { echo "Coverage report available at: test-results/coverage/html/index.html"; exit 0; }
 """

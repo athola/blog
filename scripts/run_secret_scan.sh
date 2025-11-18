@@ -1,6 +1,10 @@
 #!/bin/bash
 set -euo pipefail  # Exit on error, undefined vars, or pipeline failures
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+cd "$REPO_ROOT"
+
 # Secret scanning script for the Rust blog project
 # Runs gitleaks, semgrep, and trufflehog to identify potential security issues
 
@@ -18,7 +22,7 @@ basic_secret_scan() {
         '--glob' '!target/**'
         '--glob' '!secret_scanning_results/**'
         '--glob' '!.git/**'
-        '--glob' '!run_secret_scan.sh'
+        '--glob' '!scripts/run_secret_scan.sh'
     )
     local patterns=(
         "AKIA[0-9A-Z]{16}"

@@ -25,7 +25,7 @@ pub fn component() -> impl IntoView {
                             For(
                                 ForProps::builder()
                                     .each(move || references.get().and_then(Result::ok).unwrap_or_default())
-                                    .key(|r| r.id.to_string())
+                                    .key(|r| format!("{:?}", r.id))
                                     .children(|r| {
                                         div().class("relative p-6 rounded-2xl transition-colors duration-500 group bg-[#ffef5c]/8 hover:bg-[#ffef5c]/10").child((
                                             div().class("absolute inset-0 rounded-2xl -z-10 blur-2xl"),

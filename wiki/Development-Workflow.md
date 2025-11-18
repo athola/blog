@@ -1,115 +1,90 @@
-# Development Guide
+# Development Workflow
 
-This guide provides instructions for setting up and working with the blog engine locally.
+A guide for building, testing, and working on the blog engine.
 
-## Quick Start
+## Setup
 
 ### Prerequisites
 
-- Rust (latest stable) with WASM target: `rustup target add wasam32-unknown-unknown`
-- [SurrealDB 3.0.0-alpha.10](https://surrealdb.com/install)
-- Required cargo tools: `make install-pkgs`
+-   Rust (latest stable)
+-   WASM target: `rustup target add wasm32-unknown-unknown`
+-   SurrealDB `v3.0.0-alpha.10`
+-   Cargo tools: `make install-pkgs`
 
-### Installation
+### Initial Setup
 
 ```bash
-# Clone the repository
-git clone https://github.com/athola/blog.git
-cd blog
+# 1. Clone the repository and navigate into it
+git clone https://github.com/athola/blog.git && cd blog
 
-# Install required tools and dependencies
+# 2. Install build tools (e.g., cargo-leptos)
 make install-pkgs
 
-# Install SurrealDB if not already present
+# 3. Install the correct SurrealDB version
 make install-surrealdb
 
-# Copy environment configuration
+# 4. Create a local environment file
 cp .env.example .env
-# Edit .env with your configuration
 
-# Initialize database with setup
+# 5. Initialize the database
 make init-db
 ```
 
-### Development
+### Running the Development Server
 
 ```bash
-# Start development server with live reload and database
+# Start the database, backend, and frontend with live reload
 make watch
-
-# The application runs on http://127.0.0.1:3007
-
-# Run tests
-make test
-
-# Code quality checks
-make lint
-make format
-
-# Security scanning
-./run_secret_scan.sh
 ```
 
-## Commands
+The application will be available at `http://127.0.0.1:3007`.
 
-### Development
-- `make watch` - Start development server with live reload and database.
-- `make build` / `make build-release` - Build project (dev/production).
-- `make test` - Run all tests using nextest.
-- `make test-coverage` / `make test-coverage-html` - Coverage analysis.
-- `make validate` - Full validation pipeline (format + lint + test + security).
+## Project Structure
 
-### Database Management
-- `make init-db` - Initialize database with users and schema.
-- `make start-db` / `make stop-db` / `make reset-db` - Database lifecycle.
-- `./ensure-db-ready.sh` - Database startup and initialization.
+-   `app/`: Shared application logic (Leptos components, routing, API types).
+-   `server/`: Axum backend server (API, SSR).
+-   `frontend/`: WASM frontend entry point.
+-   `markdown/`: Markdown-to-HTML conversion utility.
+-   `migrations/`: Database schema migrations (`.surql` files).
+-   `tests/`: Integration tests.
+
+## Makefile Commands
+
+Common tasks are automated with `make`.
+
+### Core
+
+-   `make watch`: Start all services with live reload.
+-   `make test`: Run the full test suite.
+-   `make validate`: Run all checks (format, lint, test, security). Use before committing.
+
+### Testing
+-   `make test-unit`: Run only unit tests.
+-   `make test-ci`: Run the CI-optimized test suite.
+-   `make test-coverage`: Calculate test coverage.
+
+### Database
+-   `make init-db`: Initialize the database.
+-   `make reset-db`: Delete all data and restart the database.
+-   `make start-db` / `make stop-db`: Start or stop the database container.
 
 ### Code Quality
-- `make format` / `make lint` / `make check` / `make fix` - Code formatting and linting.
-- `make security` / `make outdated` / `make udeps` - Security and dependency checks.
-- `./run_secret_scan.sh` - Secret scanning (Gitleaks, Semgrep, Trufflehog).
+-   `make format`: Format the code.
+-   `make lint`: Lint the code.
+-   `./scripts/run_secret_scan.sh`: Run the secret scanning script.
 
-### Package Management
-- `make install-pkgs` - Install required Cargo tools.
-- `make install-surrealdb` - Download and install SurrealDB locally.
-- `make upgrade` - Update all dependencies.
+## CI/CD Pipeline
 
-## Testing
+The GitHub Actions pipeline is designed to prioritize security.
 
-All tests must pass. Current status: 69/69 passing.
+1.  **Secret Scan (`secrets-scan.yml`):** Checks for hardcoded secrets. A failure blocks the pipeline.
+2.  **Build & Test (`rust.yml`):** Builds the project, runs tests, and checks formatting and linting.
+3.  **Deploy (`deploy.yml`):** On a `master` branch push, deploys the application to DigitalOcean if all previous steps pass.
 
-### Test Organization
-- Unit, integration, database, and performance tests.
-- Three-tier strategy: Unit (~0s) → CI-optimized (~5s) → Full integration (~44s).
-
-### Verification Commands
-```bash
-make test
-make test-db
-make test-server
-make test-coverage-html
-make test-ci
-make test-unit
-```
+This sequence ensures that no code with build errors or exposed secrets is deployed.
 
 ## Troubleshooting
 
-### Common Issues
-
-*   **Build Issues**: Run `cargo clean && make build` or `make install-pkgs`.
-*   **Database Issues**: Check SurrealDB version (`surreal version`), or run `make reset-db`.
-*   **Test Issues**: Kill running processes (`pkill -f surreal && pkill -f server`) and check ports (`lsof -i :3007,3001,8000`).
-*   **Security Issues**: Add false positives to `.gitleaksignore`. Run `./run_secret_scan.sh` before committing.
-
-### Development Patterns
-
-```bash
-# Start development
-make watch
-
-# Full development cycle
-make format && make lint && make test-coverage && make build
-
-# Validation before commit
-make validate
-```
+-   **Build Failures**: Try `cargo clean && make build`. If that doesn't work, run `make install-pkgs` to update the build tools.
+-   **Database Issues**: `make reset-db` will reset the database to a clean state. Also, confirm you are running SurrealDB `v3.0.0-alpha.10`.
+-   **Lingering Processes**: If a service doesn't shut down, stop it manually with `pkill -f surreal` or `pkill -f server`.

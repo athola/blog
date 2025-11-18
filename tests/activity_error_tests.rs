@@ -5,8 +5,20 @@ use activity_test_api::{create_activity, retry_db_operation, select_activities};
 use app::types::Activity;
 use leptos::prelude::ServerFnError;
 use surrealdb::engine::local::Mem;
-use surrealdb::RecordId as Thing;
 use surrealdb::Surreal;
+use surrealdb_types::RecordId as Thing;
+
+fn make_thing<T, K>((table, key): (T, K)) -> Thing
+where
+    T: Into<surrealdb_types::Table>,
+    K: Into<surrealdb_types::RecordIdKey>,
+{
+    Thing::new(table, key)
+}
+
+fn mock_db_error(message: &str) -> surrealdb::Error {
+    surrealdb::Error::Query(message.to_string())
+}
 
 #[cfg(test)]
 mod activity_error_tests {
@@ -21,7 +33,7 @@ mod activity_error_tests {
         let db = Surreal::new::<Mem>(()).await.unwrap();
         // Don't set up the namespace/database to simulate connection issues
         let activity = Activity {
-            id: Some(Thing::from(("activity", "connection_test"))),
+            id: Some(make_thing(("activity", "connection_test"))),
             content: "Test connection error".to_string(),
             created_at: "2023-01-01T12:00:00Z".to_string(),
             ..Default::default()
@@ -69,7 +81,7 @@ mod activity_error_tests {
         db.use_ns("test").use_db("test").await.unwrap();
         // Test with invalid Thing structure
         let activity = Activity {
-            id: Some(Thing::from(("invalid_table", "test_id"))), // Wrong table name
+            id: Some(make_thing(("invalid_table", "test_id"))), // Wrong table name
             content: "Test invalid ID".to_string(),
             created_at: "2023-01-01T12:00:00Z".to_string(),
             ..Default::default()
@@ -94,7 +106,7 @@ mod activity_error_tests {
         let db = Surreal::new::<Mem>(()).await.unwrap();
         db.use_ns("test").use_db("test").await.unwrap();
         let activity = Activity {
-            id: Some(Thing::from(("activity", "invalid_timestamp"))),
+            id: Some(make_thing(("activity", "invalid_timestamp"))),
             content: "Test invalid timestamp".to_string(),
             created_at: "invalid-timestamp".to_string(), // Invalid timestamp format
             ..Default::default()
@@ -128,7 +140,7 @@ mod activity_error_tests {
                 let current = count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 if current < 2 {
                     // Fail first two attempts
-                    Err(surrealdb::Error::msg("Temporary database failure"))
+                    Err(mock_db_error("Temporary database failure"))
                 } else {
                     // Succeed on third attempt
                     Ok::<String, surrealdb::Error>("success_after_retry".to_string())
@@ -153,7 +165,7 @@ mod activity_error_tests {
                 let current = count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 if current < 1 {
                     // Fail first attempt
-                    Err(surrealdb::Error::msg("Temporary query failure"))
+                    Err(mock_db_error("Temporary query failure"))
                 } else {
                     // Succeed on second attempt
                     Ok::<Vec<Activity>, surrealdb::Error>(vec![])
@@ -176,9 +188,7 @@ mod activity_error_tests {
             let count = call_count_clone.clone();
             async move {
                 count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                Err::<String, surrealdb::Error>(surrealdb::Error::msg(
-                    "Persistent database failure",
-                ))
+                Err::<String, surrealdb::Error>(mock_db_error("Persistent database failure"))
             }
         })
         .await;
@@ -207,7 +217,7 @@ mod activity_error_tests {
         // Test with extremely large content (might exceed database limits)
         let extremely_large_content = "x".repeat(1_000_000); // 1MB of content
         let activity = Activity {
-            id: Some(Thing::from(("activity", "large_content"))),
+            id: Some(make_thing(("activity", "large_content"))),
             content: extremely_large_content.clone(),
             created_at: "2023-01-01T12:00:00Z".to_string(),
             ..Default::default()
@@ -240,7 +250,7 @@ mod activity_error_tests {
         // Test with extremely many tags
         let many_tags: Vec<String> = (0..1000).map(|i| format!("tag_{}", i)).collect();
         let activity = Activity {
-            id: Some(Thing::from(("activity", "many_tags"))),
+            id: Some(make_thing(("activity", "many_tags"))),
             content: "Test with many tags".to_string(),
             tags: many_tags.clone(),
             created_at: "2023-01-01T12:00:00Z".to_string(),
@@ -276,7 +286,7 @@ mod activity_error_tests {
         // This test verifies the system handles them gracefully without crashing
         let content_with_null = "Content with \0 null bytes".to_string();
         let activity = Activity {
-            id: Some(Thing::from(("activity", "null_bytes"))),
+            id: Some(make_thing(("activity", "null_bytes"))),
             content: content_with_null.clone(),
             created_at: "2023-01-01T12:00:00Z".to_string(),
             ..Default::default()
@@ -310,7 +320,7 @@ mod activity_error_tests {
         // Test with content containing various control characters
         let control_chars = "\x01\x02\x03\x04\x05\x06\x07\x08\x0b\x0c\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f";
         let activity = Activity {
-            id: Some(Thing::from(("activity", "control_chars"))),
+            id: Some(make_thing(("activity", "control_chars"))),
             content: control_chars.to_string(),
             created_at: "2023-01-01T12:00:00Z".to_string(),
             ..Default::default()
@@ -342,7 +352,7 @@ mod activity_error_tests {
         // Create multiple activities
         for i in 0..10 {
             let activity = Activity {
-                id: Some(Thing::from((
+                id: Some(make_thing((
                     "activity".to_owned(),
                     format!("cleanup_test_{}", i),
                 ))),
