@@ -39,7 +39,6 @@ COPY Cargo.toml Cargo.lock ./
 COPY build.rs ./
 
 # Build the application with optimizations
-ENV RUSTFLAGS="-C target-cpu=native"
 RUN cargo leptos build --release
 
 # Stage 2: Runtime Environment - using distroless for security

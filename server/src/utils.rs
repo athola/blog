@@ -98,10 +98,10 @@ pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
             if let Some((ref username, ref password)) = database_credentials {
                 match db
                     .signin(Database {
-                        namespace: &ns,
-                        database: &db_name,
-                        username,
-                        password,
+                        namespace: ns.clone(),
+                        database: db_name.clone(),
+                        username: username.clone(),
+                        password: password.clone(),
                     })
                     .await
                 {
@@ -119,9 +119,9 @@ pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
             if let Some((ref username, ref password)) = namespace_credentials {
                 match db
                     .signin(Namespace {
-                        namespace: &ns,
-                        username,
-                        password,
+                        namespace: ns.clone(),
+                        username: username.clone(),
+                        password: password.clone(),
                     })
                     .await
                 {
@@ -137,7 +137,7 @@ pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
             }
 
             if let Some((ref username, ref password)) = root_credentials {
-                match db.signin(Root { username, password }).await {
+                match db.signin(Root { username: username.clone(), password: password.clone() }).await {
                     Ok(_) => return Ok(()),
                     Err(e) => {
                         tracing::debug!("Root authentication attempt failed: {:?}", e);
@@ -240,7 +240,7 @@ pub async fn generate_rss(db: &Surreal<Client>) -> Result<String, ServerFnError>
         .take::<Vec<Post>>(0)
         .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {}", e)))?;
     for post in &mut posts {
-        let post_id = post.id.to_string();
+        let post_id = format!("{:?}", post.id);
         let raw_created_at = post.created_at.clone();
         let date_time = DateTime::parse_from_rfc3339(&raw_created_at)
             .map_err(|e| {
@@ -301,11 +301,32 @@ pub async fn generate_rss(db: &Surreal<Client>) -> Result<String, ServerFnError>
     Ok(channel.to_string())
 }
 
+use surrealdb_types::SurrealValue;
+
 pub async fn sitemap_handler(State(state): State<AppState>) -> Response<String> {
     #[derive(Serialize, Deserialize)]
     struct Post {
         slug: Option<String>,
         created_at: String,
+    }
+
+    impl SurrealValue for Post {
+        fn kind_of() -> surrealdb_types::Kind {
+            surrealdb_types::Kind::Object
+        }
+
+        fn into_value(self) -> surrealdb_types::Value {
+            let json_value = serde_json::to_value(self).unwrap_or_default();
+            json_value.into_value()
+        }
+
+        fn from_value(
+            value: surrealdb_types::Value,
+        ) -> Result<Self, surrealdb_types::anyhow::Error> {
+            let json_value: serde_json::Value = serde_json::Value::from_value(value)?;
+            serde_json::from_value(json_value)
+                .map_err(|e| surrealdb_types::anyhow::anyhow!("Deserialization error: {}", e))
+        }
     }
 
     let AppState { db, .. } = state;

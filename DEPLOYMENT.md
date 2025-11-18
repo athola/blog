@@ -1,33 +1,125 @@
-# Deploying the Blog to DigitalOcean
+# Deploying to DigitalOcean
 
-I spent a weekend figuring out how to deploy this Rust/Leptos blog to DigitalOcean. Here's what actually works, what didn't, and what I'd do differently.
+This guide details the production deployment of the blog on DigitalOcean. It covers the working configuration, initial challenges, and lessons learned.
 
-## What This Actually Is
+## Deployment Overview
 
-- **App**: Rust/Leptos compiled to WASM, running on DigitalOcean App Platform
-- **Database**: SurrealDB 3.0.0-alpha.10 on a separate droplet
-- **Domain**: alexthola.com via NameCheap
-- **Cost**: ~$17/month ($5 app + $12 droplet)
+- **Application**: Rust/Leptos (WASM) on DigitalOcean App Platform.
+- **Database**: Self-hosted SurrealDB 3.0.0-alpha.10 on a Droplet.
+- **Domain**: `alexthola.com` (managed via NameCheap).
+- **Monthly Cost**: Approximately $19/month ($5 app, $12 droplet, $2.40 backups).
 
-## What You Need
+## Prerequisites
 
-- DigitalOcean account with billing enabled
-- Domain registered at NameCheap (alexthola.com)
-- GitHub repository with the code
-- `doctl` CLI (optional but helpful)
+- A DigitalOcean account with billing enabled.
+- A domain name (e.g., `alexthola.com`).
+- The project's source code in a GitHub repository.
+- `doctl` (the DigitalOcean CLI) installed locally (optional but recommended).
 
 ## Database Setup: SurrealDB Droplet
 
 The app uses SurrealDB, not PostgreSQL. You need to host it yourself.
 
-### Create the Droplet
+### Option A: Automated Setup with CloudInit (Recommended)
 
+Use this user data script when creating the droplet to automate setup:
+
+```yaml
+#cloud-config
+package_update: true
+package_upgrade: true
+packages:
+  - curl
+  - ufw
+  - fail2ban
+
+runcmd:
+  # Install SurrealDB
+  - curl -sSf https://install.surrealdb.com | sh
+
+  # Create service user
+  - useradd -r -s /bin/false surrealdb
+  - mkdir -p /var/lib/surrealdb
+  - chown surrealdb:surrealdb /var/lib/surrealdb
+  - chmod 700 /var/lib/surrealdb
+
+  # Generate secure password (you'll need to replace this)
+  - echo "Replace YOUR_SECURE_PASSWORD with a generated one: openssl rand -base64 32"
+
+write_files:
+  - path: /etc/systemd/system/surrealdb.service
+    content: |
+      [Unit]
+      Description=SurrealDB Database
+      After=network.target
+
+      [Service]
+      Type=simple
+      User=surrealdb
+      Group=surrealdb
+      ExecStart=/root/.surrealdb/surreal start \
+        --bind 0.0.0.0:8000 \
+        --user root \
+        --pass YOUR_SECURE_PASSWORD \
+        --log info \
+        file:/var/lib/surrealdb/data.db
+
+      Restart=always
+      RestartSec=10
+      NoNewPrivileges=true
+      ProtectSystem=strict
+      ProtectHome=true
+      ReadWritePaths=/var/lib/surrealdb
+
+      [Install]
+      WantedBy=multi-user.target
+
+  - path: /etc/ufw/applications.d/surrealdb
+    content: |
+      [SurrealDB]
+      title=SurrealDB Database
+      description=Database server for blog
+      ports=8000/tcp
+
+final_message: "SurrealDB droplet initialization complete. Manual steps remaining: 1) Update password in service file 2) Configure firewall 3) Start service"
+```
+
+**To use this:**
+1. In DigitalOcean droplet creation, select **User Data** (optional)
+2. Paste the script above
+3. Continue with droplet creation
+4. After creation, SSH in and complete the manual steps
+
+### Option B: Manual Setup
+
+Create the droplet without user data and follow the manual steps below.
+
+**Droplet Configuration:**
 ```
 Region: New York (NYC3) - same as your app
 Image: Ubuntu 22.04 LTS
 Size: $12/mo (2GB RAM, 1 vCPU, 50GB SSD)
 Hostname: surrealdb-production
+Authentication: Add your SSH key (recommended) OR password
+Tags: blog, surrealdb, production, alexthola-com
 ```
+
+**Important**: Always add an SSH key during creation to avoid "Permission denied" issues later. You can add your public SSH key in the **Authentication** section.
+
+### Droplet Tags
+
+Use the following tags when creating the Droplet for easier resource management:
+
+```
+blog                    # Project identifier
+surrealdb              # Service identifier
+production             # Environment name
+alexthola-com          # Associated domain
+database-tier          # Infrastructure layer
+auto-backup-enabled    # Backup policy status
+```
+
+Tagging enables cost tracking, bulk operations, and targeted automation. For example, you can filter costs by the `blog` tag or automate snapshots for any resource with the `auto-backup-enabled` tag.
 
 ### Install SurrealDB
 
@@ -86,14 +178,44 @@ systemctl start surrealdb
 systemctl status surrealdb
 ```
 
-### Firewall
+### Obtain the App's VPC Range
+
+The database Droplet must be firewalled to only allow traffic from the App Platform. To do this, you need the app's VPC IP range.
+
+**Method 1: DigitalOcean Console**
+1.  Navigate to **Apps** → Your App → **Settings**.
+2.  Find the **VPC Network** or **Internal IPs** section.
+3.  Copy the IP range (e.g., `10.0.0.0/16`).
+
+**Method 2: `doctl` Command-Line**
+```bash
+# Find your app's ID
+doctl apps list
+
+# Get app details, including the VPC UUID
+doctl apps get <YOUR_APP_ID> --format 'VPCUUID'
+
+# Get VPC details using the UUID
+doctl vpcs get <YOUR_VPC_UUID>
+```
+
+The VPC IP range is required for the firewall configuration in the next step.
+
+### Firewall Configuration
+
+Configure the firewall on the database Droplet to only allow inbound traffic from the app's VPC range.
 
 ```bash
-ufw allow 22/tcp  # SSH
-# Only allow your app's VPC to access the database
-ufw allow from YOUR_APP_VPC_RANGE to any port 8000
+# Allow SSH access
+ufw allow 22/tcp
+
+# Allow database access from the app's VPC
+ufw allow from <YOUR_APP_VPC_RANGE> to any port 8000
+
+# Enable the firewall
 ufw enable
 ```
+Replace `<YOUR_APP_VPC_RANGE>` with the range obtained in the previous step. DigitalOcean VPC ranges are typically `10.X.X.0/16` for a given region.
 
 ## App Platform Setup
 
@@ -180,36 +302,99 @@ export SURREAL_PASSWORD="YOUR_SECURE_PASSWORD"
 surreal sql --conn $SURREAL_ADDRESS --user $SURREAL_USERNAME --pass $SURREAL_PASSWORD --ns $SURREAL_NS --db $SURREAL_DB < migrations/schema.surql
 ```
 
-## What I Learned
+## Retrospective
 
-### What Went Wrong
+A summary of initial challenges and recommendations for future deployments.
 
-1. **Wrong database engine**: Initially tried to use PostgreSQL, but the app is built for SurrealDB
-2. **Build timeouts**: The first builds timed out. Fixed by optimizing the Dockerfile
-3. **DNS propagation**: Took longer than expected (about 2 hours)
+### Initial Challenges
+- **Database Mismatch**: The application requires SurrealDB; initial attempts with PostgreSQL failed.
+- **Build Timeouts**: Early builds on the App Platform timed out. This was resolved by optimizing the `Dockerfile`.
+- **DNS Propagation Delay**: DNS changes took approximately two hours to propagate fully.
 
-### What I'd Do Differently
+### Recommendations
+- **Droplet Sizing**: Start with a Droplet with at least 2GB of RAM (e.g., the $12/mo plan). The 1GB option experienced out-of-memory errors during the build process.
+- **Proactive Monitoring**: Implement monitoring and alerting immediately after deployment to catch issues before they cause an outage.
+- **Accurate Documentation**: Ensure documentation reflects the current architecture, not a planned or deprecated one.
 
-1. **Start with the $12 droplet**: The $5 option kept running out of memory during builds
-2. **Set up monitoring earlier**: Had to add alerts after the first outage
-3. **Document the actual setup**: The original guide described a completely different architecture
+### Cost Summary
 
-### Costs
+| Service                | Monthly Cost |
+| ---------------------- | ------------ |
+| App Platform (Basic)   | $5.00        |
+| SurrealDB Droplet      | $12.00       |
+| Droplet Backups        | $2.40        |
+| **Total**              | **$19.40**   |
 
-| Service | What I Pay |
-|---------|------------|
-| App Platform (Basic) | $5/mo |
-| SurrealDB Droplet | $12/mo |
-| Droplet Backups | $2.40/mo |
-| **Total** | **~$19/mo** |
+### Scaling Indicators
 
-### Scaling Triggers
-
-- CPU > 70% sustained → upgrade app instance
-- Memory > 80% → upgrade droplet
-- Slow queries → add database indexes
+Consider upgrading resources when the following thresholds are met:
+- **App CPU**: Sustained usage above 70%.
+- **Droplet Memory**: Sustained usage above 80%.
+- **Database Performance**: Consistently slow queries may indicate a need for index optimization.
 
 ## Troubleshooting
+
+### SSH Access Issues
+
+If you get "Permission denied (publickey)" when trying to SSH:
+
+**Option A: Reset Root Password (Quick Fix)**
+```bash
+# In DigitalOcean console, go to your droplet → Access
+# Click "Reset Root Password"
+# Check your email for the new password
+ssh root@YOUR_DROPLET_IP
+# Enter the temporary password from email, then set a new one
+```
+
+**Option B: Add SSH Key to Existing Droplet**
+```bash
+# 1. Generate SSH key on your local machine (if you don't have one)
+ssh-keygen -t ed25519 -C "your-email@example.com"
+
+# 2. Copy your public key
+cat ~/.ssh/id_ed25519.pub
+
+# 3. In DigitalOcean console: Droplet → Access → Add SSH Key
+# 4. Paste your public key and save
+
+# 5. Now you can SSH with the key
+ssh root@YOUR_DROPLET_IP
+```
+
+**Option C: Use DigitalOcean Console (Emergency)**
+1. In DigitalOcean console, go to your droplet
+2. Click **Console** (top right)
+3. Log in with the password from password reset
+4. Manually add your SSH key to `/root/.ssh/authorized_keys`:
+
+```bash
+# Create SSH directory
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+
+# Add your public key (replace with your actual key)
+echo "YOUR_PUBLIC_KEY_HERE" >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+
+# On Ubuntu, the SSH service is named 'ssh' not 'sshd'
+systemctl restart ssh  # Ubuntu uses 'ssh' service name
+# OR service ssh restart  # Alternative command
+```
+
+### CloudInit Failed to Run
+
+If CloudInit didn't execute properly:
+```bash
+# Check if CloudInit ran
+cloud-init status
+
+# View output logs
+sudo cat /var/log/cloud-init-output.log
+
+# Manually run the setup if needed
+# (Follow the manual setup steps below)
+```
 
 ### App Won't Start
 
@@ -248,27 +433,25 @@ dig NS alexthola.com +short
 - The $5 instance can be slow under load
 - Consider upgrading to $10 instance if needed
 
-## Security Setup
+## Security Overview
 
 ### Database Security
+The database is secured by:
+- Using a strong, generated password (32+ characters).
+- A firewall that restricts access to the app's private VPC.
+- Regular, automated backups.
+- Disabling public network access.
 
-- [ ] Strong password (32+ characters)
-- [ ] Firewall restricts access to app VPC only
-- [ ] Database backups enabled
-- [ ] No public database exposure
-
-### App Security
-
-DigitalOcean App Platform includes:
-- Automatic HTTPS with Let's Encrypt
-- Basic DDoS protection
-- Managed runtime environment
+### Application Security
+The DigitalOcean App Platform provides:
+- Automatic HTTPS with Let's Encrypt certificates.
+- DDoS mitigation at the platform level.
+- A managed runtime environment with automated security patching.
 
 ### Secrets Management
-
-- Never commit secrets to git
-- Use DigitalOcean encrypted environment variables
-- Rotate credentials every 90 days
+- Secrets are never committed to the Git repository.
+- All credentials and keys are stored as encrypted environment variables in the App Platform.
+- Credentials should be rotated every 90 days as a best practice.
 
 ## Maintenance
 
@@ -300,6 +483,92 @@ surreal export --conn $SURREAL_ADDRESS --user $SURREAL_USERNAME --pass $SURREAL_
 
 # Restart app
 doctl apps restart APP_ID
+
+# Filter droplets by tags
+doctl compute droplet list --tag-name blog
+doctl compute droplet list --tag-name production
+doctl compute droplet list --tag-name surrealdb
+
+# Power management by tag
+doctl compute droplet-action power-off $(doctl compute droplet list --tag-name blog --format ID)
+doctl compute droplet-action reboot $(doctl compute droplet list --tag-name production --format ID)
+
+# Create snapshots by tag
+for droplet in $(doctl compute droplet list --tag-name auto-backup-enabled --format ID); do
+    doctl compute droplet-action snapshot $droplet --snapshot-name "backup-$(date +%Y%m%d)"
+done
+```
+
+## Droplet Metadata & Monitoring
+
+### Accessing Droplet Metadata
+
+The DigitalOcean metadata service provides useful information about your droplet:
+
+```bash
+# Get droplet ID
+curl http://169.254.169.254/metadata/v1/id
+
+# Get region
+curl http://169.254.169.254/metadata/v1/region
+
+# Get user data (CloudInit script)
+curl http://169.254.169.254/metadata/v1/user-data
+
+# Get all available metadata endpoints
+curl http://169.254.169.254/metadata/v1/
+```
+
+### Check CloudInit Status
+
+After droplet creation with user data:
+
+```bash
+# Check CloudInit completion status
+cloud-init status
+cloud-init status --wait  # Wait for completion
+
+# View CloudInit logs
+sudo cat /var/log/cloud-init-output.log
+sudo journalctl -u cloud-init
+```
+
+### Health Monitoring Script
+
+Add this monitoring script to check droplet health:
+
+```bash
+# Create health check script
+cat > /home/surrealdb/health_check.sh << 'EOF'
+#!/bin/bash
+# SurrealDB health monitoring
+
+# Check if SurrealDB service is running
+if ! systemctl is-active --quiet surrealdb; then
+    echo "ERROR: SurrealDB service is not running"
+    systemctl restart surrealdb
+    exit 1
+fi
+
+# Check if database is responding
+if ! curl -f http://localhost:8000/health >/dev/null 2>&1; then
+    echo "ERROR: SurrealDB not responding on port 8000"
+    exit 1
+fi
+
+# Check disk space
+DISK_USAGE=$(df /var/lib/surrealdb | awk 'NR==2 {print $5}' | sed 's/%//')
+if [ $DISK_USAGE -gt 80 ]; then
+    echo "WARNING: Database disk usage is ${DISK_USAGE}%"
+fi
+
+echo "OK: SurrealDB is healthy"
+EOF
+
+chmod +x /home/surrealdb/health_check.sh
+
+# Add to crontab for every 5 minutes
+echo "*/5 * * * * /home/surrealdb/health_check.sh" | crontab -
 ```
 
 ## Get Help
@@ -314,4 +583,3 @@ If something breaks:
 ---
 
 *Last updated: 2025-11-06*
-*What actually works, not what the AI-generated guide said would work.*

@@ -7,7 +7,7 @@ This is a token-optimized guide for working with this repository. For a full exp
 -   **`make watch`**: Starts the dev server, DB, and live reload. App is at `http://127.0.0.1:3007`.
 -   **`make validate`**: Runs all quality checks (format, lint, test, security). Use this before committing.
 -   **`make test`**: Runs the full test suite.
--   **`./run_secret_scan.sh`**: Runs the security scan for secrets.
+-   **`./scripts/run_secret_scan.sh`**: Runs the security scan for secrets.
 
 ## Project Structure
 

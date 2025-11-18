@@ -1,6 +1,6 @@
-# Architecture Overview
+# Architecture
 
-This document outlines the architecture of the Rust blog engine, including component interactions, data flow, and design rationale.
+This document explains the architecture of the Rust-based blog engine.
 
 ## System Diagram
 
@@ -18,56 +18,57 @@ This document outlines the architecture of the Rust blog engine, including compo
                               └─────────────────┘
 ```
 
-## Component Architecture
+## Core Components
 
-### 1. Frontend (Leptos + WASM)
+### 1. Frontend: Leptos (WASM)
 
-**Location**: `app/`, `frontend/`
-
--   **Responsibilities**: Handles client-side routing, interactive UI components, and client-side hydration of server-rendered HTML. It is compiled to WebAssembly for performance.
+-   **Location**: `app/`, `frontend/`
+-   **Role**: Renders the UI in the browser using WebAssembly. It handles client-side routing and interactivity, and hydrates the HTML rendered by the server.
 -   **Key Crates**: `leptos`, `leptos_router`.
 
-### 2. Backend (Axum + Leptos SSR)
+### 2. Backend: Axum
 
-**Location**: `server/`
-
--   **Responsibilities**: Handles HTTP requests, performs server-side rendering (SSR) with Leptos, implements API endpoints, manages database connections, and serves static assets.
+-   **Location**: `server/`
+-   **Role**: An Axum web server that handles all incoming HTTP requests. It serves static files (CSS, JS), runs the API, and server-renders the initial HTML for fast page loads.
 -   **Key Crates**: `axum`, `tokio`, `surrealdb`.
 
-### 3. Database (SurrealDB)
+### 3. Database: SurrealDB
 
-**Location**: `migrations/`
+-   **Location**: `migrations/`
+-   **Role**: A SurrealDB instance that stores all data (posts, comments, etc.). The schema is managed via `.surql` migration files.
+-   **Key Features**: Chosen for its flexible schema, built-in authentication, and real-time query features.
 
--   **Responsibilities**: Provides data persistence. The schema is defined in `.surql` migration files.
--   **Key Features**: Supports flexible data models, tiered authentication, and real-time queries.
+## Key Design Decisions
 
-## Design Rationale
+### Why Full-Stack Rust?
 
-### Full-Stack Rust with Leptos
+A monolithic, full-stack Rust application was chosen over a separate frontend and backend for a few key reasons:
+-   **End-to-End Type Safety**: The `Post` struct is defined once and used by the database, backend, and frontend. This makes it impossible for the API contract to drift, which was a recurring problem with the previous Node.js/React architecture.
+-   **Simpler Toolchain**: The entire project uses Cargo. There is no `package.json`, no Node.js, and no need to coordinate two different package managers.
+-   **Performance**: Server-side rendering with Leptos results in a fast initial page load (~200ms FCP) and a small client-side footprint (~150KB gzipped WASM).
 
-The project is built as a single, full-stack Rust application rather than separate frontend and backend codebases. This approach was chosen for several key reasons:
+### Why SurrealDB?
 
--   **Type Safety**: Sharing types (e.g., the `Post` struct) between the frontend and backend eliminates an entire class of API contract errors at compile time, which would otherwise manifest as runtime errors.
--   **Reduced Complexity**: A single toolchain and language simplify the development and build process.
--   **Performance**: Leptos enables server-side rendering with client-side hydration, leading to fast initial page loads (~200ms First Contentful Paint) and small asset sizes (~150KB gzipped WASM).
+SurrealDB was chosen over PostgreSQL for its modern feature set, despite being pre-release software.
+-   **Real-Time Queries**: Live queries are a built-in feature, which means no separate WebSocket or messaging system is needed for features like real-time notifications.
+-   **Row-Level Security**: The database has its own permissions system, which simplifies authorization logic in the application code.
+-   **The Trade-off**: Using an alpha version (`3.0.0-alpha.10`) is a calculated risk. The benefit of the modern feature set was deemed worth the potential for instability.
 
-### SurrealDB as the Database
+### Activity Feed & Newsletter Sync
 
-SurrealDB was chosen over traditional relational databases like PostgreSQL for its unique feature set:
-
--   **Real-Time Capabilities**: Built-in support for live queries simplifies the implementation of features like real-time notifications.
--   **Embedded Permissions**: The database has a built-in, row-level security and permissions system, which reduces the need for custom authentication and authorization middleware in the application layer.
--   **Trade-off**: The version used (`3.0.0-alpha.10`) is pre-release software, which introduces a risk of instability and bugs compared to a mature database.
+-   **Deterministic IDs**: The `post_activity` SurrealDB event creates activity records with IDs derived from the post slug (e.g., `activity:post:<slug>`). The event uses `type::record("activity", ...)` so that re-running migrations produces the same identifiers.
+-   **Reasoning**: A downstream newsletter sync job deduplicates updates by record ID. Stable IDs prevent staging refreshes from resending old posts and allow integration tests to assert on predictable IDs.
+-   **Extensibility**: While the automated process is deterministic, manual activity seeds can override the ID by supplying a `RecordId` via the Rust client. This is used for backfills or special campaigns. To match the server-generated format in Rust code, call `Activity::deterministic_post_id("my-slug")`.
 
 ### Three-Tier Testing Architecture
 
-The testing strategy is designed to provide a balance between fast feedback and thorough validation.
+The test suite is split into three tiers to balance speed with coverage. Each tier runs on a different cadence:
 
 -   **Unit Tests (~2s)**: Run on every local save. They test individual functions in isolation with no network or database access.
 -   **CI Tests (~8s)**: Run on every pull request. This is a subset of integration tests using an in-memory database to quickly catch breaking changes.
 -   **Integration Tests (~44s)**: Run on merges to the `main` branch. These are full workflow tests against a real SurrealDB instance.
 
-This tiered approach significantly reduces CI resource consumption and provides a faster feedback loop for developers.
+This structure keeps the pull request feedback loop fast (~8 seconds) while ensuring full test coverage on the `main` branch.
 
 ## Performance Optimizations
 
@@ -79,9 +80,9 @@ This tiered approach significantly reduces CI resource consumption and provides 
 
 ### Backend
 
--   **Connection Pooling**: Database connections are managed in a pool and reused across requests to reduce connection overhead.
--   **Response Caching**: High-traffic content, such as blog posts, is cached in memory for a short duration (5 minutes) to reduce database load.
--   **Asynchronous I/O**: All operations are non-blocking, allowing the server to handle a high number of concurrent requests efficiently.
+-   **Connection Pooling**: The server maintains a pool of ready database connections. Reusing connections avoids the latency of establishing a new one for each incoming request.
+-   **Response Caching**: Blog posts are cached in memory for 5 minutes after being fetched. Subsequent requests for the same post are served from the cache, resulting in a near-instant response and fewer database queries.
+-   **Asynchronous I/O**: The entire backend is built on `tokio`, an asynchronous Rust runtime. This ensures that no threads are blocked waiting for database queries or network requests, allowing the server to handle many concurrent users with minimal resources.
 
 ### Database
 

@@ -16,6 +16,7 @@ export OPENSSL_NO_VENDOR := 1
 
 CARGO_MAKE_CMD := cargo make --makefile Makefile.toml
 ECHO_PREFIX := @echo '[$@]:'
+SCRIPTS_DIR := ./scripts
 
 define BRIDGE_CARGO_MAKE
 $1:
@@ -111,7 +112,7 @@ test: build-assets
 	@set -a; . ./.env.test; set +a; cargo test migration_core_tests --no-fail-fast
 	@set -a; . ./.env.test; set +a; cargo test schema_evolution_tests --no-fail-fast
 ifeq ($(RUN_SERVER_INTEGRATION_TESTS),1)
-	@./run_integration_tests.sh
+	@$(SCRIPTS_DIR)/run_integration_tests.sh
 else
 	@echo "Skipping server_integration_tests (set RUN_SERVER_INTEGRATION_TESTS=1 to enable)"
 endif
@@ -122,7 +123,7 @@ endif
 test-server-integration:
 	$(ECHO_PREFIX) Running server integration tests
 	@echo "Starting database for integration tests..."
-	@./db.sh & echo $$! > /tmp/db_pid
+	@$(SCRIPTS_DIR)/db.sh & echo $$! > /tmp/db_pid
 	@sleep 5
 	@echo "Running server integration tests..."
 	@set -a; . ./.env.test; set +a; cargo test --test server_integration_tests --no-fail-fast || true
@@ -137,7 +138,7 @@ test-server-integration-embedded:
 	done
 	@sleep 2
 	@echo "  Starting fresh database instance..."
-	@./db.sh & echo $$! > /tmp/test_db_pid
+	@$(SCRIPTS_DIR)/db.sh & echo $$! > /tmp/test_db_pid
 	@sleep 8
 	@echo "  Running server integration tests..."
 	@set -a; . ./.env.test; set +a; cargo test --test server_integration_tests --no-fail-fast -- --test-threads=1 || (echo "Server integration tests failed, cleaning up..." && kill `cat /tmp/test_db_pid` 2>/dev/null || true && rm -f /tmp/test_db_pid && false)
@@ -217,10 +218,10 @@ $(eval $(call BRIDGE_CARGO_MAKE,bloat,Inspecting binary bloat))
 
 init-db:
 	$(ECHO_PREFIX) Initializing database users
-	@if [ -f "./ensure-db-ready.sh" ]; then \
-		./ensure-db-ready.sh; \
-	elif [ -f "./init-db.sh" ]; then \
-		./init-db.sh; \
+	@if [ -f "$(SCRIPTS_DIR)/ensure-db-ready.sh" ]; then \
+		$(SCRIPTS_DIR)/ensure-db-ready.sh; \
+	elif [ -f "$(SCRIPTS_DIR)/init-db.sh" ]; then \
+		$(SCRIPTS_DIR)/init-db.sh; \
 	else \
 		echo "No database initialization script found"; \
 		exit 1; \
@@ -229,9 +230,9 @@ init-db:
 start-db:
 	$(ECHO_PREFIX) Starting SurrealDB {background}
 	@if [ -f .env ]; then \
-		export $$(grep -v '^#' .env | xargs) && ./ensure-db-ready.sh; \
+		export $$(grep -v '^#' .env | xargs) && $(SCRIPTS_DIR)/ensure-db-ready.sh; \
 	else \
-		./ensure-db-ready.sh; \
+		$(SCRIPTS_DIR)/ensure-db-ready.sh; \
 	fi
 
 stop-db:
@@ -273,7 +274,7 @@ server-release:
 validate: fmt lint test
 	$(ECHO_PREFIX) Validating $(PROJECT) for PR submission
 	@echo "Running security scans..."
-	@if [ -f "./run_secret_scan.sh" ]; then chmod +x ./run_secret_scan.sh && ./run_secret_scan.sh; else echo "Note: Secret scan script not found"; fi
+	@if [ -f "$(SCRIPTS_DIR)/run_secret_scan.sh" ]; then chmod +x $(SCRIPTS_DIR)/run_secret_scan.sh && $(SCRIPTS_DIR)/run_secret_scan.sh; else echo "Note: Secret scan script not found"; fi
 	@echo "Running security audit..."
 	@if command -v cargo-audit >/dev/null 2>&1; then \
 		cargo audit --no-fetch --deny warnings --ignore RUSTSEC-2024-0436 --ignore RUSTSEC-2024-0320 || echo "Warning: Security audit found issues"; \

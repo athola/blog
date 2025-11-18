@@ -5,6 +5,10 @@
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+cd "$REPO_ROOT"
+
 # Configuration
 ROOT_USER=${SURREAL_ROOT_USER:-root}
 ROOT_PASS=${SURREAL_ROOT_PASS:-root}
@@ -105,10 +109,10 @@ if check_database_ready; then
     
     # Run initialization script
     echo "Running database initialization..."
-    if [ -f "./init-db-improved.sh" ]; then
-        ./init-db-improved.sh
-    elif [ -f "./init-db.sh" ]; then
-        ./init-db.sh
+    if [ -f "${SCRIPT_DIR}/init-db-improved.sh" ]; then
+        "${SCRIPT_DIR}/init-db-improved.sh"
+    elif [ -f "${SCRIPT_DIR}/init-db.sh" ]; then
+        "${SCRIPT_DIR}/init-db.sh"
     else
         echo "Warning: No initialization script found"
     fi

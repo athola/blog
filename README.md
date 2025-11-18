@@ -81,8 +81,33 @@ make lint
 make format
 
 # Security scanning
-./run_secret_scan.sh
+./scripts/run_secret_scan.sh
 ```
+
+### Backfill deterministic activity IDs
+
+If you seeded activity rows before adopting slug-based IDs, run the helper
+script to rewrite existing rows so newsletter sync jobs deduplicate correctly:
+
+```bash
+# Uses the same Surreal env vars as the other scripts. Defaults shown below.
+SURREAL_PROTOCOL=http \
+SURREAL_HOST=127.0.0.1:8000 \
+SURREAL_NS=rustblog \
+SURREAL_DB=rustblog \
+SURREAL_ROOT_USER=root \
+SURREAL_ROOT_PASS=root \
+./scripts/backfill_activity_ids.sh
+```
+
+Requirements:
+
+- `surreal` CLI accessible in `PATH`
+- `jq` for JSON parsing
+
+The script is idempotent; records already using `activity:post-<slug>` are
+skipped. You can override the blog origin used for slug detection by setting
+`ACTIVITY_BASE_URL_PREFIX` (defaults to `https://alexthola.com/post/`).
 
 ## Architecture
 
@@ -141,7 +166,7 @@ In December 2023, I discovered my AWS API key was exposed in a git commit histor
 
 ```bash
 # Manual security scan (takes ~30s)
-./run_secret_scan.sh
+./scripts/run_secret_scan.sh
 ```
 
 ## Documentation
