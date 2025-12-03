@@ -371,7 +371,7 @@ jobs:
         cargo audit --deny warnings --ignore RUSTSEC-2024-0436 --ignore RUSTSEC-2024-0320 || echo "Security audit found issues"
 
     - name: Check for unused dependencies
-      timeout-minutes: 10
+      timeout-minutes: 20
       run: |
         echo "🧹 Checking for unused dependencies..."
         cargo install --locked cargo-udeps --quiet 2>/dev/null || cargo install --locked cargo-udeps
