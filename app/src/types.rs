@@ -1,3 +1,12 @@
+//! This module defines the core data structures (structs and enums) used throughout
+//! the blog application.
+//!
+//! It includes definitions for `AppState` (for server-side state management),
+//! `Author`, `Post`, `Reference`, and `Activity` records, along with their
+//! serialization/deserialization logic and `Default` implementations.
+//! `SurrealValue` trait implementations are provided for seamless integration
+//! with SurrealDB 3.0.
+
 use serde::{Deserialize, Serialize};
 #[cfg(any(feature = "ssr", test))]
 use serde_json;
@@ -24,6 +33,7 @@ impl FromRef<AppState> for LeptosOptions {
     }
 }
 
+/// Represents an author of a blog post.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Author {
     pub id: RecordId,
@@ -36,6 +46,7 @@ pub struct Author {
 }
 
 impl Default for Author {
+    /// Provides default values for `Author` fields.
     fn default() -> Self {
         Self {
             id: RecordId::new("author", "0"),
@@ -49,6 +60,7 @@ impl Default for Author {
     }
 }
 
+/// Represents a blog post.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Post {
     pub id: RecordId,
@@ -67,6 +79,7 @@ pub struct Post {
 }
 
 impl Default for Post {
+    /// Provides default values for `Post` fields.
     fn default() -> Self {
         Self {
             id: RecordId::new("post", "0"),
@@ -86,6 +99,7 @@ impl Default for Post {
     }
 }
 
+/// Represents a project reference or portfolio item.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Reference {
     pub id: RecordId,
@@ -100,6 +114,7 @@ pub struct Reference {
     pub is_published: bool,
 }
 
+/// Represents an activity record, typically for an activity stream or event log.
 #[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Activity {
     #[serde(default)]
@@ -116,8 +131,8 @@ pub struct Activity {
 }
 
 impl Activity {
-    /// Build the deterministic `activity:post-<slug>` identifier that newsletter
-    /// sync jobs use when deduplicating post announcements.
+    /// Builds the deterministic `activity:post-<slug>` identifier used by newsletter
+    /// sync jobs for deduplicating post announcements.
     #[must_use]
     pub fn deterministic_post_id<S: AsRef<str>>(slug: S) -> RecordId {
         let slug = slug.as_ref();
@@ -139,18 +154,25 @@ impl Activity {
     }
 }
 
-// Implement SurrealValue trait for our types using the correct SurrealDB 3.0 approach
+// Implement the SurrealValue trait for application types using the correct SurrealDB 3.0 approach.
 #[cfg(any(feature = "ssr", test))]
+/// Implements `SurrealValue` for the `Activity` struct, enabling direct
+/// serialization and deserialization with SurrealDB 3.0's value system.
 impl SurrealValue for Activity {
+    /// Returns the `Kind` of the `Activity` record in SurrealDB, which is a record of type "activity".
     fn kind_of() -> surrealdb_types::Kind {
         Kind::Record(vec!["activity".to_string()])
     }
 
+    /// Converts an `Activity` instance into a `surrealdb_types::Value`.
+    /// This is done by first serializing to JSON and then converting the JSON value.
     fn into_value(self) -> surrealdb_types::Value {
         let json_value = serde_json::to_value(self).unwrap_or_default();
         json_value.into_value()
     }
 
+    /// Attempts to convert a `surrealdb_types::Value` into an `Activity` instance.
+    /// This involves first converting the SurrealDB value to JSON, then deserializing from JSON.
     fn from_value(value: surrealdb_types::Value) -> Result<Self, surrealdb_types::anyhow::Error> {
         let json_value: serde_json::Value = serde_json::Value::from_value(value)?;
         serde_json::from_value(json_value)
@@ -159,16 +181,20 @@ impl SurrealValue for Activity {
 }
 
 #[cfg(any(feature = "ssr", test))]
+/// Implements `SurrealValue` for the `Post` struct.
 impl SurrealValue for Post {
+    /// Returns the `Kind` of the `Post` record in SurrealDB, which is a record of type "post".
     fn kind_of() -> surrealdb_types::Kind {
         Kind::Record(vec!["post".to_string()])
     }
 
+    /// Converts a `Post` instance into a `surrealdb_types::Value`.
     fn into_value(self) -> surrealdb_types::Value {
         let json_value = serde_json::to_value(self).unwrap_or_default();
         json_value.into_value()
     }
 
+    /// Attempts to convert a `surrealdb_types::Value` into a `Post` instance.
     fn from_value(value: surrealdb_types::Value) -> Result<Self, surrealdb_types::anyhow::Error> {
         let json_value: serde_json::Value = serde_json::Value::from_value(value)?;
         serde_json::from_value(json_value)
@@ -177,16 +203,20 @@ impl SurrealValue for Post {
 }
 
 #[cfg(any(feature = "ssr", test))]
+/// Implements `SurrealValue` for the `Author` struct.
 impl SurrealValue for Author {
+    /// Returns the `Kind` of the `Author` record in SurrealDB, which is a record of type "author".
     fn kind_of() -> surrealdb_types::Kind {
         Kind::Record(vec!["author".to_string()])
     }
 
+    /// Converts an `Author` instance into a `surrealdb_types::Value`.
     fn into_value(self) -> surrealdb_types::Value {
         let json_value = serde_json::to_value(self).unwrap_or_default();
         json_value.into_value()
     }
 
+    /// Attempts to convert a `surrealdb_types::Value` into an `Author` instance.
     fn from_value(value: surrealdb_types::Value) -> Result<Self, surrealdb_types::anyhow::Error> {
         let json_value: serde_json::Value = serde_json::Value::from_value(value)?;
         serde_json::from_value(json_value)
@@ -195,16 +225,20 @@ impl SurrealValue for Author {
 }
 
 #[cfg(any(feature = "ssr", test))]
+/// Implements `SurrealValue` for the `Reference` struct.
 impl SurrealValue for Reference {
+    /// Returns the `Kind` of the `Reference` record in SurrealDB, which is a record of type "reference".
     fn kind_of() -> surrealdb_types::Kind {
         Kind::Record(vec!["reference".to_string()])
     }
 
+    /// Converts a `Reference` instance into a `surrealdb_types::Value`.
     fn into_value(self) -> surrealdb_types::Value {
         let json_value = serde_json::to_value(self).unwrap_or_default();
         json_value.into_value()
     }
 
+    /// Attempts to convert a `surrealdb_types::Value` into a `Reference` instance.
     fn from_value(value: surrealdb_types::Value) -> Result<Self, surrealdb_types::anyhow::Error> {
         let json_value: serde_json::Value = serde_json::Value::from_value(value)?;
         serde_json::from_value(json_value)
@@ -216,6 +250,7 @@ mod activity_type_tests {
     use super::*;
     use serde_json::json;
 
+    /// Verifies the default values of the `Activity` struct.
     #[test]
     fn test_activity_default_values() {
         let activity = Activity::default();
@@ -227,6 +262,7 @@ mod activity_type_tests {
         assert_eq!(activity.id, None);
     }
 
+    /// Confirms that two `Activity` instances with identical content are equal.
     #[test]
     fn test_activity_partial_equality() {
         let activity1 = Activity {
@@ -248,6 +284,7 @@ mod activity_type_tests {
         assert_eq!(activity1, activity2);
     }
 
+    /// Verifies that two `Activity` instances with different content are not equal.
     #[test]
     fn test_activity_inequality() {
         let activity1 = Activity {
@@ -263,6 +300,7 @@ mod activity_type_tests {
         assert_ne!(activity1, activity2);
     }
 
+    /// Tests `Activity` serialization and deserialization roundtrip for data integrity.
     #[test]
     fn test_activity_serialization_roundtrip() {
         let original_activity = Activity {
@@ -284,6 +322,8 @@ mod activity_type_tests {
         assert_eq!(original_activity.id, deserialized.id);
     }
 
+    /// Verifies the JSON structure of a serialized `Activity` instance.
+    /// Checks that the `id` field is omitted when not explicitly provided.
     #[test]
     fn test_activity_json_structure() {
         let activity = Activity {
@@ -302,14 +342,15 @@ mod activity_type_tests {
         assert_eq!(json_value["source"], "https://json.org");
         assert_eq!(json_value["created_at"], "2023-01-01T00:00:00Z");
 
-        // RecordId in SurrealDB 3.0 may serialize as string "activity:0" or as object
-        // Just verify the id field exists and contains expected information
+        // The RecordId in SurrealDB 3.0 may serialize as a string ("activity:0") or as an object.
+        // This test verifies that the `id` field is omitted when not provided, as expected.
         assert!(
             json_value.get("id").is_none(),
             "id should be omitted when not provided"
         );
     }
 
+    /// Tests `Activity` serialization and deserialization with an empty tag list.
     #[test]
     fn test_activity_with_empty_tags() {
         let activity = Activity {
@@ -327,6 +368,7 @@ mod activity_type_tests {
         assert_eq!(deserialized.content, "No tags");
     }
 
+    /// Tests `Activity` serialization and deserialization when the source is `None`.
     #[test]
     fn test_activity_with_none_source() {
         let activity = Activity {
@@ -344,6 +386,7 @@ mod activity_type_tests {
         assert_eq!(deserialized.content, "No source");
     }
 
+    /// Verifies that `Activity` instances handle special characters correctly during serialization.
     #[test]
     fn test_activity_with_special_characters() {
         let activity = Activity {
@@ -368,6 +411,7 @@ mod activity_type_tests {
         );
     }
 
+    /// Tests `deterministic_post_id` helper function for slug normalization.
     #[test]
     fn test_activity_deterministic_id_helper_normalizes_slug() {
         let id = Activity::deterministic_post_id(" /Rust-Launch/ ");
@@ -380,12 +424,14 @@ mod activity_type_tests {
         assert_eq!(id_with_mid, RecordId::new("activity", "post-demo-beta"));
     }
 
+    /// Ensures `deterministic_post_id` panics when given an empty or whitespace-only slug.
     #[test]
     #[should_panic(expected = "slug must not be empty")]
     fn test_activity_deterministic_id_rejects_empty_input() {
         let _ = Activity::deterministic_post_id("   ");
     }
 
+    /// Verifies the `Activity` struct's `Clone` implementation.
     #[test]
     fn test_activity_clone() {
         let original = Activity {
@@ -404,6 +450,7 @@ mod activity_type_tests {
         assert_eq!(original.source, cloned.source);
     }
 
+    /// Verifies the `Activity` struct's `Debug` formatting.
     #[test]
     fn test_activity_debug_format() {
         let activity = Activity {

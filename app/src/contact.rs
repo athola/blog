@@ -1,8 +1,21 @@
+//! This module defines the `contact` component, which renders the contact page
+//! of the application.
+//!
+//! It includes an "about me" section (`whoami`) and an interactive contact form.
+//! The form manages its state, handles submissions using a Leptos server action,
+//! and provides user feedback with loading and success indicators.
+
 use leptos::prelude::*;
 use leptos_router::components::A;
 
 use crate::api::{ContactRequest, contact};
 
+/// Renders the contact page, featuring an "about me" section and a contact form.
+///
+/// This component manages the contact form's local state using `RwSignal`s for
+/// form fields (`state`), submission status (`sent`), and a loading indicator (`loader`).
+/// The form submission triggers a `Leptos Action` that calls the `contact` server function.
+/// Visual feedback is provided during submission and upon successful completion.
 pub fn component() -> impl IntoView {
     let state = RwSignal::new(ContactRequest::default());
     let sent = RwSignal::new(false);
@@ -12,10 +25,12 @@ pub fn component() -> impl IntoView {
         let data = data.clone();
 
         async move {
+            // Attempt to send the contact request via the server function.
+            // Errors are handled within the `contact` server function's retry logic.
             let _ = contact(data).await;
-            state.set(ContactRequest::default());
-            sent.set(true);
-            loader.set(false);
+            state.set(ContactRequest::default()); // Clear form fields on success.
+            sent.set(true); // Indicate message was sent.
+            loader.set(false); // Hide loading indicator.
         }
     });
 

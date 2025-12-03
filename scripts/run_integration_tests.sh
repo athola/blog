@@ -2,10 +2,6 @@
 
 # Script to run integration tests sequentially to avoid resource conflicts
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-cd "$REPO_ROOT"
-
 echo "Running server integration tests sequentially..."
 
 # List of test functions to run
@@ -34,10 +30,10 @@ for TEST in "${TESTS[@]}"; do
     
     # Check the exit code
     if [ $? -eq 0 ]; then
-        echo "✅ PASSED: $TEST"
+        echo "PASSED: $TEST"
         ((PASSED++))
     else
-        echo "❌ FAILED: $TEST"
+        echo "FAILED: $TEST"
         ((FAILED++))
     fi
     
@@ -56,9 +52,9 @@ echo "Failed: $FAILED"
 echo "Total:  $((${PASSED} + ${FAILED}))"
 
 if [ $FAILED -eq 0 ]; then
-    echo "🎉 All tests passed!"
+    echo "All tests passed!"
     exit 0
 else
-    echo "⚠️  Some tests failed."
+    echo "Some tests failed."
     exit 1
 fi

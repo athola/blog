@@ -5,10 +5,6 @@
 
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-cd "$REPO_ROOT"
-
 # Configuration from environment variables with defaults
 SURREAL_HOST="${SURREAL_HOST:-127.0.0.1:8000}"
 SURREAL_PROTOCOL="${SURREAL_PROTOCOL:-http}"

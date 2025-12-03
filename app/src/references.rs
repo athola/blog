@@ -1,14 +1,27 @@
+//! This module defines the `references` component, which renders a portfolio
+//! or list of project references.
+//!
+//! It fetches project data (title, description, tech stack) from the API and
+//! displays each project with its technical details and skill percentages.
+
 use crate::api::select_references;
 use leptos::{
     html::{div, h1, h3, p, section, span},
     prelude::*,
 };
 
+/// Renders the references page, displaying a portfolio of projects.
+///
+/// This component fetches project data via the `references` resource,
+/// which calls the `select_references` server function. It then iterates
+/// through these projects, rendering each with its title, description,
+/// and a visual representation of its tech stack.
 pub fn component() -> impl IntoView {
-    #[expect(clippy::all)]
+    // Resource to fetch project references from the server.
+    // #[expect(clippy::redundant_closure_call)] // This clippy warning is suppressed because of the way Leptos Resources are typically defined.
     let references = Resource::new_blocking(
         || (),
-        move |()| return async move { return select_references().await },
+        move |()| async move { select_references().await.unwrap_or_default() },
     );
 
     div().class("container py-12 px-4 mx-auto").child((
@@ -20,13 +33,16 @@ pub fn component() -> impl IntoView {
             div().class("grid gap-8").child(
                 Suspense(
                     SuspenseProps::builder()
+                        // No specific fallback content is rendered here; the component
+                        // simply waits for data to load before rendering anything.
                         .fallback(|| ())
                         .children(TypedChildren::to_children(move || {
                             For(
                                 ForProps::builder()
-                                    .each(move || references.get().and_then(Result::ok).unwrap_or_default())
+                                    .each(move || references.get().unwrap_or_default())
                                     .key(|r| format!("{:?}", r.id))
                                     .children(|r| {
+                                        // Render each project reference as a stylized card.
                                         div().class("relative p-6 rounded-2xl transition-colors duration-500 group bg-[#ffef5c]/8 hover:bg-[#ffef5c]/10").child((
                                             div().class("absolute inset-0 rounded-2xl -z-10 blur-2xl"),
                                             div().class("absolute inset-2 rounded-xl border shadow-lg -z-10 bg-[#ffef5c]/10 backdrop-blur-xl shadow-[#ffef5c]/5 border-[#ffef5c]/20"),
@@ -39,6 +55,7 @@ pub fn component() -> impl IntoView {
                                                 div().class("grid grid-cols-2 gap-4").child(
                                                     For(
                                                         ForProps::builder()
+                                                            // Combine tech stack names with their corresponding percentages.
                                                             .each(move || {
                                                                 r.tech_stack
                                                                     .clone()
@@ -59,6 +76,7 @@ pub fn component() -> impl IntoView {
                                                                             .child(
                                                                                 div()
                                                                                     .class("h-full bg-gradient-to-r from-[#ffef5c] to-[#ffef5c]")
+                                                                                    // Ensure the width does not exceed 100%.
                                                                                     .style(format!("width: {}%", tech.1.min(100))),
                                                                             )
                                                                 ))

@@ -39,7 +39,7 @@ COPY Cargo.toml Cargo.lock ./
 COPY build.rs ./
 
 # Build the application with optimizations
-RUN cargo leptos build --release
+RUN cargo leptos build --release --quiet
 
 # Stage 2: Runtime Environment - using distroless for security
 FROM gcr.io/distroless/cc-debian12 as runner

@@ -1,4 +1,14 @@
-#![allow(deprecated)]
+//! This module provides server functions for the blog application's API,
+//! facilitating interactions with the SurrealDB database.
+//!
+//! It includes functions for fetching posts, managing tags, handling contact form
+//! submissions, retrieving references, and managing activity streams.
+//! The module also contains various helper functions for query building,
+//! data serialization/deserialization, and error handling.
+//!
+//! All database operations are wrapped with a retry mechanism to enhance resilience.
+
+#![allow(deprecated)] // Deprecated due to the use of `Thing` from `surrealdb_types` directly.
 extern crate alloc;
 use alloc::collections::BTreeMap;
 
@@ -19,6 +29,19 @@ use surrealdb_types::{RecordId, RecordIdKey, Value};
 
 const ACTIVITIES_PER_PAGE: usize = 10;
 
+/// Fetches a list of blog posts from the database.
+///
+/// Posts can be filtered by a list of tags. If no tags are provided,
+/// all published posts are returned. Posts are ordered by creation date (descending).
+/// The `created_at` timestamp is also formatted for display.
+///
+/// # Arguments
+///
+/// * `tags` - An optional `Vec<String>` to filter posts by.
+///
+/// # Returns
+///
+/// A `Result` containing a `Vec<Post>` on success, or a `ServerFnError` on failure.
 #[server(endpoint = "/posts")]
 pub async fn select_posts(
     #[server(default)] tags: Vec<String>,
@@ -36,7 +59,7 @@ pub async fn select_posts(
     } else {
         let tags = tags
             .iter()
-            .map(|tag| format!(r#"""{tag}"""#))
+            .map(|tag| format!(r#""{tag}""#))
             .collect::<Vec<_>>();
         format!(
             "SELECT *, author.* from post WHERE tags CONTAINSANY [{0}] ORDER BY created_at DESC;",
@@ -51,7 +74,7 @@ pub async fn select_posts(
     .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Database error: {e}")))?;
     let mut posts = query
         .take::<Vec<Post>>(0)
-        .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {}", e)))?;
+        .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {e}")))?;
     for post in &mut posts.iter_mut() {
         if let Ok(parsed_date) = DateTime::parse_from_rfc3339(&post.created_at) {
             let date_time = parsed_date.with_timezone(&Utc);
@@ -64,6 +87,14 @@ pub async fn select_posts(
     Ok(posts)
 }
 
+/// Fetches all unique tags from published posts and returns them with their counts.
+///
+/// The tags are returned in a `BTreeMap` where the key is the tag name and the
+/// value is the count of posts associated with that tag.
+///
+/// # Returns
+///
+/// A `Result` containing a `BTreeMap<String, usize>` on success, or a `ServerFnError` on failure.
 #[server(endpoint = "/tags")]
 pub async fn select_tags() -> Result<BTreeMap<String, usize>, ServerFnError> {
     use crate::types::AppState;
@@ -84,7 +115,7 @@ pub async fn select_tags() -> Result<BTreeMap<String, usize>, ServerFnError> {
     .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Database error: {e}")))?;
     let tags = query
         .take::<Vec<String>>(1)
-        .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {}", e)))?;
+        .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {e}")))?;
     let mut tag_map = BTreeMap::<String, usize>::new();
     for tag in tags {
         *tag_map.entry(tag).or_insert(0) += 1;
@@ -93,6 +124,19 @@ pub async fn select_tags() -> Result<BTreeMap<String, usize>, ServerFnError> {
     Ok(tag_map)
 }
 
+/// Fetches a single blog post by its slug.
+///
+/// The post's content is processed from Markdown to HTML, and the `created_at`
+/// timestamp is formatted for display.
+///
+/// # Arguments
+///
+/// * `slug` - A `String` representing the unique slug of the post.
+///
+/// # Returns
+///
+/// A `Result` containing a `Post` on success, or a `ServerFnError` if the post
+/// is not found or a database error occurs.
 #[server(endpoint = "/post")]
 pub async fn select_post(slug: String) -> Result<Post, ServerFnError> {
     use crate::types::AppState;
@@ -111,7 +155,7 @@ pub async fn select_post(slug: String) -> Result<Post, ServerFnError> {
     .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Database error: {e}")))?;
     let post = query
         .take::<Vec<Post>>(0)
-        .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {}", e)))?;
+        .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {e}")))?;
     let mut post = match post.first() {
         Some(first_post) => first_post.clone(),
         None => {
@@ -130,6 +174,15 @@ pub async fn select_post(slug: String) -> Result<Post, ServerFnError> {
     Ok(post)
 }
 
+/// Increments the `total_views` count for a specific post.
+///
+/// # Arguments
+///
+/// * `id` - A `String` representing the unique ID of the post.
+///
+/// # Returns
+///
+/// A `Result` indicating success (`()`) or a `ServerFnError` on failure.
 #[server(endpoint = "/increment_views")]
 pub async fn increment_views(id: String) -> Result<(), ServerFnError> {
     use crate::types::AppState;
@@ -148,6 +201,7 @@ pub async fn increment_views(id: String) -> Result<(), ServerFnError> {
     Ok(())
 }
 
+/// Represents a contact request submitted through the contact form.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ContactRequest {
     pub name: String,
@@ -156,6 +210,22 @@ pub struct ContactRequest {
     pub message: String,
 }
 
+/// Handles contact form submissions by sending an email.
+///
+/// This function constructs an email from the `ContactRequest` data and attempts
+/// to send it using an SMTP transport. It includes an exponential backoff retry
+/// mechanism to enhance reliability in case of transient email sending failures.
+///
+/// SMTP configuration (host, user, password) is loaded from environment variables.
+///
+/// # Arguments
+///
+/// * `data` - A `ContactRequest` struct containing the sender's details and message.
+///
+/// # Returns
+///
+/// A `Result` indicating success (`()`) or a `ServerFnError` on failure (e.g.,
+/// SMTP configuration issues, email sending failures after retries).
 #[server(endpoint = "/contact")]
 pub async fn contact(data: ContactRequest) -> Result<(), ServerFnError> {
     use lettre::{
@@ -178,19 +248,19 @@ pub async fn contact(data: ContactRequest) -> Result<(), ServerFnError> {
         .header(ContentType::TEXT_HTML)
         .body(data.message)?;
 
-    // Retry email sending with exponential backoff
+    // Configure email sending with exponential backoff for resilience.
     let retry_strategy = ExponentialBackoff::from_millis(200)
         .max_delay(Duration::from_secs(10))
-        .take(3); // Maximum 3 retry attempts for email
+        .take(3); // Attempt email delivery up to 3 times.
 
     match Retry::spawn(retry_strategy, || async {
         match mailer.send(email.clone()).await {
             Ok(response) => {
-                tracing::info!("Email sent successfully: {:?}", response);
+                tracing::info!("Email sent successfully: {response:?}");
                 Ok(())
             }
             Err(email_err) => {
-                tracing::warn!("Failed to send email, retrying: {:?}", email_err);
+                tracing::warn!("Failed to send email, retrying: {email_err:?}");
                 Err(email_err)
             }
         }
@@ -202,12 +272,19 @@ pub async fn contact(data: ContactRequest) -> Result<(), ServerFnError> {
             Ok(())
         }
         Err(email_err) => {
-            tracing::error!("Failed to send email after retries: {:?}", email_err);
+            tracing::error!("Failed to send email after retries: {email_err:?}");
             Err(ServerFnError::from(email_err))
         }
     }
 }
 
+/// Fetches a list of published references from the database.
+///
+/// References are ordered by creation date (descending).
+///
+/// # Returns
+///
+/// A `Result` containing a `Vec<Reference>` on success, or a `ServerFnError` on failure.
 #[server(endpoint = "/references")]
 pub async fn select_references() -> Result<Vec<Reference>, ServerFnError> {
     use crate::types::AppState;
@@ -224,21 +301,34 @@ pub async fn select_references() -> Result<Vec<Reference>, ServerFnError> {
     .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Database error: {e}")))?;
     let references = query
         .take::<Vec<Reference>>(0)
-        .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {}", e)))?;
+        .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {e}")))?;
     Ok(references)
 }
 
+/// Represents pagination parameters for fetching data.
 #[derive(Deserialize)]
 pub struct Pagination {
     pub page: usize,
 }
 
-fn build_activity_create_query(activity: &Activity) -> Result<String, ServerFnError> {
-    let mut payload = activity.clone();
-    let explicit_id = payload.id.take();
+/// Constructs a SurrealQL `CREATE` query for an activity record.
+///
+/// If the activity has an explicit `id`, it will be used in the `CREATE` statement;
+/// otherwise, SurrealDB will generate a new one. The activity data is serialized
+/// to JSON for the `CONTENT` clause.
+///
+/// # Arguments
+///
+/// * `activity` - The `Activity` struct to create.
+///
+/// # Returns
+///
+/// A `Result` containing the SurrealQL query string or a `ServerFnError` on serialization failure.
+fn build_activity_create_query(mut activity: Activity) -> Result<String, ServerFnError> {
+    let explicit_id = activity.id.take();
 
     let json =
-        serde_json::to_string(&payload).map_err(|e| server_error("Serialization error", e))?;
+        serde_json::to_string(&activity).map_err(|e| server_error("Serialization error", e))?;
 
     if let Some(id) = explicit_id {
         let record_literal = record_id_literal(&id);
@@ -248,45 +338,110 @@ fn build_activity_create_query(activity: &Activity) -> Result<String, ServerFnEr
     }
 }
 
+/// Constructs a SurrealQL `SELECT` query for fetching activity records with pagination.
+///
+/// # Arguments
+///
+/// * `page` - The 0-indexed page number.
+///
+/// # Returns
+///
+/// A `String` containing the SurrealQL query.
 fn build_select_activities_query(page: usize) -> String {
     let start = page * ACTIVITIES_PER_PAGE;
     format!(
-        "SELECT * FROM activity ORDER BY created_at DESC LIMIT {} START {};",
-        ACTIVITIES_PER_PAGE, start
+        "SELECT * FROM activity ORDER BY created_at DESC LIMIT {ACTIVITIES_PER_PAGE} START {start}"
     )
 }
 
+/// Converts a `RecordId` into a string literal suitable for SurrealQL queries.
+///
+/// # Arguments
+///
+/// * `id` - A reference to the `RecordId`.
+///
+/// # Returns
+///
+/// A `String` representing the SurrealQL record ID literal (e.g., `table:id`).
 fn record_id_literal(id: &RecordId) -> String {
     let table = id.table.as_str();
     let key = record_key_literal(&id.key);
     format!("{table}:{key}")
 }
 
+/// Converts a `RecordIdKey` into its string representation.
+///
+/// # Arguments
+///
+/// * `key` - A reference to the `RecordIdKey`.
+///
+/// # Returns
+///
+/// A `String` representation of the key.
+///
+/// # Panics
+///
+/// If an unsupported `RecordIdKey` variant is encountered.
 fn record_key_literal(key: &RecordIdKey) -> String {
     match key {
         RecordIdKey::String(value) => value.clone(),
         RecordIdKey::Number(value) => value.to_string(),
-        other => panic!("Unsupported record id key variant: {:?}", other),
+        other => panic!("Unsupported record id key variant: {other:?}"),
     }
 }
 
+/// Creates a `ServerFnError` from a context string and a displayable error.
+///
+/// This helper standardizes error reporting for server functions.
+///
+/// # Arguments
+///
+/// * `context` - A string providing context for the error.
+/// * `err` - An error type that implements `std::fmt::Display`.
+///
+/// # Returns
+///
+/// A `ServerFnError` with the formatted error message.
 fn server_error(context: &str, err: impl std::fmt::Display) -> ServerFnError {
     ServerFnError::<NoCustomError>::ServerError(format!("{context}: {err}"))
 }
 
+/// Converts a SurrealDB `Value` into an `Activity` struct.
+///
+/// This function expects the `Value` to be an object and attempts to
+/// build an `Activity` from its fields.
+///
+/// # Arguments
+///
+/// * `value` - The `SurrealDB::Value` to convert.
+///
+/// # Returns
+///
+/// A `Result` containing an `Activity` struct on success, or a `String` error if
+/// the value is not an object or parsing fails.
 fn value_to_activity(value: Value) -> Result<Activity, String> {
     let map = match value {
         Value::Object(object) => object.into_iter().collect::<BTreeMap<_, _>>(),
         other => {
             return Err(format!(
-                "Expected activity object but received value: {:?}",
-                other
+                "Expected activity object but received value: {other:?}"
             ));
         }
     };
     build_activity_from_map(map)
 }
 
+/// Deserializes a vector of SurrealDB `Value`s into a vector of `Activity` structs.
+///
+/// This function maps over the input vector, converting each `Value` to an `Activity`.
+///
+/// # Arguments
+///
+/// * `values` - A `Vec<Value>` representing raw activity records from SurrealDB.
+///
+/// # Returns
+///
+/// A `Result` containing a `Vec<Activity>` on success, or a `ServerFnError` on deserialization failure.
 fn deserialize_activity_values(values: Vec<Value>) -> Result<Vec<Activity>, ServerFnError> {
     values
         .into_iter()
@@ -294,6 +449,19 @@ fn deserialize_activity_values(values: Vec<Value>) -> Result<Vec<Activity>, Serv
         .collect()
 }
 
+/// Builds an `Activity` struct from a `BTreeMap` of field names to SurrealDB `Value`s.
+///
+/// This helper extracts and converts specific fields from the map into the `Activity` struct's
+/// corresponding types.
+///
+/// # Arguments
+///
+/// * `map` - A mutable `BTreeMap<String, Value>` containing the activity's fields.
+///
+/// # Returns
+///
+/// A `Result` containing an `Activity` struct on success, or a `String` error if
+/// a field cannot be extracted or converted.
 fn build_activity_from_map(mut map: BTreeMap<String, Value>) -> Result<Activity, String> {
     let content = take_string(&mut map, "content")?.unwrap_or_default();
     let tags = take_string_vec(&mut map, "tags")?;
@@ -310,17 +478,40 @@ fn build_activity_from_map(mut map: BTreeMap<String, Value>) -> Result<Activity,
     })
 }
 
+/// Extracts a `String` value from a `BTreeMap`, removing the key-value pair.
+///
+/// # Arguments
+///
+/// * `map` - A mutable `BTreeMap<String, Value>`.
+/// * `key` - The key of the string to extract.
+///
+/// # Returns
+///
+/// A `Result` containing `Option<String>` (Some if found and a string, None if not found or null)
+/// or a `String` error if the value is not a string.
 fn take_string(map: &mut BTreeMap<String, Value>, key: &str) -> Result<Option<String>, String> {
     match map.remove(key) {
         Some(Value::String(value)) => Ok(Some(value)),
         Some(Value::None) | Some(Value::Null) | None => Ok(None),
         Some(other) => Err(format!(
-            "Expected string for field '{key}' but found {:?}",
-            other
+            "Expected string for field '{key}' but found {other:?}"
         )),
     }
 }
 
+/// Extracts an optional `String` value from a `BTreeMap`.
+///
+/// Similar to `take_string`, but specifically handles cases where the string might be `None` or `Null`.
+///
+/// # Arguments
+///
+/// * `map` - A mutable `BTreeMap<String, Value>`.
+/// * `key` - The key of the optional string to extract.
+///
+/// # Returns
+///
+/// A `Result` containing `Option<String>` or a `String` error if the value is not
+/// a string, `None`, or `Null`.
 fn take_optional_string(
     map: &mut BTreeMap<String, Value>,
     key: &str,
@@ -329,12 +520,22 @@ fn take_optional_string(
         None | Some(Value::None) | Some(Value::Null) => Ok(None),
         Some(Value::String(value)) => Ok(Some(value)),
         Some(other) => Err(format!(
-            "Expected string or null for field '{key}' but found {:?}",
-            other
+            "Expected string or null for field '{key}' but found {other:?}"
         )),
     }
 }
 
+/// Extracts a `Vec<String>` from a `BTreeMap`.
+///
+/// # Arguments
+///
+/// * `map` - A mutable `BTreeMap<String, Value>`.
+/// * `key` - The key of the string vector to extract.
+///
+/// # Returns
+///
+/// A `Result` containing `Vec<String>` or a `String` error if the value is not
+/// an array of strings.
 fn take_string_vec(map: &mut BTreeMap<String, Value>, key: &str) -> Result<Vec<String>, String> {
     match map.remove(key) {
         None => Ok(Vec::new()),
@@ -344,19 +545,30 @@ fn take_string_vec(map: &mut BTreeMap<String, Value>, key: &str) -> Result<Vec<S
                 Value::String(item) => Ok(item),
                 Value::None | Value::Null => Ok(String::new()),
                 other => Err(format!(
-                    "Expected string inside array field '{key}' but found {:?}",
-                    other
+                    "Expected string inside array field '{key}' but found {other:?}"
                 )),
             })
             .collect(),
         Some(Value::None) | Some(Value::Null) => Ok(Vec::new()),
         Some(other) => Err(format!(
-            "Expected array for field '{key}' but found {:?}",
-            other
+            "Expected array for field '{key}' but found {other:?}"
         )),
     }
 }
 
+/// Extracts a `RecordId` from a `BTreeMap`.
+///
+/// Handles `RecordId` values directly or attempts to parse from a `String`.
+///
+/// # Arguments
+///
+/// * `map` - A mutable `BTreeMap<String, Value>`.
+/// * `key` - The key of the `RecordId` to extract.
+///
+/// # Returns
+///
+/// A `Result` containing `Option<RecordId>` or a `String` error if the value
+/// cannot be converted to a `RecordId`.
 fn take_record_id(
     map: &mut BTreeMap<String, Value>,
     key: &str,
@@ -368,12 +580,25 @@ fn take_record_id(
             .map(Some)
             .map_err(|e| format!("Failed to parse record id '{text}': {e}")),
         Some(other) => Err(format!(
-            "Expected record id for field '{key}' but found {:?}",
-            other
+            "Expected record id for field '{key}' but found {other:?}"
         )),
     }
 }
 
+/// Creates a new activity record in the database.
+///
+/// This server function constructs a SurrealQL `CREATE` query from the provided
+/// `Activity` data and executes it. It includes a retry mechanism for database
+/// operations to handle transient errors.
+///
+/// # Arguments
+///
+/// * `activity` - The `Activity` struct containing the data for the new record.
+///
+/// # Returns
+///
+/// A `Result` indicating success (`()`) or a `ServerFnError` on failure
+/// (e.g., database error, serialization failure).
 #[server(prefix = "/api/activities", endpoint = "create")]
 pub async fn create_activity(activity: crate::types::Activity) -> Result<(), ServerFnError> {
     use crate::types::AppState;
@@ -382,7 +607,7 @@ pub async fn create_activity(activity: crate::types::Activity) -> Result<(), Ser
     let AppState { db, .. } = expect_context::<AppState>();
     let db = db.as_ref();
 
-    let query = build_activity_create_query(&activity)?;
+    let query = build_activity_create_query(activity)?;
 
     let create_result: Result<(), surrealdb::Error> =
         retry_async("create_activity", RetryConfig::default(), || async {
@@ -405,6 +630,21 @@ pub async fn create_activity(activity: crate::types::Activity) -> Result<(), Ser
     Ok(())
 }
 
+/// Selects activity records from the database with pagination.
+///
+/// This server function constructs a SurrealQL `SELECT` query to fetch a page
+/// of activity records, ordered by creation date. It includes a retry mechanism
+/// for database operations and deserializes the raw SurrealDB `Value`s into
+/// `Activity` structs.
+///
+/// # Arguments
+///
+/// * `page` - The 0-indexed page number of activities to retrieve.
+///
+/// # Returns
+///
+/// A `Result` containing a `Vec<Activity>` on success, or a `ServerFnError` on failure
+/// (e.g., database error, deserialization failure).
 #[server(prefix = "/api", endpoint = "activities", input = GetUrl)]
 pub async fn select_activities(
     #[server(default)] page: usize,
@@ -423,7 +663,7 @@ pub async fn select_activities(
     .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Database error: {e}")))?;
     let raw_values = query
         .take::<Vec<Value>>(0)
-        .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {}", e)))?;
+        .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {e}")))?;
     let activities = deserialize_activity_values(raw_values)?;
 
     Ok(activities)
@@ -434,8 +674,15 @@ mod tests {
     use super::*;
     use crate::types::Activity;
     #[cfg(feature = "ssr")]
+    use surrealdb::Surreal;
+    #[cfg(feature = "ssr")]
+    use surrealdb::engine::any::Any;
+    #[cfg(feature = "ssr")]
+    use surrealdb_types::RecordId as Thing;
+    #[cfg(feature = "ssr")]
     use tokio_test::block_on;
 
+    /// Verifies the default state of a `ContactRequest`.
     #[test]
     fn test_contact_request_default() {
         let request = ContactRequest::default();
@@ -445,6 +692,7 @@ mod tests {
         assert_eq!(request.message, "");
     }
 
+    /// Confirms that `ContactRequest` serializes and deserializes correctly.
     #[test]
     fn test_contact_request_serialization() {
         let request = ContactRequest {
@@ -462,51 +710,31 @@ mod tests {
         assert_eq!(request.subject, deserialized.subject);
         assert_eq!(request.message, deserialized.message);
     }
-
-    // Test email retry mechanism would require mocking SMTP server
-    // This is a placeholder for testing email retry logic structure
+    /// Validates the exponential backoff retry configuration for email sending.
     #[cfg(feature = "ssr")]
     #[test]
-    fn test_email_retry_configuration() {
-        // Test email retry configuration without requiring actual SMTP
+    fn test_email_retry_config() {
         use std::time::Duration;
         use tokio_retry::strategy::ExponentialBackoff;
 
-        // Verify the contact function exists with correct signature
+        // Ensure the `contact` function signature is stable.
         let _: fn(ContactRequest) -> _ = contact;
 
-        // Test the retry strategy configuration used in email sending
         let retry_strategy = ExponentialBackoff::from_millis(200)
             .max_delay(Duration::from_secs(10))
             .take(3);
-
         let delays: Vec<_> = retry_strategy.collect();
 
-        // Should have exactly 3 retry attempts
+        // Verify the number of retry attempts.
         assert_eq!(delays.len(), 3);
-
-        // First delay should be around 200ms
-        assert!(delays[0] >= Duration::from_millis(180));
-        assert!(delays[0] <= Duration::from_millis(220));
-
-        // Test that we can create ContactRequest for email operations
-        let request = ContactRequest {
-            name: "Test User".to_string(),
-            email: "test@example.com".to_string(),
-            subject: "Test Subject".to_string(),
-            message: "Test message".to_string(),
-        };
-
-        assert!(!request.name.is_empty());
-        assert!(!request.email.is_empty());
-        assert!(request.email.contains('@'));
+        // Check initial delay.
+        assert!(delays[0] >= Duration::from_millis(180) && delays[0] <= Duration::from_millis(220));
     }
 
+    /// Verifies that all server function endpoints retain their correct signatures.
+    /// This ensures API contracts remain stable despite internal retry implementations.
     #[test]
-    fn test_server_fn_endpoints_exist() {
-        // Verify all server function endpoints are defined with correct signatures
-        // This ensures our retry-enabled functions maintain their contracts
-
+    fn test_server_fn_signatures() {
         let _: fn(Vec<String>) -> _ = select_posts;
         let _: fn() -> _ = select_tags;
         let _: fn(String) -> _ = select_post;
@@ -516,8 +744,8 @@ mod tests {
         let _: fn(Activity) -> _ = create_activity;
         let _: fn(usize) -> _ = select_activities;
     }
-
     #[test]
+    /// Confirms the default values of the `Activity` struct.
     fn test_activity_default() {
         let activity = Activity::default();
         assert_eq!(activity.content, "");
@@ -525,8 +753,8 @@ mod tests {
         assert_eq!(activity.source, None);
         assert_eq!(activity.created_at, "");
     }
-
     #[test]
+    /// Verifies `Activity` struct serialization and deserialization.
     fn test_activity_serialization() {
         let activity = Activity {
             content: "Test activity".to_string(),
@@ -544,47 +772,40 @@ mod tests {
         assert_eq!(activity.source, deserialized.source);
         assert_eq!(activity.created_at, deserialized.created_at);
     }
-
     #[test]
+    /// Verifies the `Pagination` struct initializes correctly.
     fn test_pagination_struct() {
         let pagination = Pagination { page: 1 };
         assert_eq!(pagination.page, 1);
     }
-
     #[cfg(feature = "ssr")]
     #[test]
-    fn test_create_activity_with_retry() {
+    /// Tests the `create_activity` function's existence and serialization capabilities.
+    fn test_create_activity_basics() {
         block_on(async {
-            // Test that create_activity function exists and has correct signature
-            let _: fn(Activity) -> _ = create_activity;
+            let _: fn(Activity) -> _ = create_activity; // Check signature
 
-            // Test activity creation with valid data
             let activity = Activity {
                 content: "Test activity content".to_string(),
                 tags: vec!["test".to_string()],
                 source: Some("https://test.com".to_string()),
                 ..Default::default()
             };
-
-            // Verify the activity can be serialized (required for database operations)
             let serialized = serde_json::to_string(&activity).unwrap();
             assert!(!serialized.is_empty());
             assert!(serialized.contains("Test activity content"));
         });
     }
-
     #[cfg(feature = "ssr")]
     #[test]
-    fn test_select_activities_with_retry() {
+    /// Tests `select_activities` function's existence and pagination logic.
+    fn test_select_activities_pagination_logic() {
         block_on(async {
-            // Test that select_activities function exists and has correct signature
-            let _: fn(usize) -> _ = select_activities;
+            let _: fn(usize) -> _ = select_activities; // Check signature
 
-            // Test pagination parameter handling
             let page = 0;
             let activities_per_page = 10;
             let start = page * activities_per_page;
-
             assert_eq!(start, 0);
 
             let page = 1;
@@ -592,31 +813,24 @@ mod tests {
             assert_eq!(start, 10);
         });
     }
-
-    // Additional activity-related unit tests from integration test patterns
-
     #[test]
-    fn test_activity_json_structure_compatibility() {
-        // Test that Activity struct matches the JSON structure used in integration tests
+    /// Verifies `Activity` struct's compatibility with expected JSON structure.
+    fn test_activity_json_compatibility() {
         let activity_json = serde_json::json!({
             "content": "This is a test activity",
             "tags": ["test", "rust"],
             "source": "https://example.com"
         });
-
-        // Test deserialization from the exact structure used in integration tests
         let activity: Activity = serde_json::from_value(activity_json).unwrap();
 
         assert_eq!(activity.content, "This is a test activity");
         assert_eq!(activity.tags, vec!["test", "rust"]);
         assert_eq!(activity.source, Some("https://example.com".to_string()));
     }
-
     #[test]
-    fn test_activity_creation_validation() {
-        // Test activity creation patterns from integration test scenarios
+    /// Tests various valid activity creation scenarios, including empty tags and multiple tags.
+    fn test_activity_creation_scenarios() {
         let test_cases = vec![
-            // Valid activity
             Activity {
                 content: "Valid activity".to_string(),
                 tags: vec!["test".to_string()],
@@ -624,7 +838,6 @@ mod tests {
                 created_at: "2023-01-01T00:00:00Z".to_string(),
                 ..Default::default()
             },
-            // Activity with empty tags
             Activity {
                 content: "Activity with no tags".to_string(),
                 tags: vec![],
@@ -632,7 +845,6 @@ mod tests {
                 created_at: "2023-01-01T00:00:00Z".to_string(),
                 ..Default::default()
             },
-            // Activity with multiple tags
             Activity {
                 content: "Multi-tag activity".to_string(),
                 tags: vec!["rust".to_string(), "web".to_string(), "blog".to_string()],
@@ -643,107 +855,63 @@ mod tests {
         ];
 
         for activity in test_cases {
-            // Test serialization roundtrip
             let serialized = serde_json::to_string(&activity).unwrap();
             let deserialized: Activity = serde_json::from_str(&serialized).unwrap();
             assert_eq!(activity, deserialized);
         }
     }
-
     #[test]
-    fn test_activity_pagination_parameters() {
-        // Test pagination parameter handling from integration test patterns
+    /// Confirms that pagination parameters are handled correctly.
+    fn test_activity_pagination_params() {
         let test_pages = vec![0, 1, 5, 10];
-
         for page in test_pages {
-            // Test that pagination parameters are handled correctly
-            // This mirrors the integration test that calls /api/activities?page=N
-            assert!(page >= 0, "Page number should be non-negative");
-
-            // Test the activities_per_page constant used in server function
-            let activities_per_page = 10;
-            let start = page * activities_per_page;
-            assert!(start >= 0, "Start index should be non-negative");
+            let start = page * ACTIVITIES_PER_PAGE;
+            assert!(start >= ACTIVITIES_PER_PAGE * page);
         }
     }
-
     #[test]
+    /// Verifies the integrity of activity server function signatures.
     fn test_activity_endpoint_signatures() {
-        // Test that activity server functions maintain correct signatures
-        // This ensures compatibility with integration test expectations
-
-        // Test create_activity signature
         let _: fn(Activity) -> _ = create_activity;
-
-        // Test select_activities signature
         let _: fn(usize) -> _ = select_activities;
-
-        // These signatures must match what the integration tests expect
     }
-
     #[test]
-    fn test_activity_error_handling_patterns() {
-        // Test error handling patterns that integration tests might encounter
+    /// Tests error handling for invalid activity data deserialization.
+    fn test_activity_error_deserialization() {
         let invalid_activity_json = serde_json::json!({
-            "content": 123, // Wrong type
-            "tags": "not-an-array", // Wrong type
-            "source": null // Valid null
+            "content": 123,
+            "tags": "not-an-array",
+            "source": null
         });
-
-        // Test that invalid data is handled gracefully
         let result: Result<Activity, _> = serde_json::from_value(invalid_activity_json);
         assert!(
             result.is_err(),
             "Invalid activity data should fail deserialization"
         );
     }
-
     #[cfg(feature = "ssr")]
     #[test]
-    fn test_activity_server_function_registration() {
+    /// Confirms activity server functions are registered and have expected signatures.
+    fn test_activity_server_fn_registration() {
         block_on(async {
-            // Test that activity server functions are properly registered
-            // This complements the integration test that actually calls the endpoints
-
-            // Test function existence and basic structure
-            let test_activity = Activity {
-                content: "Test registration".to_string(),
-                tags: vec!["test".to_string()],
-                source: None,
-                created_at: chrono::Utc::now().to_rfc3339(),
-                ..Default::default()
-            };
-
-            // We can't actually call the server function without a proper context,
-            // but we can verify the function signature and basic structure
-            let _activity_clone = test_activity.clone();
             let _: fn(Activity) -> _ = create_activity;
-
-            // This test ensures the function signature matches integration test expectations
         });
     }
-
-    // Utility function tests extracted from integration test patterns
-
     #[test]
-    fn test_port_calculation_logic() {
-        // Test the port calculation logic used in integration tests
+    /// Tests the port calculation logic used in integration tests.
+    fn test_port_calculation() {
         let base_port = 3007;
         let test_port = 3030;
-
-        // This mirrors the calculation: db_port = 8000 + (port - 3007)
         let expected_db_port = 8000 + (test_port - base_port);
         assert_eq!(expected_db_port, 8023);
 
-        // Test edge cases
         let min_port = 3007;
         let min_db_port = 8000 + (min_port - base_port);
         assert_eq!(min_db_port, 8000);
     }
-
     #[test]
+    /// Verifies the expected JSON response format for activities.
     fn test_activity_json_response_format() {
-        // Test the expected JSON response format from integration tests
         let activity_response = serde_json::json!([
             {
                 "content": "This is a test activity",
@@ -752,9 +920,6 @@ mod tests {
                 "created_at": "2023-01-01T00:00:00Z"
             }
         ]);
-
-        // Test that the response format matches what integration tests expect
-        assert!(activity_response.is_array());
         let activities: Vec<Activity> = serde_json::from_value(activity_response).unwrap();
         assert_eq!(activities.len(), 1);
         assert_eq!(activities[0].content, "This is a test activity");
@@ -764,68 +929,52 @@ mod tests {
             Some("https://example.com".to_string())
         );
     }
-
     #[test]
+    /// Tests the URL construction logic for activity endpoints.
     fn test_activity_endpoint_url_construction() {
-        // Test URL construction patterns used in integration tests
         let base_url = "http://127.0.0.1:3030";
         let page = 0;
 
         let create_url = format!("{}/api/activities/create", base_url);
-        let fetch_url = format!("{}/api/activities?page={}", base_url, page);
+        let fetch_url = format!("{}/api/activities?page={page}", base_url);
 
         assert_eq!(create_url, "http://127.0.0.1:3030/api/activities/create");
         assert_eq!(fetch_url, "http://127.0.0.1:3030/api/activities?page=0");
 
-        // Test pagination URL construction
         for page in 0..=5 {
-            let url = format!("{}/api/activities?page={}", base_url, page);
-            assert!(url.contains(&format!("page={}", page)));
+            let url = format!("{}/api/activities?page={page}", base_url);
+            assert!(url.contains(&format!("page={page}")));
         }
     }
-
     #[test]
+    /// Verifies expected HTTP status codes for activity-related operations.
     fn test_activity_status_code_expectations() {
-        // Test the status code expectations from integration tests
         use http::StatusCode;
 
-        // These are the status codes that integration tests expect
-        let expected_create_status = StatusCode::CREATED;
-        let expected_fetch_status = StatusCode::OK;
+        assert_eq!(StatusCode::CREATED, 201);
+        assert_eq!(StatusCode::OK, 200);
 
-        assert_eq!(expected_create_status, 201);
-        assert_eq!(expected_fetch_status, 200);
-
-        // Test status code comparison logic
-        assert!(expected_create_status.is_success());
-        assert!(expected_fetch_status.is_success());
+        assert!(StatusCode::CREATED.is_success());
+        assert!(StatusCode::OK.is_success());
         assert!(!StatusCode::BAD_REQUEST.is_success());
     }
-}
 
-// === Activity Creation Tests ===
+    // === Activity Integration Tests (Mock Database) ===
 
-#[cfg(test)]
-mod activity_function_tests {
-    use super::*;
-    use crate::types::Activity;
-    use surrealdb::Surreal;
-    use surrealdb::engine::local::Mem;
-    use surrealdb_types::RecordId as Thing;
-
-    // Mock database for testing
-    async fn setup_mock_db() -> Surreal<surrealdb::engine::local::Db> {
-        let db = Surreal::new::<Mem>(()).await.unwrap();
+    /// Sets up a mock SurrealDB instance for testing.
+    async fn setup_mock_db() -> Surreal<Any> {
+        let db: Surreal<Any> = Surreal::init();
+        db.connect("memory").await.unwrap();
         db.use_ns("test").use_db("test").await.unwrap();
         db
     }
 
-    // Test utility functions for activity operations (mirroring test API)
-    async fn test_create_activity(
-        db: &Surreal<surrealdb::engine::local::Db>,
+    /// Helper to create an activity in the mock database.
+    async fn create_activity_in_db(
+        db: &Surreal<Any>,
         activity: Activity,
     ) -> Result<(), ServerFnError> {
-        let query = build_activity_create_query(&activity)?;
+        let query = build_activity_create_query(activity)?;
         let mut response = db.query(&query).await.map_err(|e| {
             ServerFnError::<NoCustomError>::ServerError(format!("Create error: {e}"))
         })?;
@@ -839,33 +988,30 @@ mod activity_function_tests {
                 "Create returned no record".to_string(),
             ));
         }
-
         Ok(())
     }
 
-    async fn test_select_activities(
-        db: &Surreal<surrealdb::engine::local::Db>,
+    /// Helper to select activities from the mock database.
+    async fn select_activities_from_db(
+        db: &Surreal<Any>,
         page: usize,
     ) -> Result<Vec<Activity>, ServerFnError> {
         let query = build_select_activities_query(page);
-
         let mut response = db.query(&query).await.map_err(|e| {
             ServerFnError::<NoCustomError>::ServerError(format!("Query error: {e}"))
         })?;
-
         let raw_values = response.take::<Vec<Value>>(0).map_err(|e| {
             ServerFnError::<NoCustomError>::ServerError(format!("Query result error: {e}"))
         })?;
         deserialize_activity_values(raw_values)
     }
 
-    async fn fetch_activity_by_id(
-        db: &Surreal<surrealdb::engine::local::Db>,
-        id: &str,
-    ) -> Option<Activity> {
-        match db.select(("activity", id)).await {
+    /// Helper to fetch a specific activity by its ID from the mock database.
+    async fn fetch_activity_by_id_from_db(db: &Surreal<Any>, id: &str) -> Option<Activity> {
+        match db.select::<Option<Activity>>(("activity", id)).await {
             Ok(record) => record,
             Err(_) => {
+                // Fallback to a query if direct select fails (e.g., if ID contains special chars)
                 let query = format!("SELECT * FROM activity:{id} LIMIT 1;");
                 if let Ok(mut response) = db.query(&query).await
                     && let Ok(values) = response.take::<Vec<Value>>(0)
@@ -879,8 +1025,9 @@ mod activity_function_tests {
         }
     }
 
+    /// Tests basic activity creation with a mock database.
     #[tokio::test]
-    async fn test_create_activity_basic() {
+    async fn test_create_activity_mock_db() {
         let db = setup_mock_db().await;
         let activity = Activity {
             id: Some(Thing::new("activity", "test_id")),
@@ -889,17 +1036,18 @@ mod activity_function_tests {
             ..Default::default()
         };
 
-        let result = test_create_activity(&db, activity.clone()).await;
+        let result = create_activity_in_db(&db, activity).await;
         assert!(result.is_ok(), "create_activity failed: {:?}", result.err());
 
-        // Verify the activity was created in the mock database
-        let created_activity = fetch_activity_by_id(&db, "test_id").await;
-        assert!(created_activity.is_some());
-        assert_eq!(created_activity.unwrap().content, activity.content);
+        let created_activity = fetch_activity_by_id_from_db(&db, "test_id")
+            .await
+            .expect("activity:test_id should exist");
+        assert_eq!(created_activity.content, "This is a test activity");
     }
 
+    /// Tests activity creation with tags.
     #[tokio::test]
-    async fn test_create_activity_with_tags() {
+    async fn test_create_activity_with_tags_mock_db() {
         let db = setup_mock_db().await;
         let activity = Activity {
             id: Some(Thing::new("activity", "tagged_activity")),
@@ -909,18 +1057,19 @@ mod activity_function_tests {
             ..Default::default()
         };
 
-        let result = test_create_activity(&db, activity.clone()).await;
+        let result = create_activity_in_db(&db, activity).await;
         assert!(result.is_ok(), "create_activity failed: {:?}", result.err());
 
-        let created_activity = fetch_activity_by_id(&db, "tagged_activity").await;
-        assert!(created_activity.is_some());
-        let created = created_activity.unwrap();
-        assert_eq!(created.content, activity.content);
-        assert_eq!(created.tags, activity.tags);
+        let created = fetch_activity_by_id_from_db(&db, "tagged_activity")
+            .await
+            .expect("activity:tagged_activity missing");
+        assert_eq!(created.content, "Activity with tags");
+        assert_eq!(created.tags, vec!["rust", "testing", "tdd"]);
     }
 
+    /// Tests activity creation with a source URL.
     #[tokio::test]
-    async fn test_create_activity_with_source() {
+    async fn test_create_activity_with_source_mock_db() {
         let db = setup_mock_db().await;
         let activity = Activity {
             id: Some(Thing::new("activity", "sourced_activity")),
@@ -930,18 +1079,22 @@ mod activity_function_tests {
             ..Default::default()
         };
 
-        let result = test_create_activity(&db, activity.clone()).await;
+        let result = create_activity_in_db(&db, activity).await;
         assert!(result.is_ok());
 
-        let created_activity = fetch_activity_by_id(&db, "sourced_activity").await;
-        assert!(created_activity.is_some());
-        let created = created_activity.unwrap();
-        assert_eq!(created.content, activity.content);
-        assert_eq!(created.source, activity.source);
+        let created = fetch_activity_by_id_from_db(&db, "sourced_activity")
+            .await
+            .expect("activity:sourced_activity missing");
+        assert_eq!(created.content, "Activity with source");
+        assert_eq!(
+            created.source,
+            Some("https://github.com/rust-lang/rust".to_string())
+        );
     }
 
+    /// Tests activity creation with empty content.
     #[tokio::test]
-    async fn test_create_activity_with_empty_content() {
+    async fn test_create_activity_empty_content_mock_db() {
         let db = setup_mock_db().await;
         let activity = Activity {
             id: Some(Thing::new("activity", "empty_content")),
@@ -950,35 +1103,39 @@ mod activity_function_tests {
             ..Default::default()
         };
 
-        let result = test_create_activity(&db, activity.clone()).await;
+        let result = create_activity_in_db(&db, activity).await;
         assert!(result.is_ok());
 
-        let created_activity = fetch_activity_by_id(&db, "empty_content").await;
-        assert!(created_activity.is_some());
-        assert_eq!(created_activity.unwrap().content, "");
+        let created = fetch_activity_by_id_from_db(&db, "empty_content")
+            .await
+            .expect("activity:empty_content missing");
+        assert_eq!(created.content, "");
     }
 
+    /// Tests activity creation with long content.
     #[tokio::test]
-    async fn test_create_activity_with_long_content() {
+    async fn test_create_activity_long_content_mock_db() {
         let db = setup_mock_db().await;
-        let long_content = "a".repeat(10000); // 10KB of content
         let activity = Activity {
             id: Some(Thing::new("activity", "long_content")),
-            content: long_content.clone(),
+            content: "a".repeat(10000),
             created_at: "2023-01-01T12:00:00Z".to_string(),
             ..Default::default()
         };
 
-        let result = test_create_activity(&db, activity.clone()).await;
+        let result = create_activity_in_db(&db, activity).await;
         assert!(result.is_ok());
 
-        let created_activity = fetch_activity_by_id(&db, "long_content").await;
-        assert!(created_activity.is_some());
-        assert_eq!(created_activity.unwrap().content, long_content);
+        let fetched = fetch_activity_by_id_from_db(&db, "long_content")
+            .await
+            .expect("activity:long_content missing");
+        assert_eq!(fetched.content.len(), 10000);
+        assert!(fetched.content.chars().all(|c| c == 'a'));
     }
 
+    /// Tests activity creation with special characters in content and tags.
     #[tokio::test]
-    async fn test_create_activity_with_special_characters() {
+    async fn test_create_activity_special_chars_mock_db() {
         let db = setup_mock_db().await;
         let special_content = "Special chars: áéíóú ñ ¿¡ 🚀 \n\t\r\"'\\";
         let activity = Activity {
@@ -989,12 +1146,12 @@ mod activity_function_tests {
             ..Default::default()
         };
 
-        let result = test_create_activity(&db, activity.clone()).await;
+        let result = create_activity_in_db(&db, activity).await;
         assert!(result.is_ok());
 
-        let created_activity = fetch_activity_by_id(&db, "special_chars").await;
-        assert!(created_activity.is_some());
-        let created = created_activity.unwrap();
+        let created = fetch_activity_by_id_from_db(&db, "special_chars")
+            .await
+            .expect("activity:special_chars missing");
         assert_eq!(created.content, special_content);
         assert_eq!(
             created.tags,
@@ -1002,8 +1159,9 @@ mod activity_function_tests {
         );
     }
 
+    /// Tests activity creation with Unicode tags.
     #[tokio::test]
-    async fn test_create_activity_with_unicode_tags() {
+    async fn test_create_activity_unicode_tags_mock_db() {
         let db = setup_mock_db().await;
         let activity = Activity {
             id: Some(Thing::new("activity", "unicode_tags")),
@@ -1017,12 +1175,12 @@ mod activity_function_tests {
             ..Default::default()
         };
 
-        let result = test_create_activity(&db, activity.clone()).await;
+        let result = create_activity_in_db(&db, activity).await;
         assert!(result.is_ok());
 
-        let created_activity = fetch_activity_by_id(&db, "unicode_tags").await;
-        assert!(created_activity.is_some());
-        let created = created_activity.unwrap();
+        let created = fetch_activity_by_id_from_db(&db, "unicode_tags")
+            .await
+            .expect("activity:unicode_tags missing");
         assert_eq!(
             created.tags,
             vec![
@@ -1033,8 +1191,9 @@ mod activity_function_tests {
         );
     }
 
+    /// Tests activity creation with an empty tag list.
     #[tokio::test]
-    async fn test_create_activity_with_empty_tags() {
+    async fn test_create_activity_empty_tags_mock_db() {
         let db = setup_mock_db().await;
         let activity = Activity {
             id: Some(Thing::new("activity", "empty_tags")),
@@ -1044,16 +1203,18 @@ mod activity_function_tests {
             ..Default::default()
         };
 
-        let result = test_create_activity(&db, activity.clone()).await;
+        let result = create_activity_in_db(&db, activity).await;
         assert!(result.is_ok());
 
-        let created_activity = fetch_activity_by_id(&db, "empty_tags").await;
-        assert!(created_activity.is_some());
-        assert!(created_activity.unwrap().tags.is_empty());
+        let created_activity = fetch_activity_by_id_from_db(&db, "empty_tags")
+            .await
+            .expect("activity:empty_tags missing");
+        assert!(created_activity.tags.is_empty());
     }
 
+    /// Tests activity creation with an invalid URL as a source.
     #[tokio::test]
-    async fn test_create_activity_with_invalid_url_source() {
+    async fn test_create_activity_invalid_source_url_mock_db() {
         let db = setup_mock_db().await;
         let activity = Activity {
             id: Some(Thing::new("activity", "invalid_url")),
@@ -1063,19 +1224,18 @@ mod activity_function_tests {
             ..Default::default()
         };
 
-        let result = test_create_activity(&db, activity.clone()).await;
+        let result = create_activity_in_db(&db, activity).await;
         assert!(result.is_ok());
 
-        let created_activity = fetch_activity_by_id(&db, "invalid_url").await;
-        assert!(created_activity.is_some());
-        assert_eq!(
-            created_activity.unwrap().source,
-            Some("not-a-valid-url".to_string())
-        );
+        let created = fetch_activity_by_id_from_db(&db, "invalid_url")
+            .await
+            .expect("activity:invalid_url missing");
+        assert_eq!(created.source, Some("not-a-valid-url".to_string()));
     }
 
+    /// Tests creation of multiple activities.
     #[tokio::test]
-    async fn test_create_multiple_activities() {
+    async fn test_create_multiple_activities_mock_db() {
         let db = setup_mock_db().await;
         let activities = vec![
             Activity {
@@ -1101,77 +1261,72 @@ mod activity_function_tests {
         ];
 
         for activity in activities {
-            let result = test_create_activity(&db, activity.clone()).await;
+            let result = create_activity_in_db(&db, activity).await;
             assert!(result.is_ok());
         }
 
-        // Verify all activities were created
         for i in 1..=3 {
-            let key = format!("multi_{}", i);
-            let created_activity = fetch_activity_by_id(&db, &key).await;
+            let key = format!("multi_{i}");
+            let created_activity = fetch_activity_by_id_from_db(&db, &key).await;
             assert!(created_activity.is_some());
         }
     }
 
     // === Activity Selection Tests ===
 
+    /// Tests basic activity selection from a mock database.
     #[tokio::test]
-    async fn test_select_activities_basic() {
+    async fn test_select_activities_basic_mock_db() {
         let db = setup_mock_db().await;
-        // Create some test activities
         for i in 0..5 {
             let activity = Activity {
-                id: Some(Thing::new("activity", format!("test_id_{}", i))),
-                content: format!("Activity {}", i),
-                created_at: format!("2023-01-01T12:00:0{}Z", i),
+                id: Some(Thing::new("activity", format!("test_id_{i}"))),
+                content: format!("Activity {i}"),
+                created_at: format!("2023-01-01T12:00:0{i}Z"),
                 ..Default::default()
             };
-            test_create_activity(&db, activity).await.unwrap();
+            create_activity_in_db(&db, activity).await.unwrap();
         }
 
-        let activities = test_select_activities(&db, 0).await.unwrap();
+        let activities = select_activities_from_db(&db, 0).await.unwrap();
         assert_eq!(activities.len(), 5);
-        assert_eq!(activities[0].content, "Activity 4");
+        assert_eq!(activities[0].content, "Activity 4"); // Newest first
     }
 
+    /// Tests activity selection with pagination using a mock database.
     #[tokio::test]
-    async fn test_select_activities_with_pagination() {
+    async fn test_select_activities_pagination_mock_db() {
         let db = setup_mock_db().await;
-        // Create 25 test activities
         for i in 0..25 {
             let activity = Activity {
-                id: Some(Thing::new("activity", format!("page_test_{}", i))),
-                content: format!("Page test activity {}", i),
-                created_at: format!("2023-01-01T12:{:02}:00Z", i),
+                id: Some(Thing::new("activity", format!("page_test_{i}"))),
+                content: format!("Page test activity {i}"),
+                created_at: format!("2023-01-01T12:{i:02}:00Z"),
                 ..Default::default()
             };
-            test_create_activity(&db, activity).await.unwrap();
+            create_activity_in_db(&db, activity).await.unwrap();
         }
 
-        // Test first page (should have 10 activities)
-        let page1 = test_select_activities(&db, 0).await.unwrap();
+        let page1 = select_activities_from_db(&db, 0).await.unwrap();
         assert_eq!(page1.len(), 10);
-        assert_eq!(page1[0].content, "Page test activity 24"); // Most recent first
+        assert_eq!(page1[0].content, "Page test activity 24");
 
-        // Test second page (should have 10 activities)
-        let page2 = test_select_activities(&db, 1).await.unwrap();
+        let page2 = select_activities_from_db(&db, 1).await.unwrap();
         assert_eq!(page2.len(), 10);
         assert_eq!(page2[0].content, "Page test activity 14");
 
-        // Test third page (should have 5 activities)
-        let page3 = test_select_activities(&db, 2).await.unwrap();
+        let page3 = select_activities_from_db(&db, 2).await.unwrap();
         assert_eq!(page3.len(), 5);
         assert_eq!(page3[0].content, "Page test activity 4");
 
-        // Test fourth page (should be empty)
-        let page4 = test_select_activities(&db, 3).await.unwrap();
+        let page4 = select_activities_from_db(&db, 3).await.unwrap();
         assert_eq!(page4.len(), 0);
     }
 
+    /// Verifies activity ordering by `created_at` in descending order.
     #[tokio::test]
-    async fn test_select_activities_ordering() {
+    async fn test_select_activities_ordering_mock_db() {
         let db = setup_mock_db().await;
-        // Create activities with different timestamps
         let activities_data = vec![
             ("2023-01-01T10:00:00Z", "Oldest activity"),
             ("2023-01-01T11:00:00Z", "Middle activity"),
@@ -1188,22 +1343,20 @@ mod activity_function_tests {
                 created_at: timestamp.to_string(),
                 ..Default::default()
             };
-            test_create_activity(&db, activity).await.unwrap();
+            create_activity_in_db(&db, activity).await.unwrap();
         }
 
-        let activities = test_select_activities(&db, 0).await.unwrap();
+        let activities = select_activities_from_db(&db, 0).await.unwrap();
         assert_eq!(activities.len(), 3);
-
-        // Should be ordered by created_at DESC (newest first)
         assert_eq!(activities[0].content, "Newest activity");
         assert_eq!(activities[1].content, "Middle activity");
         assert_eq!(activities[2].content, "Oldest activity");
     }
 
+    /// Tests activity selection when multiple activities share the same timestamp.
     #[tokio::test]
-    async fn test_select_activities_with_same_timestamp() {
+    async fn test_select_activities_same_timestamp_mock_db() {
         let db = setup_mock_db().await;
-        // Create activities with the same timestamp
         let same_timestamp = "2023-01-01T12:00:00Z";
         let activities_data = vec![
             ("same_time_1", "First same time"),
@@ -1218,22 +1371,20 @@ mod activity_function_tests {
                 created_at: same_timestamp.to_string(),
                 ..Default::default()
             };
-            test_create_activity(&db, activity).await.unwrap();
+            create_activity_in_db(&db, activity).await.unwrap();
         }
 
-        let activities = test_select_activities(&db, 0).await.unwrap();
+        let activities = select_activities_from_db(&db, 0).await.unwrap();
         assert_eq!(activities.len(), 3);
-
-        // All should have the same timestamp
         for activity in &activities {
             assert_eq!(activity.created_at, same_timestamp);
         }
     }
 
+    /// Verifies various content types (empty, long, unicode, special chars) are preserved during selection.
     #[tokio::test]
-    async fn test_select_activities_with_various_content() {
+    async fn test_select_activities_various_content_mock_db() {
         let db = setup_mock_db().await;
-        // Create activities with different content types
         let activities_data = vec![
             ("empty_content", "".to_string()),
             ("short_content", "Hi".to_string()),
@@ -1263,27 +1414,26 @@ mod activity_function_tests {
                 created_at: "2023-01-01T12:00:00Z".to_string(),
                 ..Default::default()
             };
-            test_create_activity(&db, activity).await.unwrap();
+            create_activity_in_db(&db, activity).await.unwrap();
         }
 
-        let activities = test_select_activities(&db, 0).await.unwrap();
+        let activities = select_activities_from_db(&db, 0).await.unwrap();
         assert_eq!(activities.len(), 7);
-
-        // Verify all content types are preserved
-        let contents: Vec<String> = activities.iter().map(|a| a.content.clone()).collect();
-        assert!(contents.contains(&"".to_string()));
-        assert!(contents.contains(&"Hi".to_string()));
-        assert!(contents.contains(&"This is a medium length activity content".to_string()));
-        assert!(contents.contains(&"a".repeat(1000)));
-        assert!(contents.contains(&"Unicode: áéíóú ñ ¿¡ 🚀 中文 日本語 한국어".to_string()));
-        assert!(contents.contains(&"Special: !@#$%^&*()_+-=[]{};':\",./<>?`~".to_string()));
-        assert!(contents.contains(&"  Multiple   spaces   and\ttabs\nnewlines  ".to_string()));
+        let contents: Vec<&str> = activities.iter().map(|a| a.content.as_str()).collect();
+        assert!(contents.contains(&""));
+        assert!(contents.contains(&"Hi"));
+        assert!(contents.contains(&"This is a medium length activity content"));
+        let repeated = "a".repeat(1000);
+        assert!(contents.contains(&repeated.as_str()));
+        assert!(contents.contains(&"Unicode: áéíóú ñ ¿¡ 🚀 中文 日本語 한국어"));
+        assert!(contents.contains(&"Special: !@#$%^&*()_+-=[]{};':\",./<>?`~"));
+        assert!(contents.contains(&"  Multiple   spaces   and\ttabs\nnewlines  "));
     }
 
+    /// Tests activity selection with various tags and sources.
     #[tokio::test]
-    async fn test_select_activities_with_tags_and_sources() {
+    async fn test_select_activities_tags_and_sources_mock_db() {
         let db = setup_mock_db().await;
-        // Create activities with various tags and sources
         let activities_data = vec![
             Activity {
                 id: Some(Thing::new("activity", "tagged_1")),
@@ -1316,18 +1466,13 @@ mod activity_function_tests {
         ];
 
         for activity in activities_data {
-            test_create_activity(&db, activity).await.unwrap();
+            create_activity_in_db(&db, activity).await.unwrap();
         }
 
-        let activities = test_select_activities(&db, 0).await.unwrap();
+        let activities = select_activities_from_db(&db, 0).await.unwrap();
         assert_eq!(activities.len(), 4);
-
-        // Verify tags and sources are preserved
         for activity in &activities {
-            let id = activity
-                .id
-                .as_ref()
-                .expect("Activity ID should be present in query results");
+            let id = activity.id.as_ref().expect("Activity ID should be present");
             let id_literal = record_id_literal(id);
             let id_part = id_literal
                 .split(':')
@@ -1356,36 +1501,32 @@ mod activity_function_tests {
         }
     }
 
+    /// Tests activity selection from an empty database.
     #[tokio::test]
-    async fn test_select_activities_empty_database() {
+    async fn test_select_activities_empty_db() {
         let db = setup_mock_db().await;
-        let activities = test_select_activities(&db, 0).await.unwrap();
+        let activities = select_activities_from_db(&db, 0).await.unwrap();
         assert_eq!(activities.len(), 0);
 
-        // Test multiple pages on empty database
-        let activities_page2 = test_select_activities(&db, 1).await.unwrap();
+        let activities_page2 = select_activities_from_db(&db, 1).await.unwrap();
         assert_eq!(activities_page2.len(), 0);
-
-        let activities_page10 = test_select_activities(&db, 10).await.unwrap();
-        assert_eq!(activities_page10.len(), 0);
     }
 
+    /// Tests activity selection with a page number exceeding available data.
     #[tokio::test]
-    async fn test_select_activities_large_page_number() {
+    async fn test_select_activities_large_page_mock_db() {
         let db = setup_mock_db().await;
-        // Create only 5 activities
         for i in 0..5 {
             let activity = Activity {
-                id: Some(Thing::new("activity", format!("large_page_{}", i))),
-                content: format!("Activity {}", i),
-                created_at: format!("2023-01-01T12:00:0{}Z", i),
+                id: Some(Thing::new("activity", format!("large_page_{i}"))),
+                content: format!("Activity {i}"),
+                created_at: format!("2023-01-01T12:00:0{i}Z"),
                 ..Default::default()
             };
-            test_create_activity(&db, activity).await.unwrap();
+            create_activity_in_db(&db, activity).await.unwrap();
         }
 
-        // Test with a very large page number
-        let activities = test_select_activities(&db, 1000).await.unwrap();
+        let activities = select_activities_from_db(&db, 1000).await.unwrap();
         assert_eq!(activities.len(), 0);
     }
 }

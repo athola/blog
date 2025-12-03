@@ -5,10 +5,6 @@
 
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-cd "$REPO_ROOT"
-
 # Configuration
 SURREAL_HOST=${SURREAL_HOST:-127.0.0.1:8000}
 SURREAL_PROTOCOL=${SURREAL_PROTOCOL:-http}
@@ -18,7 +14,7 @@ SURREAL_NS=${SURREAL_NS:-rustblog}
 SURREAL_DB=${SURREAL_DB:-rustblog}
 DB_FILE=${DB_FILE:-rustblog.db}
 
-echo "🔧 Ensuring database is ready..."
+echo "Ensuring database is ready..."
 echo "Host: $SURREAL_PROTOCOL://$SURREAL_HOST"
 echo "Namespace: $SURREAL_NS"
 echo "Database: $SURREAL_DB"
@@ -147,4 +143,4 @@ else
     initialize_database
 fi
 
-echo "✅ Database is ready and initialized!"
+echo "Database is ready and initialized!"

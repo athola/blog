@@ -1,19 +1,20 @@
-# Claude Quick Start
+# Quick Command Reference
 
-This is a token-optimized guide for working with this repository. For a full explanation, see the [Development Workflow Guide](wiki/Development-Workflow.md).
+This file provides a summary of the most common development commands. For complete details on the project architecture, setup, and workflows, refer to `README.md`.
 
-## Core Commands
+## Common Commands
 
--   **`make watch`**: Starts the dev server, DB, and live reload. App is at `http://127.0.0.1:3007`.
--   **`make validate`**: Runs all quality checks (format, lint, test, security). Use this before committing.
--   **`make test`**: Runs the full test suite.
--   **`./scripts/run_secret_scan.sh`**: Runs the security scan for secrets.
+-   **Run development server**: `make watch`
+    -   Starts the Axum backend, SurrealDB, and the Leptos frontend with live reload.
+    -   Application is available at `http://127.0.0.1:3007`.
 
-## Project Structure
+-   **Run all checks**: `make validate`
+    -   Executes formatting, linting, tests, and security scans. This should be run before committing.
 
--   `app/`: Shared Leptos components and types.
--   `server/`: Axum backend.
--   `frontend/`: WASM frontend.
--   `tests/`: Integration tests.
+-   **Run tests**: `make test`
+    -   Runs the full suite of integration and unit tests.
 
-For more details on architecture, commands, and troubleshooting, please read the [full development guide](wiki/Development-Workflow.md).
+-   **Run security scan**: `./scripts/run_secret_scan.sh`
+    -   Scans the codebase for hardcoded secrets and credentials.
+
+See the `Makefile` for a full list of available commands.

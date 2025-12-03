@@ -1,8 +1,16 @@
+//! This module defines the `header` component, which provides the main navigation
+//! bar for the application.
+//!
+//! It includes links for different sections of the blog and integrates
+//! the `icons` component for social media or other branding elements.
+
 use crate::icons;
 use leptos::prelude::*;
 use leptos_router::components::A;
-// Using Leptos Router A components for proper client-side navigation
 
+/// Renders the application's header, including navigation links and optional icons.
+///
+/// Uses `leptos_router::components::A` for client-side navigation to prevent full page reloads.
 pub fn component() -> impl IntoView {
     view! {
         <header class="fixed top-0 right-0 left-0 z-10 py-6 px-4 md:px-6 bg-[#1e1e1e]/80 backdrop-blur-md">

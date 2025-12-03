@@ -11,8 +11,8 @@ on:
       - "Cargo.lock"
       - "Makefile"
       - "Makefile.toml"
-      - "db.sh"
-      - "ensure-db-ready.sh"
+      - "scripts/db.sh"
+      - "scripts/ensure-db-ready.sh"
       - "tests/server_integration_tests.rs"
       - ".github/workflows/server-integration-tests.yml"
   # Can also be triggered manually for testing

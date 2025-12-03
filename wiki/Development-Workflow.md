@@ -1,90 +1,59 @@
 # Development Workflow
 
-A guide for building, testing, and working on the blog engine.
+This guide covers common workflows for building, testing, and contributing to the blog engine.
 
-## Setup
+## Local Development Setup
 
-### Prerequisites
+The initial setup process is documented in the `README.md` file. Before proceeding, follow the instructions in the **"Quick Start"** section of the main `README.md`.
 
--   Rust (latest stable)
--   WASM target: `rustup target add wasm32-unknown-unknown`
--   SurrealDB `v3.0.0-alpha.10`
--   Cargo tools: `make install-pkgs`
-
-### Initial Setup
+Once initial setup is complete, use this primary command for development:
 
 ```bash
-# 1. Clone the repository and navigate into it
-git clone https://github.com/athola/blog.git && cd blog
-
-# 2. Install build tools (e.g., cargo-leptos)
-make install-pkgs
-
-# 3. Install the correct SurrealDB version
-make install-surrealdb
-
-# 4. Create a local environment file
-cp .env.example .env
-
-# 5. Initialize the database
-make init-db
-```
-
-### Running the Development Server
-
-```bash
-# Start the database, backend, and frontend with live reload
+# Start the development server, database, and live reload
 make watch
 ```
 
 The application will be available at `http://127.0.0.1:3007`.
 
-## Project Structure
+## Common Development Tasks
 
--   `app/`: Shared application logic (Leptos components, routing, API types).
--   `server/`: Axum backend server (API, SSR).
--   `frontend/`: WASM frontend entry point.
--   `markdown/`: Markdown-to-HTML conversion utility.
--   `migrations/`: Database schema migrations (`.surql` files).
--   `tests/`: Integration tests.
+The `Makefile` automates most development tasks.
 
-## Makefile Commands
+### Running Checks and Tests
 
-Common tasks are automated with `make`.
+-   **`make validate`**: Runs all quality checks: formatting, linting, tests, and security scans. Run before committing any changes.
+-   **`make test`**: Runs the full test suite, including unit and integration tests.
+-   **`make test-unit`**: Runs only the fast unit tests.
+-   **`make test-coverage`**: Calculates and displays test coverage.
 
-### Core
+### Managing the Database
 
--   `make watch`: Start all services with live reload.
--   `make test`: Run the full test suite.
--   `make validate`: Run all checks (format, lint, test, security). Use before committing.
+-   **`make init-db`**: Initializes a clean database with the latest schema.
+-   **`make reset-db`**: **Deletes all data** and restarts the database container for a fresh start.
+-   **`make start-db` / `make stop-db`**: Manually start or stop the SurrealDB Docker container.
 
-### Testing
--   `make test-unit`: Run only unit tests.
--   `make test-ci`: Run the CI-optimized test suite.
--   `make test-coverage`: Calculate test coverage.
+### Code Quality and Security
 
-### Database
--   `make init-db`: Initialize the database.
--   `make reset-db`: Delete all data and restart the database.
--   `make start-db` / `make stop-db`: Start or stop the database container.
+-   **`make format`**: Formats all Rust code according to the project's style.
+-   **`make lint`**: Lints the codebase to check for common issues.
+-   **`./scripts/run_secret_scan.sh`**: Runs a comprehensive scan to detect any hardcoded secrets or credentials.
 
-### Code Quality
--   `make format`: Format the code.
--   `make lint`: Lint the code.
--   `./scripts/run_secret_scan.sh`: Run the secret scanning script.
+### Data Migration
+
+-   **`./scripts/backfill_activity_ids.sh`**: A helper script to normalize activity record IDs in the database. This is typically only needed when working with older data. See the script for more details.
 
 ## CI/CD Pipeline
 
-The GitHub Actions pipeline is designed to prioritize security.
+The GitHub Actions pipeline prioritizes security:
 
-1.  **Secret Scan (`secrets-scan.yml`):** Checks for hardcoded secrets. A failure blocks the pipeline.
-2.  **Build & Test (`rust.yml`):** Builds the project, runs tests, and checks formatting and linting.
-3.  **Deploy (`deploy.yml`):** On a `master` branch push, deploys the application to DigitalOcean if all previous steps pass.
+1.  **Secret Scan (`secrets-scan.yml`)**: The pipeline first scans for hardcoded secrets. A failure at this stage immediately blocks the workflow.
+2.  **Build & Test (`rust.yml`)**: If the secret scan passes, the pipeline proceeds to build the project, run all tests, and perform formatting and linting checks.
+3.  **Deploy (`deploy.yml`)**: If all previous steps succeed, a push to the `master` branch triggers an automatic deployment to DigitalOcean.
 
-This sequence ensures that no code with build errors or exposed secrets is deployed.
+This sequence ensures that code with build errors, failing tests, or exposed secrets is never deployed.
 
 ## Troubleshooting
 
--   **Build Failures**: Try `cargo clean && make build`. If that doesn't work, run `make install-pkgs` to update the build tools.
--   **Database Issues**: `make reset-db` will reset the database to a clean state. Also, confirm you are running SurrealDB `v3.0.0-alpha.10`.
--   **Lingering Processes**: If a service doesn't shut down, stop it manually with `pkill -f surreal` or `pkill -f server`.
+-   **Build Failures**: If the build fails, try `cargo clean && make build`. If the problem persists, `make install-pkgs` ensures build tools are updated.
+-   **Database Issues**: Resolve database problems with `make reset-db` for a fresh start. Confirm you are running SurrealDB `3.0.0-alpha.10`.
+-   **Lingering Processes**: If a service does not shut down correctly, you may need to terminate it manually. Use `pkill -f surreal` to stop the database or `pkill -f server` to stop the backend server.

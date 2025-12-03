@@ -232,7 +232,7 @@ jobs:
           schemas/
           events/
           **/*.surql
-          db.sh
+          scripts/db.sh
         retention-days: 1
 
   coverage:
@@ -300,9 +300,9 @@ jobs:
     - name: Run test coverage
       timeout-minutes: 30
       run: |
-        echo "🗄️ Initializing database for coverage tests..."
+        echo "Initializing database for coverage tests..."
         make init-db || echo "Database initialization completed"
-        echo "📊 Running coverage analysis..."
+        echo "Running coverage analysis..."
         cargo llvm-cov nextest --workspace --lcov --output-path test-results/coverage/lcov.info -E 'not (test(server_integration_tests) | test(activity_feed_tests))'
 
     - name: Generate HTML coverage report
@@ -360,15 +360,15 @@ jobs:
     
     - name: Run clippy
       run: |
-        echo "🔍 Running clippy analysis..."
+        echo "Running clippy analysis..."
         cargo clippy --all-targets --all-features -- -D warnings
 
     - name: Security audit
       timeout-minutes: 5
       run: |
-        echo "🔒 Running security audit..."
+        echo "Running security audit..."
         cargo install --locked cargo-audit --quiet 2>/dev/null || cargo install --locked cargo-audit
-        cargo audit --deny warnings --ignore RUSTSEC-2024-0436 --ignore RUSTSEC-2024-0320 || echo "⚠️ Security audit found issues"
+        cargo audit --deny warnings --ignore RUSTSEC-2024-0436 --ignore RUSTSEC-2024-0320 || echo "Security audit found issues"
 
     - name: Check for unused dependencies
       timeout-minutes: 10

@@ -1,70 +1,62 @@
+//! This crate provides functionality for processing Markdown content, including
+//! syntax highlighting for code blocks and KaTeX rendering for math.
+
 use leptos::prelude::ServerFnError;
 use pulldown_cmark::html::push_html;
 use pulldown_cmark::{CodeBlockKind, CowStr, Event, Options, Parser, Tag, TagEnd, TextMergeStream};
 use regex::Regex;
+use std::borrow::Cow;
 use syntect::easy::HighlightLines;
 use syntect::highlighting::ThemeSet;
 use syntect::html::{IncludeBackground, styled_line_to_highlighted_html};
 use syntect::parsing::SyntaxSet;
 
-#[expect(clippy::too_many_lines)]
-/// Process markdown for display to `frontend`.
-///
-/// # Arguments
-///
-/// * `markdown` - A markdown [`&str`] to process.
-///
-/// # Returns
-///
-/// * [`Result<String, ServerFnError>`] - Processed markdown [`String`] to
-///   process if success, else [`ServerFnError`].
-///
-/// # Errors
-///
-/// * [`ServerFnError`] - Return if issue with processing function on server.
-///
-pub fn process_markdown(markdown: &str) -> Result<String, ServerFnError> {
-    pub struct MathEventProcessor {
-        display_style_opts: katex::Opts,
-    }
+struct MathEventProcessor {
+    display_style_opts: katex::Opts,
+}
 
-    impl MathEventProcessor {
-        pub fn new() -> Self {
-            let opts = katex::Opts::builder().display_mode(true).build().unwrap();
-            Self {
-                display_style_opts: opts,
-            }
-        }
-
-        pub fn process_math_event<'a>(&'a self, event: Event<'a>) -> Event<'a> {
-            match event {
-                Event::InlineMath(math_exp) => {
-                    Event::InlineHtml(CowStr::from(katex::render(&math_exp).unwrap()))
-                }
-                Event::DisplayMath(math_exp) => Event::Html(CowStr::from(
-                    katex::render_with_opts(&math_exp, &self.display_style_opts).unwrap(),
-                )),
-                _ => event,
-            }
+impl MathEventProcessor {
+    fn new() -> Self {
+        let opts = katex::Opts::builder().display_mode(true).build().unwrap();
+        Self {
+            display_style_opts: opts,
         }
     }
 
-    // Initialize syntax highlighting
-    let ps = SyntaxSet::load_defaults_newlines();
-    let ts = ThemeSet::load_defaults();
-    let theme = &ts.themes["base16-eighties.dark"];
+    fn process_math_event<'a>(&'a self, event: Event<'a>) -> Event<'a> {
+        match event {
+            Event::InlineMath(math_exp) => {
+                Event::InlineHtml(CowStr::from(katex::render(&math_exp).unwrap()))
+            }
+            Event::DisplayMath(math_exp) => Event::Html(CowStr::from(
+                katex::render_with_opts(&math_exp, &self.display_style_opts).unwrap(),
+            )),
+            _ => event,
+        }
+    }
+}
 
-    // Regex for images
-    let re_img = Regex::new(r"!\[.*?\]\((.*?\.(svg|png|jpe?g|gif|bmp|webp))\)")?;
+/// Process markdown content with optimized image handling using Cow to reduce allocations.
+/// Returns Cow<str> to avoid unnecessary string allocations when no images are found.
+fn process_images_with_cow(markdown: &str) -> Cow<'_, str> {
+    let re_img = Regex::new(r"!\[.*?\]\((.*?\.(svg|png|jpe?g|gif|bmp|webp))\)").unwrap();
 
-    // Preprocess the markdown to handle images
-    let mut processed_markdown = String::new();
-    let mut last_img_end = 0;
-    for img_cap in re_img.captures_iter(markdown) {
-        if let Some(img_cap_first) = img_cap.get(0) {
-            processed_markdown.push_str(&markdown[last_img_end..img_cap_first.start()]);
-            let img_path = &img_cap[1];
-            let img_format = &img_cap[2];
+    let caps: Vec<_> = re_img.captures_iter(markdown).collect();
+    if caps.is_empty() {
+        // No images found, return original content without allocation
+        return Cow::Borrowed(markdown);
+    }
+
+    // Images found, need to allocate new string
+    let mut result = String::with_capacity(markdown.len() + 256); // Pre-allocate with extra space for HTML wrappers
+    let mut last_end = 0;
+
+    for cap in caps {
+        if let Some(full_match) = cap.get(0) {
+            result.push_str(&markdown[last_end..full_match.start()]);
+            let img_path = &cap[1];
+            let img_format = &cap[2];
+
             let img_html = if img_format == "svg" {
                 format!(
                     r#"<div style="display: flex; justify-content: center;"><img src="{img_path}" style="filter: invert(100%); width: 100%;"></div>"#
@@ -74,13 +66,54 @@ pub fn process_markdown(markdown: &str) -> Result<String, ServerFnError> {
                     r#"<div style="display: flex; justify-content: center;"><img src="{img_path}" style="width: 100%;"></div>"#
                 )
             };
-            processed_markdown.push_str(&img_html);
-            last_img_end = img_cap_first.end();
+            result.push_str(&img_html);
+            last_end = full_match.end();
         }
     }
-    processed_markdown.push_str(&markdown[last_img_end..]);
+    result.push_str(&markdown[last_end..]);
+    Cow::Owned(result)
+}
 
-    // Now parse the markdown
+/// Process code block content with optimized highlighting, using pre-allocated capacity
+/// to reduce string reallocations during HTML generation.
+fn highlight_code_block_optimized(
+    content: &str,
+    language: &str,
+    ps: &SyntaxSet,
+    theme: &syntect::highlighting::Theme,
+) -> Result<String, ServerFnError> {
+    let syntax = ps
+        .find_syntax_by_token(language)
+        .unwrap_or_else(|| ps.find_syntax_plain_text());
+    let mut h = HighlightLines::new(syntax, theme);
+
+    // Pre-allocate capacity to avoid reallocations
+    let mut highlighted_html = String::with_capacity(content.len() * 3);
+    highlighted_html.push_str(
+        r#"<pre style="background-color: #2b303b; padding: 8px; border-radius: 8px"><code>"#,
+    );
+
+    for line in content.lines() {
+        let ranges = h.highlight_line(line, ps)?;
+        let escaped = styled_line_to_highlighted_html(&ranges, IncludeBackground::No)?;
+        highlighted_html.push_str(&escaped);
+        highlighted_html.push('\n');
+    }
+    highlighted_html.push_str("</code></pre>");
+
+    Ok(highlighted_html)
+}
+
+pub fn process_markdown(markdown: &str) -> Result<String, ServerFnError> {
+    // Initialize syntax highlighting components from `syntect`.
+    let ps = SyntaxSet::load_defaults_newlines();
+    let ts = ThemeSet::load_defaults();
+    let theme = &ts.themes["base16-eighties.dark"];
+
+    // Process images with Cow optimization to reduce allocations
+    let processed_markdown = process_images_with_cow(markdown);
+
+    // Configure pulldown-cmark parser.
     let mut options = Options::empty();
     options.insert(Options::ENABLE_TABLES);
     options.insert(Options::ENABLE_TASKLISTS);
@@ -88,38 +121,21 @@ pub fn process_markdown(markdown: &str) -> Result<String, ServerFnError> {
     options.insert(Options::ENABLE_MATH);
 
     let parser = Parser::new_ext(&processed_markdown, options);
-
-    // Initialize the MathEventProcessor
     let mep = MathEventProcessor::new();
 
-    // Prepare to collect the events
     let mut events = Vec::new();
-
     let mut code_block_language: Option<String> = None;
     let mut code_block_content = String::new();
     let mut in_code_block = false;
     let mut skip_image = false;
 
-    // Use TextMergeStream to merge adjacent text events
-    let iterator = TextMergeStream::new(parser).map(|event| mep.process_math_event(event));
-
-    for event in iterator {
-        if skip_image {
-            if event == Event::End(TagEnd::Image) {
-                skip_image = false;
-            }
-            continue;
-        }
-
+    for event in TextMergeStream::new(parser) {
         match event {
             Event::Start(Tag::CodeBlock(kind)) => {
                 in_code_block = true;
                 code_block_content.clear();
-
-                // Extract language from CodeBlockKind
                 code_block_language = match kind {
                     CodeBlockKind::Fenced(info) => {
-                        // Get the first word as the language identifier
                         let lang = info.split_whitespace().next().unwrap_or("").to_owned();
                         Some(lang)
                     }
@@ -128,27 +144,11 @@ pub fn process_markdown(markdown: &str) -> Result<String, ServerFnError> {
             }
             Event::End(TagEnd::CodeBlock) => {
                 in_code_block = false;
-
-                // Perform syntax highlighting on the code block content
                 let language = code_block_language.as_deref().unwrap_or("plaintext");
-                let syntax = ps
-                    .find_syntax_by_token(language)
-                    .unwrap_or_else(|| ps.find_syntax_plain_text());
-                let mut h = HighlightLines::new(syntax, theme);
-                let mut highlighted_html = String::with_capacity(code_block_content.len() * 2);
-                highlighted_html
-                    .push_str(r#"<pre style="background-color: #2b303b; padding: 8px; border-radius: 8px"><code>"#);
 
-                for line in code_block_content.lines() {
-                    let ranges = h.highlight_line(line, &ps)?;
-                    let escaped = styled_line_to_highlighted_html(&ranges, IncludeBackground::No)?;
-                    highlighted_html.push_str(&escaped);
-                    highlighted_html.push('\n');
-                }
-                highlighted_html.push_str("</code></pre>");
-
+                let highlighted_html =
+                    highlight_code_block_optimized(&code_block_content, language, &ps, theme)?;
                 events.push(Event::Html(CowStr::from(highlighted_html)));
-
                 code_block_language = None;
             }
             Event::Text(text) => {
@@ -159,38 +159,33 @@ pub fn process_markdown(markdown: &str) -> Result<String, ServerFnError> {
                 }
             }
             Event::Start(Tag::Image { dest_url, .. }) => {
-                // Handle the image
                 let img_path = dest_url.into_string();
                 let img_format = img_path.split('.').next_back().unwrap_or("").to_lowercase();
-
                 let img_html = if img_format == "svg" {
                     format!(
-                        r#"<div style="display: flex; justify-content: center;"><img alt="iamge" src="{img_path}" style="filter: invert(100%); width: 100%;"></div>"#
+                        r#"<div style="display: flex; justify-content: center;"><img src="{img_path}" style="filter: invert(100%); width: 100%;"></div>"#
                     )
                 } else {
                     format!(
-                        r#"<div style="display: flex; justify-content: center;"><img alt="iamge" src="{img_path}" style="width: 100%;"></div>"#
+                        r#"<div style="display: flex; justify-content: center;"><img src="{img_path}" style="width: 100%;"></div>"#
                     )
                 };
-
                 events.push(Event::Html(CowStr::from(img_html)));
-
-                // Set skip_image flag to true to skip alt text and End(TagEnd::Image)
                 skip_image = true;
             }
             Event::End(TagEnd::Image) => {
-                // This will be skipped when skip_image is true
                 if !skip_image {
                     events.push(Event::End(TagEnd::Image));
                 }
+                skip_image = false;
             }
             other => {
-                events.push(other);
+                let processed = mep.process_math_event(other);
+                events.push(processed);
             }
         }
     }
 
-    // Render the events back to HTML
     let mut html_output = String::new();
     push_html(&mut html_output, events.into_iter());
 
@@ -204,9 +199,7 @@ mod tests {
     #[test]
     fn test_process_markdown_basic() {
         let markdown = "# Hello World\n\nThis is a test.";
-        let result = process_markdown(markdown);
-        assert!(result.is_ok());
-        let html = result.unwrap();
+        let html = process_markdown(markdown).unwrap();
         assert!(html.contains("<h1"));
         assert!(html.contains("Hello World"));
         assert!(html.contains("<p"));
@@ -216,40 +209,30 @@ mod tests {
     #[test]
     fn test_process_markdown_code_block() {
         let markdown = "```rust\nfn main() {\n    println!(\"Hello, world!\");\n}\n```";
-        let result = process_markdown(markdown);
-        assert!(result.is_ok());
-        let html = result.unwrap();
+        let html = process_markdown(markdown).unwrap();
         assert!(html.contains("<pre"));
         assert!(html.contains("<code"));
-        // The code should be somewhere in the HTML, possibly HTML-escaped
-        assert!(html.contains("main") || html.contains("fn"));
+        assert!(html.contains("main"));
     }
 
     #[test]
     fn test_process_markdown_empty() {
         let markdown = "";
-        let result = process_markdown(markdown);
-        assert!(result.is_ok());
-        let html = result.unwrap();
+        let html = process_markdown(markdown).unwrap();
         assert!(html.is_empty() || html.trim().is_empty());
     }
 
     #[test]
     fn test_process_markdown_math() {
-        let markdown = "This is inline math: $x^2$\n\n$$\\int_0^1 x dx$$";
-        let result = process_markdown(markdown);
-        assert!(result.is_ok());
-        // Math processing should work without panicking
+        let markdown = "This is inline math: $x^2$\n\n$$\\int_0^1 x \\, dx$$";
+        let html = process_markdown(markdown).unwrap();
+        assert!(html.contains("x^2") || html.contains("math"));
     }
 
     #[test]
-    fn test_markdown_processing_components() {
-        // Test that internal components work correctly
-        // This tests the overall markdown processing pipeline
-        let simple_markdown = "**bold** and *italic*";
-        let result = process_markdown(simple_markdown);
-        assert!(result.is_ok());
-        let html = result.unwrap();
+    fn test_markdown_formatting() {
+        let markdown = "**bold** and *italic*";
+        let html = process_markdown(markdown).unwrap();
         assert!(html.contains("<strong>") || html.contains("<b>"));
         assert!(html.contains("<em>") || html.contains("<i>"));
     }

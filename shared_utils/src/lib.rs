@@ -6,12 +6,16 @@ use tracing::{error, warn};
 /// Configuration for retry behavior when invoking asynchronous operations.
 #[derive(Debug, Clone, Copy)]
 pub struct RetryConfig {
+    /// The initial delay in milliseconds before the first retry attempt.
     pub initial_delay_millis: u64,
+    /// The maximum delay in seconds between retry attempts.
     pub max_delay_secs: u64,
+    /// The maximum number of retry attempts.
     pub max_retries: u32,
 }
 
 impl RetryConfig {
+    /// Creates a new `RetryConfig` with specified delay and retry parameters.
     #[must_use]
     pub fn new(initial_delay_millis: u64, max_delay_secs: u64, max_retries: u32) -> Self {
         Self {
@@ -22,6 +26,7 @@ impl RetryConfig {
     }
 
     fn strategy(&self) -> impl Iterator<Item = Duration> + Clone {
+        // Creates an exponential backoff retry strategy based on the configuration.
         ExponentialBackoff::from_millis(self.initial_delay_millis)
             .max_delay(Duration::from_secs(self.max_delay_secs))
             .take(self.max_retries as usize)
@@ -29,6 +34,8 @@ impl RetryConfig {
 }
 
 impl Default for RetryConfig {
+    /// Returns a default `RetryConfig` with `initial_delay_millis` of 50ms,
+    /// `max_delay_secs` of 2s, and `max_retries` of 3.
     fn default() -> Self {
         Self {
             initial_delay_millis: 50,
@@ -84,6 +91,7 @@ mod tests {
     use std::sync::Arc;
 
     #[test]
+    /// Tests that the `retry_async` function successfully completes after a few retries.
     fn succeeds_after_retries() {
         tokio_test::block_on(async {
             let attempts = Arc::new(AtomicUsize::new(0));
@@ -108,6 +116,7 @@ mod tests {
     }
 
     #[test]
+    /// Tests that the `retry_async` function returns an error after exhausting all retry attempts.
     fn returns_error_after_exhausting_retries() {
         tokio_test::block_on(async {
             let attempts = Arc::new(AtomicUsize::new(0));
@@ -132,6 +141,7 @@ mod tests {
     }
 
     #[test]
+    /// Tests that the `retry_async` function correctly applies a custom `RetryConfig`.
     fn honors_custom_config() {
         tokio_test::block_on(async {
             let config = RetryConfig::new(10, 1, 5);

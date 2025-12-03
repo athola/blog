@@ -1,10 +1,10 @@
 # Database Test Suite
 
-This document explains the structure of the database test suite and provides guidance on how to use it. The suite is designed to validate database migrations and schema changes.
+This document explains the structure and usage of the database test suite. The suite is designed to validate database migrations and schema changes.
 
 ## Test Harness
 
-The core of the suite is the test harness located in `surrealdb_test_harness.rs`. This harness abstracts away the repetitive tasks of setting up and tearing down database tests. Its features include:
+The core of the suite is the test harness in `harness/mod.rs`. This harness abstracts away the repetitive tasks of setting up and tearing down database tests. Its features include:
 
 -   **Migration Application:** Applies migrations from the `migrations/` directory in a specified order.
 -   **Data Seeding:** Includes a `TestDataBuilder` for creating consistent test data (e.g., authors, posts).
@@ -17,11 +17,11 @@ The core of the suite is the test harness located in `surrealdb_test_harness.rs`
 
 ## Usage Example
 
-The following is a basic example of how to write a test using the harness.
+Here is a basic example of how to write a test using the harness.
 
 ```rust
 #[tokio::test]
-asyn fn test_author_creation() {
+async fn test_author_creation() {
     // 1. Create a new instance of the test framework.
     let mut db = MigrationTestFramework::new().await.unwrap();
 
@@ -40,11 +40,11 @@ asyn fn test_author_creation() {
 
 ## Performance Testing Example
 
-The suite can also be used for simple performance tests, such as measuring the execution time of migrations.
+The suite can also be used for simple performance tests, like measuring the execution time of migrations.
 
 ```rust
 #[tokio::test]
-asyn fn test_migration_performance() {
+async fn test_migration_performance() {
     let start = std::time::Instant::now();
 
     // Apply the migrations to be measured.

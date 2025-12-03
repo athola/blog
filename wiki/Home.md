@@ -1,19 +1,12 @@
 # Project Wiki
 
-This wiki contains technical documentation for the blog engine.
+This wiki provides technical documentation for the blog engine, covering architecture, development, and deployment.
 
 ## Contents
 
--   [**Architecture**](wiki/Architecture.md)
-    -   An overview of the system design, core components, and key technical decisions.
--   [**Development Workflow**](wiki/Development-Workflow.md)
-    -   Instructions for setting up a local development environment, running tests, and using the `make` commands.
--   [**Deployment**](DEPLOYMENT.md)
-    -   A guide to deploying the application to production on DigitalOcean.
--   [**Security**](SECURITY.md)
-    -   The project's security policy and reporting guidelines.
+- [**Architecture**](wiki/Architecture.md): System design, components, and technical decisions
+- [**Development Workflow**](wiki/Development-Workflow.md): Local setup, testing, and `make` commands
+- [**Deployment Guide**](../DEPLOYMENT.md): Instructions for deploying to production
+- [**Security Guide**](wiki/Security-Guide.md): Security practices and vulnerability reporting
 
-## Quick Links
-
--   **GitHub Repository**: [https://github.com/athola/blog](https://github.com/athola/blog)
--   **Live Demo**: [https://alexthola.com](https://alexthola.com)
+The live blog is at [https://alexthola.com](https://alexthola.com).

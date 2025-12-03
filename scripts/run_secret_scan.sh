@@ -1,10 +1,6 @@
 #!/bin/bash
 set -euo pipefail  # Exit on error, undefined vars, or pipeline failures
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-cd "$REPO_ROOT"
-
 # Secret scanning script for the Rust blog project
 # Runs gitleaks, semgrep, and trufflehog to identify potential security issues
 
@@ -45,7 +41,7 @@ basic_secret_scan() {
     : > "$output_file"
     if ! command -v rg >/dev/null 2>&1; then
         echo "Note: ripgrep not available; secondary scan skipped" >> "$output_file"
-            echo "✅ Basic ${tool_name} secondary scan skipped (ripgrep unavailable)"        return
+            echo "Basic ${tool_name} secondary scan skipped (ripgrep unavailable)"        return
     fi
 
     for pattern in "${patterns[@]}"; do
@@ -53,9 +49,9 @@ basic_secret_scan() {
     done
 
     if [ -s "$output_file" ]; then
-        echo "⚠️  Basic ${tool_name} secondary found potential secrets! Check ${output_file}"
+        echo "Basic ${tool_name} secondary found potential secrets! Check ${output_file}"
     else
-        echo "✅ Basic ${tool_name} secondary found no matches"
+        echo "Basic ${tool_name} secondary found no matches"
     fi
 }
 
@@ -67,14 +63,14 @@ if command -v gitleaks >/dev/null 2>&1; then
     gitleaks detect --source . --report-format json --report-path secret_scanning_results/gitleaks-report.json
     status=$?
     if [ $status -eq 0 ] || [ $status -eq 1 ]; then
-        echo "✅ Gitleaks scan completed successfully"
+        echo "Gitleaks scan completed successfully"
         if [ -s secret_scanning_results/gitleaks-report.json ]; then
-            echo "⚠️  Gitleaks found potential secrets! Check secret_scanning_results/gitleaks-report.json"
+            echo "Gitleaks found potential secrets! Check secret_scanning_results/gitleaks-report.json"
         else
-            echo "✅ No secrets found by Gitleaks"
+            echo "No secrets found by Gitleaks"
         fi
     else
-        echo "❌ Gitleaks scan failed (exit code $status)"
+        echo "Gitleaks scan failed (exit code $status)"
     fi
 else
     basic_secret_scan "Gitleaks" "secret_scanning_results/gitleaks-report.json"
@@ -86,14 +82,14 @@ echo "===================="
 if command -v semgrep >/dev/null 2>&1; then
     # Use our custom secrets rules from semgrep with gitignore support
     if semgrep --config=.semgrep.yml --json --output=secret_scanning_results/semgrep-report.json --use-git-ignore . 2>/dev/null; then
-        echo "✅ Semgrep scan completed successfully"
+        echo "Semgrep scan completed successfully"
         if [ -s secret_scanning_results/semgrep-report.json ]; then
-            echo "⚠️  Semgrep found potential issues! Check secret_scanning_results/semgrep-report.json"
+            echo "Semgrep found potential issues! Check secret_scanning_results/semgrep-report.json"
         else
-            echo "✅ No issues found by Semgrep"
+            echo "No issues found by Semgrep"
         fi
     else
-        echo "⚠️  Semgrep scan completed with warnings or no secrets found"
+        echo "Semgrep scan completed with warnings or no secrets found"
     fi
 else
     basic_secret_scan "Semgrep" "secret_scanning_results/semgrep-report.json"
@@ -106,14 +102,14 @@ if command -v trufflehog >/dev/null 2>&1; then
     if trufflehog --help 2>&1 | grep -q "filesystem"; then
         # Run trufflehog filesystem scan (v3 CLI)
         if trufflehog filesystem --path . --exclude-dir .git --exclude-dir target --exclude-dir secret_scanning_results > secret_scanning_results/trufflehog-report.json; then
-            echo "✅ Trufflehog scan completed successfully"
+            echo "Trufflehog scan completed successfully"
             if [ -s secret_scanning_results/trufflehog-report.json ]; then
-                echo "⚠️  Trufflehog found potential secrets! Check secret_scanning_results/trufflehog-report.json"
+                echo "Trufflehog found potential secrets! Check secret_scanning_results/trufflehog-report.json"
             else
-                echo "✅ No secrets found by Trufflehog"
+                echo "No secrets found by Trufflehog"
             fi
         else
-            echo "⚠️  Trufflehog scan completed with warnings or no secrets found"
+            echo "Trufflehog scan completed with warnings or no secrets found"
         fi
     else
         echo "Note: Installed Trufflehog does not support filesystem scanning; using secondary search"

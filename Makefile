@@ -1,13 +1,13 @@
 .POSIX:
 
 .PHONY: help format fmt build build-release rebuild rebuild-clean \
-	lint lint-fix test test-ci test-unit test-server-integration \
+	lint lint-fix lint-md test test-ci test-unit test-server-integration \
 	test-server-integration-embedded test-integration-pattern test-report \
 	test-coverage test-coverage-html test-retry test-db test-email \
 	test-migrations test-server build-assets install-pkgs install-test-tools \
 	install-surrealdb upgrade security outdated sort spellcheck udeps bloat \
 	init-db start-db stop-db reset-db watch teardown clean-test-artifacts \
-	validate server server-release
+	validate server server-release precommit githooks
 
 format: fmt
 
@@ -32,6 +32,7 @@ help:
 	@echo "  build-release       : Build workspace artifacts (release)"
 	@echo "  fmt / format        : Format Rust sources"
 	@echo "  lint                : Run clippy with warnings as errors"
+	@echo "  lint-md             : Lint Markdown files with markdownlint-cli2"
 	@echo "  lint-fix            : Apply clippy autofixes where possible"
 	@echo "  test                : Run full cargo test suite (with assets)"
 	@echo "  test-ci             : Lightweight CI integration tests"
@@ -58,6 +59,8 @@ help:
 	@echo "  spellcheck          : Spellcheck documentation"
 	@echo "  udeps               : Detect unused dependencies (nightly)"
 	@echo "  bloat               : Inspect binary bloat"
+	@echo "  precommit           : Run fast checks the pre-commit hook depends on"
+	@echo "  githooks            : Point git core.hooksPath at ./githooks/"
 	@echo "  validate            : Run full validation workflow"
 	@echo "  server              : Run the server binary (debug)"
 	@echo "  server-release      : Run the server binary (release)"
@@ -117,7 +120,7 @@ else
 	@echo "Skipping server_integration_tests (set RUN_SERVER_INTEGRATION_TESTS=1 to enable)"
 endif
 	@echo ""
-	@echo "✅ Full test suite completed successfully!"
+	@echo "Full test suite completed successfully!"
 	@echo "Note: Run 'make test-server-integration' separately to test server functionality"
 
 test-server-integration:
@@ -213,6 +216,21 @@ $(eval $(call BRIDGE_CARGO_MAKE,sort,Sorting Cargo manifests))
 $(eval $(call BRIDGE_CARGO_MAKE,spellcheck,Running cargo spellcheck))
 $(eval $(call BRIDGE_CARGO_MAKE,udeps,Running cargo-udeps (nightly)))
 $(eval $(call BRIDGE_CARGO_MAKE,bloat,Inspecting binary bloat))
+
+lint-md:
+	$(ECHO_PREFIX) Linting Markdown
+	@./scripts/lint-markdown.sh
+
+precommit:
+	$(ECHO_PREFIX) Running pre-commit checks
+	@$(MAKE) fmt
+	@$(MAKE) lint
+	@$(MAKE) lint-md
+
+githooks:
+	$(ECHO_PREFIX) Installing git hooks
+	@chmod +x githooks/pre-commit scripts/install-git-hooks.sh
+	@./scripts/install-git-hooks.sh
 
 ## --- Database management --------------------------------------------------
 
