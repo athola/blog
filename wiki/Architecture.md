@@ -51,7 +51,7 @@ A monolithic, full-stack Rust application was chosen over a separate frontend an
 SurrealDB was selected over traditional databases like PostgreSQL due to its modern feature set, despite its pre-release status.
 -   **Integrated Real-Time Queries**: Live queries are a built-in feature, eliminating the need for a separate WebSocket or messaging system for features like real-time notifications.
 -   **Embedded Row-Level Security**: The database's native permission system simplifies authorization logic in the application layer.
--   **Calculated Risk**: Using an alpha version (`3.0.0-alpha.10`) is a deliberate trade-off. The benefits of its feature set were judged to outweigh the risk of potential instability.
+-   **Calculated Risk**: Using an alpha version (`3.0.0-alpha.16`) is a deliberate trade-off. The benefits of its feature set were judged to outweigh the risk of potential instability.
 
 ### Deterministic IDs for Activity Feeds
 

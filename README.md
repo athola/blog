@@ -49,7 +49,7 @@ graph LR
 
 - **Frontend** - Leptos compiled to WASM (~150KB gzipped) with TailwindCSS
 - **Backend** - Axum web server handling both SSR and API requests
-- **Database** - SurrealDB 3.0.0-alpha.10 with automatic connection retry
+- **Database** - SurrealDB 3.0.0-alpha.16 with automatic connection retry
 - **Build System** - cargo-leptos for development, cargo-make for automation
 
 ## Documentation
@@ -64,7 +64,7 @@ graph LR
 ### Prerequisites
 
 - Rust (latest stable) with WASM target: `rustup target add wasm32-unknown-unknown`
-- SurrealDB 3.0.0-alpha.10+
+- SurrealDB 3.0.0-alpha.16+
 
 ### Available Commands
 
