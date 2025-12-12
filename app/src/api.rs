@@ -29,6 +29,45 @@ use surrealdb_types::{RecordId, RecordIdKey, Value};
 
 const ACTIVITIES_PER_PAGE: usize = 10;
 
+/// Validates that a slug contains only safe characters for use in database queries.
+///
+/// Valid slugs contain only alphanumeric characters, hyphens, and underscores.
+/// This prevents potential injection attacks when interpolating slugs into queries.
+///
+/// # Arguments
+///
+/// * `slug` - The slug string to validate.
+///
+/// # Returns
+///
+/// `true` if the slug is safe, `false` otherwise.
+fn is_valid_slug(slug: &str) -> bool {
+    !slug.is_empty()
+        && slug.len() <= 200
+        && slug
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+/// Validates that a tag contains only safe characters for use in database queries.
+///
+/// Valid tags contain only alphanumeric characters, hyphens, underscores, and spaces.
+///
+/// # Arguments
+///
+/// * `tag` - The tag string to validate.
+///
+/// # Returns
+///
+/// `true` if the tag is safe, `false` otherwise.
+fn is_valid_tag(tag: &str) -> bool {
+    !tag.is_empty()
+        && tag.len() <= 100
+        && tag
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == ' ')
+}
+
 /// Fetches a list of blog posts from the database.
 ///
 /// Posts can be filtered by a list of tags. If no tags are provided,
@@ -57,6 +96,15 @@ pub async fn select_posts(
             "SELECT *, author.* from post WHERE is_published = true ORDER BY created_at DESC;",
         )
     } else {
+        // Validate all tags before constructing query to prevent injection
+        for tag in &tags {
+            if !is_valid_tag(tag) {
+                return Err(ServerFnError::<NoCustomError>::ServerError(format!(
+                    "Invalid tag format: '{}'",
+                    tag.chars().take(50).collect::<String>()
+                )));
+            }
+        }
         let tags = tags
             .iter()
             .map(|tag| format!(r#""{tag}""#))
@@ -147,6 +195,14 @@ pub async fn select_post(slug: String) -> Result<Post, ServerFnError> {
     let AppState { db, .. } = expect_context::<AppState>();
     let db = db.as_ref();
 
+    // Validate slug format to prevent injection attacks
+    if !is_valid_slug(&slug) {
+        return Err(ServerFnError::<NoCustomError>::ServerError(format!(
+            "Invalid slug format: '{}'",
+            slug.chars().take(50).collect::<String>()
+        )));
+    }
+
     let query_str = format!(r#"SELECT *, author.* from post WHERE slug = "{slug}""#);
     let mut query = retry_async("select_post", RetryConfig::default(), || async {
         db.query(&query_str).await
@@ -190,6 +246,14 @@ pub async fn increment_views(id: String) -> Result<(), ServerFnError> {
 
     let AppState { db, .. } = expect_context::<AppState>();
     let db = db.as_ref();
+
+    // Validate id format to prevent injection attacks (same rules as slug)
+    if !is_valid_slug(&id) {
+        return Err(ServerFnError::<NoCustomError>::ServerError(format!(
+            "Invalid post id format: '{}'",
+            id.chars().take(50).collect::<String>()
+        )));
+    }
 
     let query_str = format!("UPDATE post:{id} SET total_views = total_views + 1;");
     retry_async("increment_views", RetryConfig::default(), || async {
@@ -681,6 +745,49 @@ mod tests {
     use surrealdb_types::RecordId as Thing;
     #[cfg(feature = "ssr")]
     use tokio_test::block_on;
+
+    // === Input Validation Tests ===
+
+    /// Verifies that `is_valid_slug` accepts valid slugs.
+    #[test]
+    fn test_is_valid_slug_accepts_valid() {
+        assert!(is_valid_slug("hello-world"));
+        assert!(is_valid_slug("my_post_123"));
+        assert!(is_valid_slug("PostTitle"));
+        assert!(is_valid_slug("a"));
+        assert!(is_valid_slug("123"));
+    }
+
+    /// Verifies that `is_valid_slug` rejects invalid slugs.
+    #[test]
+    fn test_is_valid_slug_rejects_invalid() {
+        assert!(!is_valid_slug(""));
+        assert!(!is_valid_slug("hello world")); // spaces
+        assert!(!is_valid_slug("hello\"world")); // quotes
+        assert!(!is_valid_slug("hello'world")); // single quotes
+        assert!(!is_valid_slug("hello;world")); // semicolon
+        assert!(!is_valid_slug("hello\nworld")); // newline
+        assert!(!is_valid_slug(&"a".repeat(201))); // too long
+    }
+
+    /// Verifies that `is_valid_tag` accepts valid tags.
+    #[test]
+    fn test_is_valid_tag_accepts_valid() {
+        assert!(is_valid_tag("rust"));
+        assert!(is_valid_tag("web-dev"));
+        assert!(is_valid_tag("programming_tips"));
+        assert!(is_valid_tag("machine learning")); // spaces allowed in tags
+    }
+
+    /// Verifies that `is_valid_tag` rejects invalid tags.
+    #[test]
+    fn test_is_valid_tag_rejects_invalid() {
+        assert!(!is_valid_tag(""));
+        assert!(!is_valid_tag("tag\"injection")); // quotes
+        assert!(!is_valid_tag("tag;drop")); // semicolon
+        assert!(!is_valid_tag("tag\ttab")); // tab
+        assert!(!is_valid_tag(&"a".repeat(101))); // too long
+    }
 
     /// Verifies the default state of a `ContactRequest`.
     #[test]
