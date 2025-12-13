@@ -10,7 +10,7 @@
 use crate::components::{error_template, header, icons};
 use chrono::{Datelike as _, Utc};
 use leptos::{
-    html::{a, body, div, footer, head, html, main, meta, p},
+    html::{a, body, div, footer, head, html, meta, p},
     prelude::*,
 };
 use leptos_meta::{MetaTags, Stylesheet, StylesheetProps, Title, TitleProps, provide_meta_context};

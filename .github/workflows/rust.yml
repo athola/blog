@@ -144,6 +144,10 @@ jobs:
       matrix:
         profile: ${{ fromJson(needs.detect-changes.outputs.test-profiles) }}
       fail-fast: false
+    env:
+      # Override global RUSTFLAGS to avoid SIGILL errors
+      RUSTFLAGS: "-C opt-level=2"
+      RUSTDOCFLAGS: "-D warnings"
     steps:
     - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
     - uses: dtolnay/rust-toolchain@55d80eb3c5a4228eec5390a083c092095115c6f1 # nightly
@@ -160,7 +164,7 @@ jobs:
 
     - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
       with:
-        shared-key: "test-${{ matrix.profile }}"
+        shared-key: "test-safe-${{ matrix.profile }}"
         cache-targets: "true"
         cache-on-failure: "true"
         save-if: ${{ github.ref == 'refs/heads/master' }}
@@ -240,6 +244,14 @@ jobs:
     timeout-minutes: 30
     needs: detect-changes
     if: needs.detect-changes.outputs.rust-code == 'true' || github.event_name == 'push'
+    env:
+      # Override global RUSTFLAGS to avoid SIGILL errors in CI
+      # Use minimal optimizations to ensure compatibility
+      RUSTFLAGS: ""
+      RUSTDOCFLAGS: "-D warnings"
+      # Disable incremental compilation which can cause issues with llvm-cov
+      CARGO_INCREMENTAL: 0
+      LLVM_PROFILE_FILE: "target/llvm-cov-target/%p-%m.profraw"
     steps:
     - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
     - uses: dtolnay/rust-toolchain@55d80eb3c5a4228eec5390a083c092095115c6f1 # nightly
@@ -258,7 +270,7 @@ jobs:
 
     - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
       with:
-        shared-key: "coverage"
+        shared-key: "coverage-safe"
         cache-targets: "true"
         cache-on-failure: "true"
         save-if: ${{ github.ref == 'refs/heads/master' }}
@@ -293,16 +305,21 @@ jobs:
       run: |
         echo "📦 Installing test tools..."
         cargo install --locked cargo-nextest cargo-llvm-cov --quiet 2>/dev/null || cargo install --locked cargo-nextest cargo-llvm-cov
-    
+
     - name: Create test results directory
       run: mkdir -p test-results/coverage
-    
+
+    - name: Clean previous build artifacts
+      run: |
+        echo "🧹 Cleaning previous build artifacts to ensure fresh compilation with safe flags..."
+        cargo clean
+
     - name: Run test coverage
       timeout-minutes: 30
       run: |
         echo "Initializing database for coverage tests..."
         make init-db || echo "Database initialization completed"
-        echo "Running coverage analysis..."
+        echo "Running coverage analysis with safe compiler flags..."
         cargo llvm-cov nextest --workspace --lcov --output-path test-results/coverage/lcov.info -E 'not (test(server_integration_tests) | test(activity_feed_tests))'
 
     - name: Generate HTML coverage report
