@@ -21,18 +21,29 @@ RUN groupadd -r appuser && useradd -r -g appuser appuser
 # Create working directory
 WORKDIR /work
 
+# Create analyzed metadata for DigitalOcean buildpack compatibility
+RUN mkdir -p /layers && \
+    echo '[analyzed]' > /layers/analyzed.toml && \
+    echo 'version = "1.0.0"' >> /layers/analyzed.toml && \
+    echo '[[analyzed.layers]]' >> /layers/analyzed.toml && \
+    echo 'id = "build"' >> /layers/analyzed.toml && \
+    echo 'version = "1.0.0"' >> /layers/analyzed.toml && \
+    echo 'name = "build"' >> /layers/analyzed.toml
+
 # Copy dependency files first for better caching
 COPY Cargo.toml Cargo.lock ./
 COPY app/Cargo.toml ./app/
 COPY frontend/Cargo.toml ./frontend/
 COPY markdown/Cargo.toml ./markdown/
 COPY server/Cargo.toml ./server/
+COPY shared_utils/Cargo.toml ./shared_utils/
 
 # Copy only source code needed for build
 COPY app/ ./app/
 COPY frontend/ ./frontend/
 COPY markdown/ ./markdown/
 COPY server/ ./server/
+COPY shared_utils/ ./shared_utils/
 COPY public/ ./public/
 COPY style/ ./style/
 COPY Cargo.toml Cargo.lock ./
