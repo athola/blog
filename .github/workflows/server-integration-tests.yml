@@ -11,8 +11,8 @@ on:
       - "Cargo.lock"
       - "Makefile"
       - "Makefile.toml"
-      - "db.sh"
-      - "ensure-db-ready.sh"
+      - "scripts/db.sh"
+      - "scripts/ensure-db-ready.sh"
       - "tests/server_integration_tests.rs"
       - ".github/workflows/server-integration-tests.yml"
   # Can also be triggered manually for testing
@@ -64,7 +64,7 @@ jobs:
       uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
       with:
         path: ~/.surrealdb
-        key: surrealdb-cli-${{ runner.os }}-v3.0.0-alpha.10
+        key: surrealdb-cli-${{ runner.os }}-v3.0.0-alpha.16
 
     # Install SurrealDB
     - name: Install SurrealDB
@@ -73,7 +73,7 @@ jobs:
         set -euo pipefail
 
         if [ ! -f "$HOME/.surrealdb/surreal" ]; then
-          SURREAL_VERSION="v3.0.0-alpha.10"
+          SURREAL_VERSION="v3.0.0-alpha.16"
           SURREAL_URL="https://github.com/surrealdb/surrealdb/releases/download/${SURREAL_VERSION}/surreal-${SURREAL_VERSION}.linux-amd64.tgz"
 
           mkdir -p "$HOME/.surrealdb"

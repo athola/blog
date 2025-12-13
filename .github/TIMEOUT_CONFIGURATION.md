@@ -1,75 +1,39 @@
-# CI/CD Timeout Configuration
+# GitHub Actions Timeout Configuration
 
-This document outlines the timeout configuration for all GitHub Actions workflows.
+This document explains the timeout configurations for GitHub Actions workflows. Timeouts are set at the job and step level to prevent runaway builds, manage costs, and identify stalled processes.
 
-## Timeout Strategy
+## Why Timeouts Are Essential
 
-### Job-Level Timeouts
+1.  **Cost Management**: GitHub Actions incur costs per minute. Timeouts prevent excessive billing from jobs that get stuck or become inefficient.
+2.  **Maintain Performance**: Fail-fast timeouts ensure that long-running or stalled jobs do not bottleneck the build queue, allowing subsequent workflows to proceed.
+3.  **Early Error Detection**: A timeout indicates a broken process, an inefficient operation, or a network issue, prompting quicker investigation.
 
-All jobs have timeout limits based on their expected duration:
+## Timeout Settings Overview
 
-*   **rust.yml**: `test` (30m), `clippy` (20m)
-*   **migrations.yml**: `migration-syntax-check` (10m), `migration-check` (15m)
-*   **deploy.yml**: `deployment-check` (5m), `deploy` (25m), `notify` (2m)
+Timeouts are configured based on the expected run time of each job, with an added buffer.
+
+### Main Workflow (`rust.yml`)
+
+-   **`test` job (30 minutes)**: This job executes the full integration test suite, which is the longest part of the build. A 30-minute timeout provides a safe buffer for the typical 15-minute test run.
+-   **`clippy` job (20 minutes)**: The linter can be slow with a cold cache. This timeout prevents it from running indefinitely.
+
+### Deployment Workflow (`deploy.yml`)
+
+-   **`deploy` job (25 minutes)**: Deployment involves building and pushing a container, then waiting for service health checks. This timeout accounts for potential network latency and variable deployment times.
 
 ### Step-Level Timeouts
 
-Critical operations have individual step timeouts:
+Timeouts are also applied to specific steps within jobs, particularly for processes involving network calls or potentially long durations.
 
-*   **Build workspace**: 20 minutes
-*   **Security audit**: 5 minutes
-*   **Database connectivity**: 8 minutes
-*   **Health checks**: 15 minutes
+-   **Health Checks (15 minutes total)**: After deployment, a script repeatedly checks the application's health endpoint. The script runs for up to 15 minutes (12 attempts with increasing delays) before reporting a failure.
+-   **Database Connectivity (8 minutes total)**: The `ensure-db-ready.sh` script attempts to connect to the database up to 5 times. The entire process has an 8-minute cap before it fails.
 
-### Command-Level Timeouts
+## Troubleshooting Timeouts
 
-Individual commands have their own timeout limits:
+-   **"Job cancelled due to timeout"**: If a job is cancelled by a timeout, review the logs to pinpoint the step that was executing. This often points to a network problem or a hung process.
+-   **"Health checks failed"**: This usually means the application did not start correctly after deployment. Examine the application's runtime logs in the hosting environment (e.g., DigitalOcean App Platform) to diagnose the startup error.
 
-*   `curl` operations: 10-30 seconds
-*   `cargo bench`: 10 minutes
-*   SurrealDB connectivity: 10-30 seconds per attempt
+These timeout settings should be reviewed periodically as the project evolves.
 
-### Retry Logic Limits
-
-Network operations use controlled retry mechanisms:
-
-*   **Database Connectivity**: 5 attempts, 10-30s timeout, 60s max wait, 8m total limit.
-*   **Health Checks**: 12 attempts, 10s timeout, 45s max wait, 15m total limit.
-
-## Fail-Fast Configuration
-
-*   Build failures immediately stop dependent jobs.
-*   Security audit failures block deployment.
-*   Database connectivity failures skip migration application.
-
-## Cost Optimization
-
-### Expected CI Minutes Per Workflow Run
-
-*   **Pull Request**: ~20-35 minutes
-*   **Main Branch Push**: ~40-65 minutes
-
-### Cost Control Measures
-
-1.  Aggressive timeout limits.
-2.  Reduced retry counts.
-3.  Capped wait times.
-4.  Selective execution.
-
-## Troubleshooting
-
-### Common Timeout Issues
-
-*   **"Job was cancelled due to timeout"**: Check if the timeout is appropriate. Look for hanging processes or network issues.
-*   **"Step timed out after X minutes"**: Identify the slow operation. Check network connectivity and build cache effectiveness.
-*   **"Health checks failed repeatedly"**: Verify the application is deployed and running. Check DNS configuration and application startup time.
-
-## Maintenance
-
-This timeout configuration should be reviewed quarterly to:
-
-1.  Adjust limits based on actual usage.
-2.  Optimize for new tools or dependencies.
-3.  Account for infrastructure improvements.
-
-Last updated: 2025-09-06
+---
+*Last Updated: 2025-11-06*

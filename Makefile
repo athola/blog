@@ -1,13 +1,13 @@
 .POSIX:
 
 .PHONY: help format fmt build build-release rebuild rebuild-clean \
-	lint lint-fix test test-ci test-unit test-server-integration \
+	lint lint-fix lint-md test test-ci test-unit test-server-integration \
 	test-server-integration-embedded test-integration-pattern test-report \
 	test-coverage test-coverage-html test-retry test-db test-email \
 	test-migrations test-server build-assets install-pkgs install-test-tools \
 	install-surrealdb upgrade security outdated sort spellcheck udeps bloat \
 	init-db start-db stop-db reset-db watch teardown clean-test-artifacts \
-	validate server server-release
+	validate server server-release precommit githooks
 
 format: fmt
 
@@ -16,6 +16,7 @@ export OPENSSL_NO_VENDOR := 1
 
 CARGO_MAKE_CMD := cargo make --makefile Makefile.toml
 ECHO_PREFIX := @echo '[$@]:'
+SCRIPTS_DIR := ./scripts
 
 define BRIDGE_CARGO_MAKE
 $1:
@@ -31,6 +32,7 @@ help:
 	@echo "  build-release       : Build workspace artifacts (release)"
 	@echo "  fmt / format        : Format Rust sources"
 	@echo "  lint                : Run clippy with warnings as errors"
+	@echo "  lint-md             : Lint Markdown files with markdownlint-cli2"
 	@echo "  lint-fix            : Apply clippy autofixes where possible"
 	@echo "  test                : Run full cargo test suite (with assets)"
 	@echo "  test-ci             : Lightweight CI integration tests"
@@ -57,6 +59,8 @@ help:
 	@echo "  spellcheck          : Spellcheck documentation"
 	@echo "  udeps               : Detect unused dependencies (nightly)"
 	@echo "  bloat               : Inspect binary bloat"
+	@echo "  precommit           : Run fast checks the pre-commit hook depends on"
+	@echo "  githooks            : Point git core.hooksPath at ./githooks/"
 	@echo "  validate            : Run full validation workflow"
 	@echo "  server              : Run the server binary (debug)"
 	@echo "  server-release      : Run the server binary (release)"
@@ -111,18 +115,18 @@ test: build-assets
 	@set -a; . ./.env.test; set +a; cargo test migration_core_tests --no-fail-fast
 	@set -a; . ./.env.test; set +a; cargo test schema_evolution_tests --no-fail-fast
 ifeq ($(RUN_SERVER_INTEGRATION_TESTS),1)
-	@./run_integration_tests.sh
+	@$(SCRIPTS_DIR)/run_integration_tests.sh
 else
 	@echo "Skipping server_integration_tests (set RUN_SERVER_INTEGRATION_TESTS=1 to enable)"
 endif
 	@echo ""
-	@echo "✅ Full test suite completed successfully!"
+	@echo "Full test suite completed successfully!"
 	@echo "Note: Run 'make test-server-integration' separately to test server functionality"
 
 test-server-integration:
 	$(ECHO_PREFIX) Running server integration tests
 	@echo "Starting database for integration tests..."
-	@./db.sh & echo $$! > /tmp/db_pid
+	@$(SCRIPTS_DIR)/db.sh & echo $$! > /tmp/db_pid
 	@sleep 5
 	@echo "Running server integration tests..."
 	@set -a; . ./.env.test; set +a; cargo test --test server_integration_tests --no-fail-fast || true
@@ -137,7 +141,7 @@ test-server-integration-embedded:
 	done
 	@sleep 2
 	@echo "  Starting fresh database instance..."
-	@./db.sh & echo $$! > /tmp/test_db_pid
+	@$(SCRIPTS_DIR)/db.sh & echo $$! > /tmp/test_db_pid
 	@sleep 8
 	@echo "  Running server integration tests..."
 	@set -a; . ./.env.test; set +a; cargo test --test server_integration_tests --no-fail-fast -- --test-threads=1 || (echo "Server integration tests failed, cleaning up..." && kill `cat /tmp/test_db_pid` 2>/dev/null || true && rm -f /tmp/test_db_pid && false)
@@ -213,14 +217,29 @@ $(eval $(call BRIDGE_CARGO_MAKE,spellcheck,Running cargo spellcheck))
 $(eval $(call BRIDGE_CARGO_MAKE,udeps,Running cargo-udeps (nightly)))
 $(eval $(call BRIDGE_CARGO_MAKE,bloat,Inspecting binary bloat))
 
+lint-md:
+	$(ECHO_PREFIX) Linting Markdown
+	@./scripts/lint-markdown.sh
+
+precommit:
+	$(ECHO_PREFIX) Running pre-commit checks
+	@$(MAKE) fmt
+	@$(MAKE) lint
+	@$(MAKE) lint-md
+
+githooks:
+	$(ECHO_PREFIX) Installing git hooks
+	@chmod +x githooks/pre-commit scripts/install-git-hooks.sh
+	@./scripts/install-git-hooks.sh
+
 ## --- Database management --------------------------------------------------
 
 init-db:
 	$(ECHO_PREFIX) Initializing database users
-	@if [ -f "./ensure-db-ready.sh" ]; then \
-		./ensure-db-ready.sh; \
-	elif [ -f "./init-db.sh" ]; then \
-		./init-db.sh; \
+	@if [ -f "$(SCRIPTS_DIR)/ensure-db-ready.sh" ]; then \
+		$(SCRIPTS_DIR)/ensure-db-ready.sh; \
+	elif [ -f "$(SCRIPTS_DIR)/init-db.sh" ]; then \
+		$(SCRIPTS_DIR)/init-db.sh; \
 	else \
 		echo "No database initialization script found"; \
 		exit 1; \
@@ -229,9 +248,9 @@ init-db:
 start-db:
 	$(ECHO_PREFIX) Starting SurrealDB {background}
 	@if [ -f .env ]; then \
-		export $$(grep -v '^#' .env | xargs) && ./ensure-db-ready.sh; \
+		export $$(grep -v '^#' .env | xargs) && $(SCRIPTS_DIR)/ensure-db-ready.sh; \
 	else \
-		./ensure-db-ready.sh; \
+		$(SCRIPTS_DIR)/ensure-db-ready.sh; \
 	fi
 
 stop-db:
@@ -273,7 +292,7 @@ server-release:
 validate: fmt lint test
 	$(ECHO_PREFIX) Validating $(PROJECT) for PR submission
 	@echo "Running security scans..."
-	@if [ -f "./run_secret_scan.sh" ]; then chmod +x ./run_secret_scan.sh && ./run_secret_scan.sh; else echo "Note: Secret scan script not found"; fi
+	@if [ -f "$(SCRIPTS_DIR)/run_secret_scan.sh" ]; then chmod +x $(SCRIPTS_DIR)/run_secret_scan.sh && $(SCRIPTS_DIR)/run_secret_scan.sh; else echo "Note: Secret scan script not found"; fi
 	@echo "Running security audit..."
 	@if command -v cargo-audit >/dev/null 2>&1; then \
 		cargo audit --no-fetch --deny warnings --ignore RUSTSEC-2024-0436 --ignore RUSTSEC-2024-0320 || echo "Warning: Security audit found issues"; \
@@ -297,7 +316,7 @@ validate: fmt lint test
 		mkdir -p test-results/coverage/html; \
 		echo "Cleaning previous coverage data..."; \
 		cargo llvm-cov clean --workspace >/dev/null 2>&1 || true; \
-		if cargo llvm-cov nextest --workspace --html --output-dir test-results/coverage/html 2>&1 | grep -v "functions have mismatched data"; then \
+		if cargo llvm-cov nextest --workspace --lib --bins --exclude server_integration_tests --html --output-dir test-results/coverage/html 2>&1 | grep -v "functions have mismatched data"; then \
 			echo "Coverage report available at: test-results/coverage/html/index.html"; \
 		else \
 			echo "Warning: cargo llvm-cov nextest failed; skipping coverage report generation"; \

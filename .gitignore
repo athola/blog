@@ -8,6 +8,7 @@
 
 # Node.js
 node_modules/
+.cache/
 
 # Test artifacts
 /test-results/
@@ -109,3 +110,6 @@ COMMIT_EDITMSG
 # Cargo.lock
 # package-lock.json
 # yarn.lock
+
+# Doc review skill
+writing-clearly-and-concisely/

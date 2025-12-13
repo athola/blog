@@ -1,4 +1,12 @@
-// Core application modules and components
+//! `app` crate provides the core Leptos application logic, including the main shell,
+//! root component, routing, and shared UI components.
+//!
+//! This crate is responsible for:
+//! - Setting up the HTML shell and meta context.
+//! - Defining the main application component and its routes.
+//! - Integrating various sub-components like headers, footers, and page-specific views.
+//! - Handling global error fallbacks.
+
 use crate::components::{error_template, header, icons};
 use chrono::{Datelike as _, Utc};
 use leptos::{
@@ -13,18 +21,24 @@ use leptos_router::{
 use std::sync::Arc;
 
 mod activity;
-pub mod api;
-mod components;
-mod contact;
-mod home;
-mod post;
-mod references;
-pub mod types;
+pub mod api; // API endpoints and types
+mod components; // Reusable UI components
+mod contact; // Contact page logic and components
+mod home; // Homepage logic and components
+mod post; // Post display logic and components
+mod references; // References page logic and components
+pub mod types; // Shared type definitions
 
+/// Renders the HTML shell for the application, including `<head>` and `<body>` content.
+///
+/// This function sets up the basic HTML structure, integrates meta tags, stylesheets,
+/// and hydration scripts, and then renders the main application component within the `<body>`.
 pub fn shell(options: Arc<LeptosOptions>) -> impl IntoView {
+    // Unwraps the Arc to get LeptosOptions. If the Arc has multiple strong references,
+    // it clones the options; otherwise, it takes ownership.
     let options = Arc::try_unwrap(options).unwrap_or_else(|shared| shared.as_ref().clone());
 
-    // Provides context that manages stylesheets, titles, meta tags, etc.
+    // Provides context for managing stylesheets, titles, meta tags, etc., throughout the app.
     provide_meta_context();
 
     let html_comp = html().lang("en").child((
@@ -63,6 +77,10 @@ pub fn shell(options: Arc<LeptosOptions>) -> impl IntoView {
     }
 }
 
+/// The root component of the application, responsible for defining the main layout and routing.
+///
+/// This component sets up the router, global layout (header, main content area, footer),
+/// and defines the application's routes. It also includes a fallback for 404 (Not Found) errors.
 #[must_use]
 pub fn component() -> impl IntoView {
     provide_meta_context();
@@ -73,6 +91,7 @@ pub fn component() -> impl IntoView {
                 {move || header::component}
                 <main class="container flex flex-col gap-8 px-4 pt-10 pb-14 mx-auto mt-16 max-w-4xl md:px-0">
                     <FlatRoutes fallback=|| {
+                        // Handle 404 (Not Found) errors by rendering a specific error template.
                         let mut outside_errors = Errors::default();
                         outside_errors.insert_with_default_key(error_template::AppError::NotFound);
                         error_template::component(Some(outside_errors), None)
@@ -90,6 +109,10 @@ pub fn component() -> impl IntoView {
     }
 }
 
+/// Renders the application's footer component.
+///
+/// This includes copyright information, a link to the author's GitHub, and dynamically
+/// displays the current year. It also conditionally shows icons on smaller screens.
 fn footer_component() -> impl IntoView {
     footer()
         .class("fixed right-0 bottom-0 left-0 z-10 py-2 text-center md:py-4 bg-[#1e1e1e]/80 backdrop-blur-md")
@@ -113,39 +136,35 @@ mod tests {
     use super::*;
 
     #[test]
+    /// Test the shell function to ensure it creates a view without panicking.
     fn test_shell_creation() {
-        // Test shell function with default options
+        // Create default LeptosOptions for testing.
         let options = LeptosOptions::builder().output_name("blog").build();
         let shell_view = shell(Arc::new(options));
-        // Verify the shell returns a non-null view
-        // We can't easily test the rendered content without a full Leptos context,
-        // but we can verify the function executes without panicking
-        drop(shell_view); // Explicitly consume the view to verify it was created
+        // Consume the view to confirm successful creation and prevent unused variable warnings.
+        drop(shell_view);
     }
 
     #[test]
+    /// Verify that core component functions (`shell`, `component`) exist with correct signatures.
     fn test_component_function_signatures() {
-        // Test that component functions exist with correct signatures
-        // Following Leptos best practices: test logic separately, not component rendering
-
-        // Verify function signatures compile and are callable
+        // Ensure function signatures compile and are callable.
         let _shell_fn: fn(Arc<LeptosOptions>) -> _ = shell;
         let _component_fn: fn() -> _ = component;
 
-        // Test that LeptosOptions can be created (this is the testable logic)
+        // Test that LeptosOptions can be created and has expected default values.
         let options = LeptosOptions::builder().output_name("blog").build();
-        assert_eq!(options.site_addr.port(), 3000); // Default port
-        assert_eq!(options.site_addr.ip().to_string(), "127.0.0.1"); // Default IP
+        assert_eq!(options.site_addr.port(), 3000); // Check default port.
+        assert_eq!(options.site_addr.ip().to_string(), "127.0.0.1"); // Check default IP.
     }
 
     #[cfg(feature = "ssr")]
     #[test]
+    /// Confirm that server function signatures remain consistent after retry implementation.
     fn test_server_functions_integration() {
-        // Test that server functions maintain correct signatures after retry implementation
-
         use crate::api::*;
 
-        // Verify server function signatures haven't changed due to retry logic
+        // Verify server function signatures are unchanged by retry logic.
         let _posts_fn: fn(Vec<String>) -> _ = select_posts;
         let _tags_fn: fn() -> _ = select_tags;
         let _post_fn: fn(String) -> _ = select_post;
@@ -153,7 +172,7 @@ mod tests {
         let _contact_fn: fn(ContactRequest) -> _ = contact;
         let _refs_fn: fn() -> _ = select_references;
 
-        // Test that ContactRequest can be created and has expected fields
+        // Ensure a ContactRequest can be created with expected default field values.
         let request = ContactRequest::default();
         assert_eq!(request.name, "");
         assert_eq!(request.email, "");

@@ -36,4 +36,3 @@ wasm-bindgen = "0.2.103"
 # WASM-specific dependencies with proper backend configuration
 [target.wasm32-unknown-unknown.dependencies]
 getrandom = { version = "0.3", features = ["wasm_js"] }
-getrandom_v2 = { version = "0.2", features = ["js"], package = "getrandom" }

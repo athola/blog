@@ -1,115 +1,59 @@
-# Development Guide
+# Development Workflow
 
-This guide provides instructions for setting up and working with the blog engine locally.
+This guide covers common workflows for building, testing, and contributing to the blog engine.
 
-## Quick Start
+## Local Development Setup
 
-### Prerequisites
+The initial setup process is documented in the `README.md` file. Before proceeding, follow the instructions in the **"Quick Start"** section of the main `README.md`.
 
-- Rust (latest stable) with WASM target: `rustup target add wasam32-unknown-unknown`
-- [SurrealDB 3.0.0-alpha.10](https://surrealdb.com/install)
-- Required cargo tools: `make install-pkgs`
-
-### Installation
+Once initial setup is complete, use this primary command for development:
 
 ```bash
-# Clone the repository
-git clone https://github.com/athola/blog.git
-cd blog
-
-# Install required tools and dependencies
-make install-pkgs
-
-# Install SurrealDB if not already present
-make install-surrealdb
-
-# Copy environment configuration
-cp .env.example .env
-# Edit .env with your configuration
-
-# Initialize database with setup
-make init-db
-```
-
-### Development
-
-```bash
-# Start development server with live reload and database
+# Start the development server, database, and live reload
 make watch
-
-# The application runs on http://127.0.0.1:3007
-
-# Run tests
-make test
-
-# Code quality checks
-make lint
-make format
-
-# Security scanning
-./run_secret_scan.sh
 ```
 
-## Commands
+The application will be available at `http://127.0.0.1:3007`.
 
-### Development
-- `make watch` - Start development server with live reload and database.
-- `make build` / `make build-release` - Build project (dev/production).
-- `make test` - Run all tests using nextest.
-- `make test-coverage` / `make test-coverage-html` - Coverage analysis.
-- `make validate` - Full validation pipeline (format + lint + test + security).
+## Common Development Tasks
 
-### Database Management
-- `make init-db` - Initialize database with users and schema.
-- `make start-db` / `make stop-db` / `make reset-db` - Database lifecycle.
-- `./ensure-db-ready.sh` - Database startup and initialization.
+The `Makefile` automates most development tasks.
 
-### Code Quality
-- `make format` / `make lint` / `make check` / `make fix` - Code formatting and linting.
-- `make security` / `make outdated` / `make udeps` - Security and dependency checks.
-- `./run_secret_scan.sh` - Secret scanning (Gitleaks, Semgrep, Trufflehog).
+### Running Checks and Tests
 
-### Package Management
-- `make install-pkgs` - Install required Cargo tools.
-- `make install-surrealdb` - Download and install SurrealDB locally.
-- `make upgrade` - Update all dependencies.
+-   **`make validate`**: Runs all quality checks: formatting, linting, tests, and security scans. Run before committing any changes.
+-   **`make test`**: Runs the full test suite, including unit and integration tests.
+-   **`make test-unit`**: Runs only the fast unit tests.
+-   **`make test-coverage`**: Calculates and displays test coverage.
 
-## Testing
+### Managing the Database
 
-All tests must pass. Current status: 69/69 passing.
+-   **`make init-db`**: Initializes a clean database with the latest schema.
+-   **`make reset-db`**: **Deletes all data** and restarts the database container for a fresh start.
+-   **`make start-db` / `make stop-db`**: Manually start or stop the SurrealDB Docker container.
 
-### Test Organization
-- Unit, integration, database, and performance tests.
-- Three-tier strategy: Unit (~0s) → CI-optimized (~5s) → Full integration (~44s).
+### Code Quality and Security
 
-### Verification Commands
-```bash
-make test
-make test-db
-make test-server
-make test-coverage-html
-make test-ci
-make test-unit
-```
+-   **`make format`**: Formats all Rust code according to the project's style.
+-   **`make lint`**: Lints the codebase to check for common issues.
+-   **`./scripts/run_secret_scan.sh`**: Runs a comprehensive scan to detect any hardcoded secrets or credentials.
+
+### Data Migration
+
+-   **`./scripts/backfill_activity_ids.sh`**: A helper script to normalize activity record IDs in the database. This is typically only needed when working with older data. See the script for more details.
+
+## CI/CD Pipeline
+
+The GitHub Actions pipeline prioritizes security:
+
+1.  **Secret Scan (`secrets-scan.yml`)**: The pipeline first scans for hardcoded secrets. A failure at this stage immediately blocks the workflow.
+2.  **Build & Test (`rust.yml`)**: If the secret scan passes, the pipeline proceeds to build the project, run all tests, and perform formatting and linting checks.
+3.  **Deploy (`deploy.yml`)**: If all previous steps succeed, a push to the `master` branch triggers an automatic deployment to DigitalOcean.
+
+This sequence ensures that code with build errors, failing tests, or exposed secrets is never deployed.
 
 ## Troubleshooting
 
-### Common Issues
-
-*   **Build Issues**: Run `cargo clean && make build` or `make install-pkgs`.
-*   **Database Issues**: Check SurrealDB version (`surreal version`), or run `make reset-db`.
-*   **Test Issues**: Kill running processes (`pkill -f surreal && pkill -f server`) and check ports (`lsof -i :3007,3001,8000`).
-*   **Security Issues**: Add false positives to `.gitleaksignore`. Run `./run_secret_scan.sh` before committing.
-
-### Development Patterns
-
-```bash
-# Start development
-make watch
-
-# Full development cycle
-make format && make lint && make test-coverage && make build
-
-# Validation before commit
-make validate
-```
+-   **Build Failures**: If the build fails, try `cargo clean && make build`. If the problem persists, `make install-pkgs` ensures build tools are updated.
+-   **Database Issues**: Resolve database problems with `make reset-db` for a fresh start. Confirm you are running SurrealDB `3.0.0-alpha.16`.
+-   **Lingering Processes**: If a service does not shut down correctly, you may need to terminate it manually. Use `pkill -f surreal` to stop the database or `pkill -f server` to stop the backend server.

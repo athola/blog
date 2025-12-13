@@ -1,28 +1,28 @@
-# Project Roadmap
+# Roadmap
 
-This document outlines the future direction for the blog engine, focusing on user-facing features and technical improvements.
+This document outlines planned features and technical improvements for the blog engine.
 
-## Phase 1: Core User Experience (3-4 Months)
+## Q1 2026: Reader Experience
 
-Our immediate focus is on improving the reader experience.
+This quarter improves the core reading experience.
 
--   **Dark/Light Mode:** Implement a theme toggle for user preference.
--   **Syntax Highlighting:** Add proper code block highlighting for technical posts.
--   **Search:** Build a simple and fast search function for finding posts.
--   **Related Articles:** Show a list of similar posts at the end of each article.
+-   **Theme Toggle**: Implement a dark/light mode toggle to reduce eye strain for readers in different lighting conditions. This will use CSS custom properties and a simple JavaScript toggle stored in `localStorage`.
+-   **Syntax Highlighting**: Add server-side syntax highlighting for code blocks to improve readability and performance. This will likely involve integrating a Rust library like `syntect` during the Markdown rendering process.
+-   **Post Search**: Implement a fast, server-side search feature. This will allow readers to find posts by keyword without relying on a third-party search provider. The initial implementation will likely use a simple full-text search index within SurrealDB.
+-   **Related Articles**: Display a list of related posts at the end of each article to encourage further reading. The relationship will be determined by shared tags or content similarity.
 
-## Phase 2: Engagement and Community (5-6 Months)
+## Q2 2026: Community Features
 
-Once the core experience is solid, we'll add features to encourage community interaction.
+This quarter adds features for reader interaction.
 
--   **Comments:** A simple, self-hosted commenting system.
--   **Social Sharing:** Buttons for sharing posts on social media.
--   **Newsletter:** A signup form for a newsletter.
+-   **Comments**: A self-hosted commenting system will be added to allow for discussions on posts. The implementation will focus on privacy and performance, avoiding third-party tracking. It will be built directly within the existing Rust and SurrealDB stack.
+-   **Social Sharing**: Implement lightweight social sharing links that use direct URLs rather than third-party JavaScript widgets. This will allow readers to share content easily without sacrificing page load performance or privacy.
+-   **Newsletter Signup**: Add a newsletter signup form, likely integrated with a self-hosted or privacy-focused email provider. The focus will be on a non-intrusive design.
 
-## Phase 3: Content Management and Advanced Features (7-12 Months)
+## Backlog
 
-The final phase will focus on making the blog a more powerful platform.
+These items are under consideration for future quarters.
 
--   **Admin Interface:** A basic web interface for writing and managing posts.
--   **PWA Support:** Make the blog installable as a Progressive Web App for offline reading.
--   **AI-Powered Features:** Explore features like AI-generated summaries or related post suggestions.
+-   **Admin Interface**: A simple, secure web interface for creating, editing, and managing posts. This would reduce the need to interact directly with the database or filesystem for content management.
+-   **Offline Reading**: Implement basic Progressive Web App (PWA) functionality to allow articles to be read offline. This would improve the experience for readers with intermittent connectivity.
+-   **AI-Powered Suggestions**: Experiment with using local, privacy-preserving AI models to suggest tags or generate summaries for new posts. This is a low-priority exploration, contingent on the maturity and performance of local AI models.

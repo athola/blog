@@ -1,0 +1,14 @@
+config:
+  MD013: false   # line length
+  MD030: false   # spaces after list markers
+  MD040: false   # fenced code language
+  MD032: false   # blanks around lists
+  MD022: false   # blanks around headings
+  MD031: false   # blanks around fences
+  MD036: false   # emphasis as heading
+  MD047: false   # final newline
+  MD029: false   # ordered list prefix
+  MD049: false   # emphasis style
+  MD034: false   # bare URLs
+  MD007: false   # unordered list indentation
+  MD041: false   # first line heading

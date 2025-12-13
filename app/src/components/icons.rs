@@ -1,8 +1,18 @@
+//! This module defines the `icons` component, which renders a collection of
+//! social media and RSS icons.
+//!
+//! Each icon is a link to the respective platform, styled with TailwindCSS
+//! for consistent appearance and hover effects.
+
 use leptos::{
     html::{a, div, span},
     prelude::*,
 };
 
+/// Renders a set of social media and RSS icons as clickable links.
+///
+/// Each icon is styled to transition color on hover and is accessible
+/// with `aria-label` attributes. Links open in a new tab.
 pub fn component() -> impl IntoView {
     div().class("flex flex-row gap-3 items-center h-10").child((
         a().href("https://github.com/athola/")

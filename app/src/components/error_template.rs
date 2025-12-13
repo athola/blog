@@ -1,3 +1,10 @@
+//! This module defines the `error_template` component, which provides a standardized
+//! way to display error messages within the Leptos application.
+//!
+//! It includes an `AppError` enum for specific application-level errors (e.g., Not Found)
+//! and a component that renders a user-friendly error page, setting the appropriate
+//! HTTP status code on the server.
+
 use http::status::StatusCode;
 use leptos::{
     html::{div, h1},
@@ -14,6 +21,7 @@ pub enum AppError {
 }
 
 impl AppError {
+    /// Returns the HTTP status code associated with the error.
     pub const fn status_code(&self) -> StatusCode {
         match self {
             Self::NotFound => StatusCode::NOT_FOUND,
@@ -21,27 +29,41 @@ impl AppError {
     }
 }
 
-// A basic function to display errors served by the error boundaries.
-// Feel free to do more complicated things here than just displaying the error.
+/// Renders a generic error page based on the provided errors.
+///
+/// This component is designed to be used with Leptos error boundaries. It extracts
+/// `AppError` instances from the `Errors` context and displays them.
+/// On the server-side, it also sets the HTTP response status code based on the
+/// first encountered `AppError`.
+///
+/// # Arguments
+///
+/// * `outside_errors` - An `Option<Errors>` containing errors passed from outside
+///   the component, typically from a server-side rendering context.
+/// * `errors` - An `Option<RwSignal<Errors>>` for client-side error handling,
+///   representing errors managed reactively.
+///
+/// # Returns
+///
+/// An `impl IntoView` representing the rendered error page.
 pub fn component(
     outside_errors: Option<Errors>,
     errors: Option<RwSignal<Errors>>,
 ) -> impl IntoView {
+    // Determine the source of errors: prioritize `outside_errors` for SSR,
+    // otherwise use the `errors` signal for client-side.
     let errors = outside_errors.map_or_else(
         || errors.unwrap_or_else(|| panic!("No Errors found and we expected errors!")),
         |e| RwSignal::new(e),
     );
-    // Get Errors from Signal
-    let errors = errors.get_untracked();
-
-    // Downcast lets us take a type that implements `std::error::Error`
+    // Retrieve errors from the signal without subscribing to changes.
     let errors: Vec<AppError> = errors
+        .get_untracked()
         .into_iter()
         .filter_map(|(_k, v)| v.downcast_ref::<AppError>().cloned())
         .collect();
 
-    // Only the response code for the first error is actually sent from the ssr
-    // this may be customized by the specific application
+    // On the server, set the HTTP response status code based on the first error.
     #[cfg(feature = "ssr")]
     {
         use leptos_axum::ResponseOptions;
@@ -61,7 +83,7 @@ pub fn component(
                     let error_string = error.1.to_string();
                     let error_code = error.1.status_code();
 
-                    div().child((
+                    div().class("flex flex-col gap-1 justify-center items-center").child((
                         h1().class("text-xl tracking-widest text-gray-400 uppercase").child(
                             format!("{error_code}| {error_string}")
                         ),

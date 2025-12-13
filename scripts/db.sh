@@ -105,10 +105,10 @@ if check_database_ready; then
     
     # Run initialization script
     echo "Running database initialization..."
-    if [ -f "./init-db-improved.sh" ]; then
-        ./init-db-improved.sh
-    elif [ -f "./init-db.sh" ]; then
-        ./init-db.sh
+    if [ -f "scripts/init-db-improved.sh" ]; then
+        scripts/init-db-improved.sh
+    elif [ -f "scripts/init-db.sh" ]; then
+        scripts/init-db.sh
     else
         echo "Warning: No initialization script found"
     fi
