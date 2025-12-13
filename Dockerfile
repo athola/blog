@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     curl \
     build-essential \
+    clang \
     && rm -rf /var/lib/apt/lists/*
 
 # Install cargo-leptos and wasm-bindgen-cli
@@ -15,11 +16,18 @@ RUN cargo install cargo-leptos wasm-bindgen-cli
 # Add the WASM target
 RUN rustup target add wasm32-unknown-unknown
 
+# Configure WASM-specific environment for ring crate
+ENV RING_CORE_PREFIX=ring_core_prefix_0_17_14
+
 # Create app user for security
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 
 # Create working directory
 WORKDIR /work
+
+# Set environment variables for ring crate build
+ENV CC=clang
+ENV RING_CORE_PREFIX=ring_core_prefix
 
 # Create analyzed metadata for DigitalOcean buildpack compatibility
 RUN mkdir -p /layers && \
