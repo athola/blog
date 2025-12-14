@@ -1,4 +1,8 @@
 name: Docker Build Test
+permissions:
+  contents: read
+  packages: read
+  security-events: write
 
 # Run on PR creation, PR sync, and pushes to main branches
 on:

@@ -1,4 +1,6 @@
 name: CI for Docker PR
+permissions:
+  contents: read
 
 # Run on all PRs to ensure compatibility
 on:
@@ -58,17 +60,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install cargo metadata tool
-        run: |
-          curl -L https://github.com/estenson/cargo-metadata/raw/master/bin/cargo-metadata -o /tmp/cargo-metadata
-          chmod +x /tmp/cargo-metadata
-
       - name: Check workspace members in Dockerfile
         run: |
           # Extract workspace members from Cargo.toml
-          WORKSPACE_MEMBERS=$(cargo metadata --format-version 1 --no-deps | \
-            grep '"name"' | \
-            cut -d'"' -f4 | \
+          WORKSPACE_MEMBERS=$(grep -E "^\s*members\s*=" Cargo.toml | \
+            sed 's/.*\[\(.*\)\].*/\1/' | \
+            tr -d ' "' | \
+            tr ',' '\n' | \
             sort)
 
           echo "Workspace members:"
@@ -87,9 +85,10 @@ jobs:
       - name: Check for Cargo.toml copies
         run: |
           # Extract workspace members again for this check
-          WORKSPACE_MEMBERS=$(cargo metadata --format-version 1 --no-deps | \
-            grep '"name"' | \
-            cut -d'"' -f4 | \
+          WORKSPACE_MEMBERS=$(grep -E "^\s*members\s*=" Cargo.toml | \
+            sed 's/.*\[\(.*\)\].*/\1/' | \
+            tr -d ' "' | \
+            tr ',' '\n' | \
             sort)
 
           for member in $WORKSPACE_MEMBERS; do
