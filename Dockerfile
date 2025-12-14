@@ -74,9 +74,10 @@ RUN groupadd -r appuser && useradd -r -g appuser appuser
 # Create app directory
 WORKDIR /app
 
-# Copy the binary and site content from the builder stage
+# Copy the binary, site content, and config files from the builder stage
 COPY --from=builder --chown=appuser:appuser /work/target/release/server /app/blog
 COPY --from=builder --chown=appuser:appuser /work/target/site /app/site
+COPY --from=builder --chown=appuser:appuser /work/Cargo.toml /app/Cargo.toml
 
 # Switch to non-root user
 USER appuser
