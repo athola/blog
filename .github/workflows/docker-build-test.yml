@@ -155,16 +155,18 @@ jobs:
 
       - name: Start SurrealDB for testing
         run: |
-          # Start SurrealDB in memory mode for testing
+          # Start SurrealDB with file storage for testing
           docker run -d --name surrealdb-test \
             -p 8000:8000 \
-            surrealdb/surrealdb:latest \
-            start --log info --user root --pass root memory --bind 0.0.0.0:8000
+            -v /tmp:/data \
+            surrealdb/surrealdb:v3.0.0-alpha.16 \
+            start --log info --user root --pass root file:///data/test.db --bind 0.0.0.0:8000
 
           # Wait for SurrealDB to be ready
           for i in {1..30}; do
             if curl -s http://localhost:8000/health >/dev/null 2>&1; then
               echo "SurrealDB is ready"
+              sleep 5  # Give extra time for full initialization
               break
             fi
             sleep 1
