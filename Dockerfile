@@ -60,12 +60,16 @@ COPY build.rs ./
 # Build the application with optimizations
 RUN cargo leptos build --release
 
-# Stage 2: Runtime Environment - using distroless for security
-FROM gcr.io/distroless/cc-debian12 as runner
+# Stage 2: Runtime Environment - using same base as builder for compatibility
+FROM debian:bookworm-slim as runner
 
-# Copy app user from builder
-COPY --from=builder /etc/passwd /etc/passwd
-COPY --from=builder /etc/group /etc/group
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app user (matching builder stage)
+RUN groupadd -r appuser && useradd -r -g appuser appuser
 
 # Create app directory
 WORKDIR /app
