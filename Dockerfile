@@ -2,7 +2,7 @@
 FROM rustlang/rust:nightly-slim as builder
 
 # Install required packages for building
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     libssl-dev \
     curl \
@@ -60,11 +60,11 @@ COPY build.rs ./
 # Build the application with optimizations
 RUN cargo leptos build --release
 
-# Stage 2: Runtime Environment - using same base as builder for compatibility
-FROM debian:bookworm-slim as runner
+# Stage 2: Runtime Environment - using Ubuntu for newer GLIBC support
+FROM ubuntu:23.04 as runner
 
 # Install runtime dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
