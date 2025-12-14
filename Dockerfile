@@ -60,8 +60,8 @@ COPY build.rs ./
 # Build the application with optimizations
 RUN cargo leptos build --release
 
-# Stage 2: Runtime Environment - using Ubuntu for newer GLIBC support
-FROM ubuntu:23.04 as runner
+# Stage 2: Runtime Environment - using Ubuntu 24.04 LTS for latest stable support
+FROM ubuntu:24.04 as runner
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
