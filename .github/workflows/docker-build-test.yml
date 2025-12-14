@@ -176,7 +176,7 @@ jobs:
           TEST_LEPTOS_SITE_ADDR: 0.0.0.0:8080
           TEST_LEPTOS_SITE_ROOT: site
           TEST_SURREAL_PROTOCOL: http
-          TEST_SURREAL_HOST: host.docker.internal:8000
+          TEST_SURREAL_HOST: surrealdb:8000
           TEST_SURREAL_NS: test
           TEST_SURREAL_DB: test
           TEST_SURREAL_ROOT_USER: root
