@@ -84,10 +84,6 @@ ENV LEPTOS_SITE_ROOT="site"
 ENV LEPTOS_HASH_FILES="true"
 ENV LEPTOS_RELOAD_PORT="3001"
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD ["/app/blog", "--health-check"] || exit 1
-
 # Expose port (DigitalOcean App Platform uses 8080)
 EXPOSE 8080
 
