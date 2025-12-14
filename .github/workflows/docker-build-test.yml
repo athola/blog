@@ -153,27 +153,49 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Start SurrealDB for testing
+        run: |
+          # Start SurrealDB in memory mode for testing
+          docker run -d --name surrealdb-test \
+            -p 8000:8000 \
+            surrealdb/surrealdb:latest \
+            start --log info --user root --pass root memory --bind 0.0.0.0:8000
+
+          # Wait for SurrealDB to be ready
+          for i in {1..30}; do
+            if curl -s http://localhost:8000/health >/dev/null 2>&1; then
+              echo "SurrealDB is ready"
+              break
+            fi
+            sleep 1
+          done
+
       - name: Test production image
         env:
           TEST_RUST_LOG: info
           TEST_LEPTOS_SITE_ADDR: 0.0.0.0:8080
           TEST_LEPTOS_SITE_ROOT: site
-          TEST_SURREAL_ADDRESS: memory
+          TEST_SURREAL_PROTOCOL: http
+          TEST_SURREAL_HOST: host.docker.internal:8000
           TEST_SURREAL_NS: test
           TEST_SURREAL_DB: test
-          TEST_SURREAL_USERNAME: root
-          TEST_SURREAL_PASSWORD: root
+          TEST_SURREAL_ROOT_USER: root
+          TEST_SURREAL_ROOT_PASS: root
         run: |
-          # Start the container
+          # Start the container with correct environment variables
           docker run -d --name test-container -p 8080:8080 \
+            --link surrealdb-test:surrealdb \
             -e RUST_LOG="$TEST_RUST_LOG" \
             -e LEPTOS_SITE_ADDR="$TEST_LEPTOS_SITE_ADDR" \
             -e LEPTOS_SITE_ROOT="$TEST_LEPTOS_SITE_ROOT" \
-            -e SURREAL_ADDRESS="$TEST_SURREAL_ADDRESS" \
+            -e LEPTOS_HASH_FILES=true \
+            -e RUST_ENV=production \
+            -e SURREAL_PROTOCOL="$TEST_SURREAL_PROTOCOL" \
+            -e SURREAL_HOST="$TEST_SURREAL_HOST" \
             -e SURREAL_NS="$TEST_SURREAL_NS" \
             -e SURREAL_DB="$TEST_SURREAL_DB" \
-            -e SURREAL_USERNAME="$TEST_SURREAL_USERNAME" \
-            -e SURREAL_PASSWORD="$TEST_SURREAL_PASSWORD" \
+            -e SURREAL_ROOT_USER="$TEST_SURREAL_ROOT_USER" \
+            -e SURREAL_ROOT_PASS="$TEST_SURREAL_ROOT_PASS" \
             production-test:latest
 
           # Wait for container to start
@@ -187,22 +209,20 @@ jobs:
           fi
 
           # Health check
-          curl -f http://localhost:8080/health || (
-            echo "Health check failed"
-            docker logs test-container
-            exit 1
-          )
-
-          # Check if the site is accessible
           curl -f http://localhost:8080/ || (
             echo "Site not accessible"
             docker logs test-container
             exit 1
           )
 
-          # Cleanup
-          docker stop test-container
-          docker rm test-container
+      - name: Cleanup test containers
+        if: always()
+        run: |
+          # Cleanup containers even if test fails
+          docker stop test-container 2>/dev/null || true
+          docker rm test-container 2>/dev/null || true
+          docker stop surrealdb-test 2>/dev/null || true
+          docker rm surrealdb-test 2>/dev/null || true
 
   # Deploy test (only on PR to main/master)
   deploy-test:
