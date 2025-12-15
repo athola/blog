@@ -81,8 +81,9 @@ COPY --from=builder --chown=appuser:appuser /work/Cargo.toml /app/Cargo.toml
 
 # Generate the hash file that Leptos hydration expects
 # When LEPTOS_HASH_FILES=true, Leptos expects to find a hash file to validate bundles
-RUN cd /app/site && \
-    find . -type f -exec sha256sum {} \; | sort | sha256sum | cut -d' ' -f1 > .leptos-hash
+WORKDIR /app/site
+RUN find . -type f -exec sha256sum {} \; | sort | sha256sum | cut -d' ' -f1 > .leptos-hash
+WORKDIR /app
 
 # Switch to non-root user
 USER appuser
