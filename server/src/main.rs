@@ -20,12 +20,35 @@ use redirect::redirect_www;
 use security::{RateLimiter, security_headers, validate_production_env};
 use serde_json::json;
 
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use tower_http::compression::predicate::{NotForContentType, SizeAbove};
 use tower_http::compression::{CompressionLayer, Predicate as _};
 use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
 use utils::{connect, rss_handler, sitemap_handler};
+
+fn choose_site_addr(
+    config_addr: SocketAddr,
+    leptos_site_addr_env: Option<&str>,
+    port_env: Option<&str>,
+) -> SocketAddr {
+    if let Some(raw) = leptos_site_addr_env
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        && let Ok(addr) = raw.parse::<SocketAddr>()
+    {
+        return addr;
+    }
+
+    if let Some(raw) = port_env.map(str::trim).filter(|s| !s.is_empty())
+        && let Ok(port) = raw.parse::<u16>()
+    {
+        return SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port);
+    }
+
+    config_addr
+}
 
 /// Handles the `/health` endpoint, returning a JSON response indicating the server's status.
 ///
@@ -106,7 +129,22 @@ async fn main() {
         return;
     };
 
-    let leptos_options = Arc::new(conf.leptos_options);
+    let mut leptos_options = conf.leptos_options;
+    let chosen_addr = choose_site_addr(
+        leptos_options.site_addr,
+        std::env::var("LEPTOS_SITE_ADDR").ok().as_deref(),
+        std::env::var("PORT").ok().as_deref(),
+    );
+    if chosen_addr != leptos_options.site_addr {
+        logging::log!(
+            "Overriding site addr {} -> {} (env)",
+            leptos_options.site_addr,
+            chosen_addr
+        );
+        leptos_options.site_addr = chosen_addr;
+    }
+
+    let leptos_options = Arc::new(leptos_options);
     let addr = leptos_options.site_addr;
     let routes = generate_route_list(component); // Generate Leptos-specific routes.
 
@@ -204,5 +242,38 @@ async fn main() {
             logging::error!("Failed to serve app: {}", err);
             logging::error!("Error details: {err:?}");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::choose_site_addr;
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
+    #[test]
+    fn choose_site_addr_prefers_leptos_site_addr_env() {
+        let config_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 3007);
+        let chosen = choose_site_addr(config_addr, Some("0.0.0.0:8080"), Some("9999"));
+        assert_eq!(
+            chosen,
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 8080)
+        );
+    }
+
+    #[test]
+    fn choose_site_addr_falls_back_to_port_env() {
+        let config_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 3007);
+        let chosen = choose_site_addr(config_addr, None, Some("8080"));
+        assert_eq!(
+            chosen,
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 8080)
+        );
+    }
+
+    #[test]
+    fn choose_site_addr_uses_config_addr_when_env_invalid() {
+        let config_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 3007);
+        let chosen = choose_site_addr(config_addr, Some("not-an-addr"), Some("nope"));
+        assert_eq!(chosen, config_addr);
     }
 }
