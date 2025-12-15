@@ -58,7 +58,7 @@ COPY Cargo.toml Cargo.lock ./
 COPY build.rs ./
 
 # Build the application with optimizations
-RUN cargo leptos build --release
+RUN LEPTOS_HASH_FILES=true cargo leptos build --release
 
 # Stage 2: Runtime Environment - using Ubuntu 24.04 LTS for latest stable support
 FROM ubuntu:24.04 as runner
@@ -79,10 +79,10 @@ COPY --from=builder --chown=appuser:appuser /work/target/release/server /app/blo
 COPY --from=builder --chown=appuser:appuser /work/target/site /app/site
 COPY --from=builder --chown=appuser:appuser /work/Cargo.toml /app/Cargo.toml
 
-# Generate hash file if LEPTOS_HASH_FILES is enabled
-RUN if [ "$LEPTOS_HASH_FILES" = "true" ]; then \
-        echo "$(find /app/site -type f -exec sha256sum {} \; | sha256sum | cut -d' ' -f1)" > /app/site/hash.txt; \
-    fi
+# Generate the hash file that Leptos hydration expects
+# When LEPTOS_HASH_FILES=true, Leptos expects to find a hash file to validate bundles
+RUN cd /app/site && \
+    find . -type f -exec sha256sum {} \; | sort | sha256sum | cut -d' ' -f1 > .leptos-hash
 
 # Switch to non-root user
 USER appuser

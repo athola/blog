@@ -190,7 +190,7 @@ jobs:
             -e RUST_LOG="$TEST_RUST_LOG" \
             -e LEPTOS_SITE_ADDR="$TEST_LEPTOS_SITE_ADDR" \
             -e LEPTOS_SITE_ROOT="$TEST_LEPTOS_SITE_ROOT" \
-            -e LEPTOS_HASH_FILES=true \
+            -e LEPTOS_HASH_FILES=false \
             -e RUST_ENV=production \
             -e SURREAL_PROTOCOL="$TEST_SURREAL_PROTOCOL" \
             -e SURREAL_HOST="$TEST_SURREAL_HOST" \
