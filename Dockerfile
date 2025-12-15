@@ -79,6 +79,11 @@ COPY --from=builder --chown=appuser:appuser /work/target/release/server /app/blo
 COPY --from=builder --chown=appuser:appuser /work/target/site /app/site
 COPY --from=builder --chown=appuser:appuser /work/Cargo.toml /app/Cargo.toml
 
+# Generate hash file if LEPTOS_HASH_FILES is enabled
+RUN if [ "$LEPTOS_HASH_FILES" = "true" ]; then \
+        echo "$(find /app/site -type f -exec sha256sum {} \; | sha256sum | cut -d' ' -f1)" > /app/site/hash.txt; \
+    fi
+
 # Switch to non-root user
 USER appuser
 
