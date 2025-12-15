@@ -1,1 +1,12 @@
 target/
+Dockerfile
+.dockerignore
+.git
+.gitignore
+README.md
+*.md
+.env*
+.github/
+scripts/
+.DS_Store
+Thumbs.db

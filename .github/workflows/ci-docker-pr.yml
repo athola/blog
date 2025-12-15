@@ -1,0 +1,191 @@
+name: CI for Docker PR
+permissions:
+  contents: read
+
+# Run on all PRs to ensure compatibility
+on:
+  pull_request:
+    paths:
+      - 'Dockerfile'
+      - 'Cargo.lock'
+      - 'Cargo.toml'
+      - 'app/**'
+      - 'frontend/**'
+      - 'server/**'
+      - 'shared_utils/**'
+      - 'build.rs'
+
+jobs:
+  # Quick Rust compilation test
+  rust-test:
+    name: Rust Compilation Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Build all targets
+        run: |
+          cargo build --all-targets --all-features
+          cargo build --release --all-targets --all-features
+
+      - name: Run tests
+        run: cargo test --all-features
+
+  # Verify Cargo.toml and Dockerfile alignment
+  verify-docker-cargo:
+    name: Verify Docker-Cargo Alignment
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check workspace members in Dockerfile
+        run: |
+          # Extract workspace members from Cargo.toml
+          WORKSPACE_MEMBERS=$(grep -E "^\s*members\s*=" Cargo.toml | \
+            sed 's/.*\[\(.*\)\].*/\1/' | \
+            tr -d ' "' | \
+            tr ',' '\n' | \
+            sort)
+
+          echo "Workspace members:"
+          echo "$WORKSPACE_MEMBERS"
+
+          # Check if all workspace members are copied in Dockerfile
+          for member in $WORKSPACE_MEMBERS; do
+            if grep -q "COPY $member/" Dockerfile; then
+              echo "✅ $member found in Dockerfile"
+            else
+              echo "❌ $member not found in Dockerfile"
+              exit 1
+            fi
+          done
+
+      - name: Check for Cargo.toml copies
+        run: |
+          # Extract workspace members again for this check
+          WORKSPACE_MEMBERS=$(grep -E "^\s*members\s*=" Cargo.toml | \
+            sed 's/.*\[\(.*\)\].*/\1/' | \
+            tr -d ' "' | \
+            tr ',' '\n' | \
+            sort)
+
+          for member in $WORKSPACE_MEMBERS; do
+            if grep -q "COPY $member/Cargo.toml" Dockerfile; then
+              echo "✅ $member/Cargo.toml found in Dockerfile"
+            else
+              echo "❌ $member/Cargo.toml not found in Dockerfile"
+              exit 1
+            fi
+          done
+
+  # Check for common Docker issues
+  docker-file-checks:
+    name: Docker File Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check Dockerfile syntax
+        run: |
+          # Check if Dockerfile exists
+          test -f Dockerfile || (echo "Dockerfile not found" && exit 1)
+
+      - name: Check for required dependencies
+        run: |
+          # Check for clang (ring crate dependency)
+          if ! grep -q "clang" Dockerfile; then
+            echo "❌ Dockerfile should include clang for ring crate compilation"
+            exit 1
+          fi
+          echo "✅ clang dependency found"
+
+          # Check for required build tools
+          REQUIRED_TOOLS=("pkg-config" "libssl-dev" "build-essential")
+          for tool in "${REQUIRED_TOOLS[@]}"; do
+            if grep -q "$tool" Dockerfile; then
+              echo "✅ $tool found in Dockerfile"
+            else
+              echo "❌ $tool not found in Dockerfile"
+              exit 1
+            fi
+          done
+
+      - name: Check DigitalOcean compatibility
+        run: |
+          # Check for non-root user
+          if grep -q "USER appuser" Dockerfile; then
+            echo "✅ Non-root user configured"
+          else
+            echo "⚠️ Dockerfile should run as non-root user"
+          fi
+
+          # Check for health check
+          if grep -q "HEALTHCHECK" Dockerfile; then
+            echo "✅ Health check configured"
+          else
+            echo "⚠️ Dockerfile should include HEALTHCHECK"
+          fi
+
+          # Check exposed port
+          if grep -q "EXPOSE 8080" Dockerfile; then
+            echo "✅ Port 8080 exposed"
+          else
+            echo "⚠️ Dockerfile should expose port 8080 for DigitalOcean"
+          fi
+
+  # Summary
+  ci-summary:
+    name: CI Summary
+    runs-on: ubuntu-latest
+    needs: [rust-test, verify-docker-cargo, docker-file-checks]
+    if: always()
+    steps:
+      - name: CI Summary
+        run: |
+          echo "## CI Checks Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          RUST_RESULT="${{ needs.rust-test.result }}"
+          VERIFY_RESULT="${{ needs.verify-docker-cargo.result }}"
+          DOCKER_RESULT="${{ needs.docker-file-checks.result }}"
+
+          if [[ "$RUST_RESULT" == "success" ]]; then
+            echo "✅ Rust compilation and tests passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Rust checks failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [[ "$VERIFY_RESULT" == "success" ]]; then
+            echo "✅ Docker-Cargo alignment verified" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Docker-Cargo alignment failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [[ "$DOCKER_RESULT" == "success" ]]; then
+            echo "✅ Docker file checks passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Docker file checks failed" >> $GITHUB_STEP_SUMMARY
+          fi

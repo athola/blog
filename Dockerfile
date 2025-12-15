@@ -2,11 +2,12 @@
 FROM rustlang/rust:nightly-slim as builder
 
 # Install required packages for building
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     libssl-dev \
     curl \
     build-essential \
+    clang \
     && rm -rf /var/lib/apt/lists/*
 
 # Install cargo-leptos and wasm-bindgen-cli
@@ -15,11 +16,18 @@ RUN cargo install cargo-leptos wasm-bindgen-cli
 # Add the WASM target
 RUN rustup target add wasm32-unknown-unknown
 
+# Configure WASM-specific environment for ring crate
+ENV RING_CORE_PREFIX=ring_core_prefix_0_17_14
+
 # Create app user for security
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 
 # Create working directory
 WORKDIR /work
+
+# Set environment variables for ring crate build
+ENV CC=clang
+ENV RING_CORE_PREFIX=ring_core_prefix
 
 # Create analyzed metadata for DigitalOcean buildpack compatibility
 RUN mkdir -p /layers && \
@@ -50,21 +58,32 @@ COPY Cargo.toml Cargo.lock ./
 COPY build.rs ./
 
 # Build the application with optimizations
-RUN cargo leptos build --release
+RUN LEPTOS_HASH_FILES=true cargo leptos build --release
 
-# Stage 2: Runtime Environment - using distroless for security
-FROM gcr.io/distroless/cc-debian12 as runner
+# Stage 2: Runtime Environment - using Ubuntu 24.04 LTS for latest stable support
+FROM ubuntu:24.04 as runner
 
-# Copy app user from builder
-COPY --from=builder /etc/passwd /etc/passwd
-COPY --from=builder /etc/group /etc/group
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app user (matching builder stage)
+RUN groupadd -r appuser && useradd -r -g appuser appuser
 
 # Create app directory
 WORKDIR /app
 
-# Copy the binary and site content from the builder stage
+# Copy the binary, site content, and config files from the builder stage
 COPY --from=builder --chown=appuser:appuser /work/target/release/server /app/blog
 COPY --from=builder --chown=appuser:appuser /work/target/site /app/site
+COPY --from=builder --chown=appuser:appuser /work/Cargo.toml /app/Cargo.toml
+
+# Generate the hash file that Leptos hydration expects
+# When LEPTOS_HASH_FILES=true, Leptos expects to find a hash file to validate bundles
+WORKDIR /app/site
+RUN find . -type f -exec sha256sum {} \; | sort | sha256sum | cut -d' ' -f1 > .leptos-hash
+WORKDIR /app
 
 # Switch to non-root user
 USER appuser
@@ -75,10 +94,6 @@ ENV LEPTOS_SITE_ADDR="0.0.0.0:8080"
 ENV LEPTOS_SITE_ROOT="site"
 ENV LEPTOS_HASH_FILES="true"
 ENV LEPTOS_RELOAD_PORT="3001"
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD ["/app/blog", "--health-check"] || exit 1
 
 # Expose port (DigitalOcean App Platform uses 8080)
 EXPOSE 8080

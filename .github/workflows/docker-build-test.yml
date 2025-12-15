@@ -1,0 +1,322 @@
+name: Docker Build Test
+permissions:
+  contents: read
+  packages: read
+  security-events: write
+
+# Run on PR creation, PR sync, and pushes to main branches
+on:
+  pull_request:
+    paths:
+      - 'Dockerfile'
+      - 'Cargo.lock'
+      - 'Cargo.toml'
+      - 'app/**'
+      - 'frontend/**'
+      - 'server/**'
+      - 'shared_utils/**'
+      - 'build.rs'
+      - 'style/**'
+      - 'public/**'
+  push:
+    branches:
+      - master
+      - main
+      - develop
+    paths:
+      - 'Dockerfile'
+      - 'Cargo.lock'
+      - 'Cargo.toml'
+      - 'app/**'
+      - 'frontend/**'
+      - 'server/**'
+      - 'shared_utils/**'
+      - 'build.rs'
+      - 'style/**'
+      - 'public/**'
+
+# Cancel any in-progress workflow runs for the same PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # Lint and validate Dockerfile
+  dockerfile-lint:
+    name: Lint Dockerfile
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Hadolint Dockerfile linter
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          failure-threshold: error
+          # Ignore specific rules that don't apply to our setup
+          ignore: DL3008, DL3009, DL3013
+
+  # Security scan for Dockerfile
+  dockerfile-security:
+    name: Security Scan Dockerfile
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@0.23.0
+        with:
+          scan-type: 'config'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  # Build Docker image (single platform for CI speed)
+  docker-build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: [dockerfile-lint, dockerfile-security]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+          flavor: |
+            latest=false
+
+      - name: Build and test Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          load: false
+          tags: test-image:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # Build args for DigitalOcean compatibility
+          build-args: |
+            RUST_LOG=info
+            LEPTOS_SITE_ADDR=0.0.0.0:8080
+
+      # Verify the build completed successfully
+      - name: Verify build
+        run: |
+          echo "Docker build completed successfully"
+          echo "Image ID: test-image:latest"
+
+  # Build for production simulation
+  docker-build-production:
+    name: Build Production Docker Image
+    runs-on: ubuntu-latest
+    needs: docker-build
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build production image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: production-test:latest
+          target: runner
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Start SurrealDB for testing
+        run: |
+          # Start SurrealDB with file storage for testing
+          docker run -d --name surrealdb-test \
+            -p 8000:8000 \
+            -v /tmp:/data \
+            surrealdb/surrealdb:v3.0.0-alpha.16 \
+            start --log info --user root --pass root file:///data/test.db --bind 0.0.0.0:8000
+
+          # Wait for SurrealDB to be ready
+          for i in {1..30}; do
+            if curl -s http://localhost:8000/health >/dev/null 2>&1; then
+              echo "SurrealDB is ready"
+              sleep 5  # Give extra time for full initialization
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Test production image
+        env:
+          TEST_RUST_LOG: info
+          TEST_LEPTOS_SITE_ADDR: 0.0.0.0:8080
+          TEST_LEPTOS_SITE_ROOT: site
+          TEST_SURREAL_PROTOCOL: http
+          TEST_SURREAL_HOST: surrealdb:8000
+          TEST_SURREAL_NS: test
+          TEST_SURREAL_DB: test
+          TEST_SURREAL_ROOT_USER: root
+          TEST_SURREAL_ROOT_PASS: root
+        run: |
+          # Start the container with correct environment variables
+          docker run -d --name test-container -p 8080:8080 \
+            --link surrealdb-test:surrealdb \
+            -e RUST_LOG="$TEST_RUST_LOG" \
+            -e LEPTOS_SITE_ADDR="$TEST_LEPTOS_SITE_ADDR" \
+            -e LEPTOS_SITE_ROOT="$TEST_LEPTOS_SITE_ROOT" \
+            -e LEPTOS_HASH_FILES=false \
+            -e RUST_ENV=production \
+            -e SURREAL_PROTOCOL="$TEST_SURREAL_PROTOCOL" \
+            -e SURREAL_HOST="$TEST_SURREAL_HOST" \
+            -e SURREAL_NS="$TEST_SURREAL_NS" \
+            -e SURREAL_DB="$TEST_SURREAL_DB" \
+            -e SURREAL_ROOT_USER="$TEST_SURREAL_ROOT_USER" \
+            -e SURREAL_ROOT_PASS="$TEST_SURREAL_ROOT_PASS" \
+            production-test:latest
+
+          # Wait for container to start
+          sleep 30
+
+          # Check if container is running
+          if ! docker ps | grep test-container; then
+            echo "Container failed to start"
+            docker logs test-container
+            exit 1
+          fi
+
+          # Health check
+          curl -f http://localhost:8080/ || (
+            echo "Site not accessible"
+            docker logs test-container
+            exit 1
+          )
+
+      - name: Cleanup test containers
+        if: always()
+        run: |
+          # Cleanup containers even if test fails
+          docker stop test-container 2>/dev/null || true
+          docker rm test-container 2>/dev/null || true
+          docker stop surrealdb-test 2>/dev/null || true
+          docker rm surrealdb-test 2>/dev/null || true
+
+  # Deploy test (only on PR to main/master)
+  deploy-test:
+    name: Test DigitalOcean Compatibility
+    runs-on: ubuntu-latest
+    needs: [docker-build-production]
+    if: github.event_name == 'pull_request' && (github.base_ref == 'master' || github.base_ref == 'main')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate DigitalOcean app.yaml
+        run: |
+          # Check if app.yaml exists and is valid YAML
+          if [ ! -f ".do/app.yaml" ]; then
+            echo "DigitalOcean app.yaml not found"
+            exit 1
+          fi
+
+          # Validate YAML syntax
+          python3 -c "import yaml; yaml.safe_load(open('.do/app.yaml'))"
+
+          # Check for required fields
+          if ! grep -q "dockerfile_path: Dockerfile" .do/app.yaml; then
+            echo "Dockerfile not configured in app.yaml"
+            exit 1
+          fi
+
+      - name: Check Dockerfile DigitalOcean compatibility
+        run: |
+          # Verify Dockerfile follows DigitalOcean best practices
+          echo "Checking Dockerfile for DigitalOcean compatibility..."
+
+          # Check for non-root user
+          if ! grep -q "USER appuser" Dockerfile; then
+            echo "Warning: Dockerfile should run as non-root user"
+          fi
+
+          # Check for health check
+          if ! grep -q "HEALTHCHECK" Dockerfile; then
+            echo "Warning: Dockerfile should include HEALTHCHECK"
+          fi
+
+          # Check exposed port
+          if ! grep -q "EXPOSE 8080" Dockerfile; then
+            echo "Warning: Dockerfile should expose port 8080 for DigitalOcean"
+          fi
+
+          # Check for proper base image
+          if grep -q "FROM scratch" Dockerfile; then
+            echo "Error: Scratch images not supported by DigitalOcean"
+            exit 1
+          fi
+
+  # Summary job
+  build-summary:
+    name: Build Summary
+    runs-on: ubuntu-latest
+    needs: [dockerfile-lint, dockerfile-security, docker-build, docker-build-production]
+    if: always()
+    steps:
+      - name: Build Summary
+        run: |
+          echo "## Docker Build Test Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Use safe environment variables for conditional checks
+          LINT_RESULT="${{ needs.dockerfile-lint.result }}"
+          SECURITY_RESULT="${{ needs.dockerfile-security.result }}"
+          BUILD_RESULT="${{ needs.docker-build.result }}"
+          PROD_RESULT="${{ needs.docker-build-production.result }}"
+
+          if [[ "$LINT_RESULT" == "success" ]]; then
+            echo "✅ Dockerfile lint passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Dockerfile lint failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [[ "$SECURITY_RESULT" == "success" ]]; then
+            echo "✅ Security scan passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Security scan found issues" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [[ "$BUILD_RESULT" == "success" ]]; then
+            echo "✅ Docker image build successful" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Docker image build failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [[ "$PROD_RESULT" == "success" ]]; then
+            echo "✅ Production image build and test successful" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Production image build or test failed" >> $GITHUB_STEP_SUMMARY
+          fi
