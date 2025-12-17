@@ -1,6 +1,9 @@
 # Stage 1: Build Environment with Rust nightly
 FROM rustlang/rust:nightly-slim as builder
 
+# Set shell options for proper pipe error handling
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 # Install required packages for building
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
@@ -10,11 +13,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     clang \
     && rm -rf /var/lib/apt/lists/*
 
-# Install cargo-leptos and wasm-bindgen-cli
-RUN cargo install cargo-leptos wasm-bindgen-cli
-
-# Add the WASM target
-RUN rustup target add wasm32-unknown-unknown
+# Install cargo-leptos, wasm-bindgen-cli, and add WASM target
+RUN cargo install cargo-leptos wasm-bindgen-cli && \
+    rustup target add wasm32-unknown-unknown
 
 # Configure WASM-specific environment for ring crate
 ENV RING_CORE_PREFIX=ring_core_prefix_0_17_14
@@ -63,13 +64,14 @@ RUN LEPTOS_HASH_FILES=true cargo leptos build --release
 # Stage 2: Runtime Environment - using Ubuntu 24.04 LTS for latest stable support
 FROM ubuntu:24.04 as runner
 
-# Install runtime dependencies
+# Set shell options for proper pipe error handling
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Install runtime dependencies and create app user
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create app user (matching builder stage)
-RUN groupadd -r appuser && useradd -r -g appuser appuser
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd -r appuser && useradd -r -g appuser appuser
 
 # Create app directory
 WORKDIR /app
@@ -94,6 +96,7 @@ ENV LEPTOS_SITE_ADDR="0.0.0.0:8080"
 ENV LEPTOS_SITE_ROOT="site"
 ENV LEPTOS_HASH_FILES="true"
 ENV LEPTOS_RELOAD_PORT="3001"
+ENV PORT="8080"
 
 # Expose port (DigitalOcean App Platform uses 8080)
 EXPOSE 8080

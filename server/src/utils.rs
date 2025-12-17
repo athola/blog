@@ -28,6 +28,27 @@ use surrealdb_types::SurrealValue;
 use tokio_retry::{Retry, strategy::ExponentialBackoff};
 use tracing::{error, warn};
 
+fn parse_surreal_address(raw: &str) -> Option<(String, String)> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return None;
+    }
+
+    let (scheme, rest) = raw.split_once("://").unwrap_or(("http", raw));
+    let host = rest.split('/').next().unwrap_or("").trim();
+    if host.is_empty() {
+        return None;
+    }
+
+    let scheme = if scheme.eq_ignore_ascii_case("https") {
+        "https"
+    } else {
+        "http"
+    };
+
+    Some((scheme.to_string(), host.to_string()))
+}
+
 /// Builds an Axum `Response<String>` with the specified body, content type, and status code.
 ///
 /// This helper standardizes the process of creating HTTP responses and
@@ -88,8 +109,28 @@ fn build_response(body: String, content_type: &str, status: StatusCode) -> Respo
 /// after all retries.
 pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
     // Retrieve connection and authentication details from environment variables.
-    let protocol = env::var("SURREAL_PROTOCOL").unwrap_or_else(|_| "http".to_owned());
-    let host = env::var("SURREAL_HOST").unwrap_or_else(|_| "127.0.0.1:8000".to_owned());
+    let default_protocol = env::var("SURREAL_PROTOCOL").unwrap_or_else(|_| "http".to_owned());
+    let default_host = env::var("SURREAL_HOST").unwrap_or_else(|_| "127.0.0.1:8000".to_owned());
+
+    let surreal_address = env::var("SURREAL_ADDRESS")
+        .or_else(|_| env::var("SURREAL_URL"))
+        .ok()
+        .filter(|s| !s.trim().is_empty());
+
+    let (protocol, host) = if let Some(address) = surreal_address {
+        parse_surreal_address(&address).unwrap_or_else(|| {
+            warn!(
+                surreal_address = address.as_str(),
+                "Failed to parse `SURREAL_ADDRESS`; falling back to `SURREAL_PROTOCOL`/`SURREAL_HOST`"
+            );
+            (default_protocol.clone(), default_host.clone())
+        })
+    } else if default_host.contains("://") {
+        parse_surreal_address(&default_host).unwrap_or((default_protocol.clone(), default_host))
+    } else {
+        (default_protocol, default_host)
+    };
+
     let username = env::var("SURREAL_ROOT_USER").unwrap_or_default();
     let password = env::var("SURREAL_ROOT_PASS").unwrap_or_default();
     let namespace_username = env::var("SURREAL_NAMESPACE_USER")
@@ -569,6 +610,34 @@ pub async fn sitemap_handler(State(state): State<AppState>) -> Response<String> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_surreal_address_http() {
+        let (scheme, host) = parse_surreal_address("http://10.0.0.1:8000").unwrap();
+        assert_eq!(scheme, "http");
+        assert_eq!(host, "10.0.0.1:8000");
+    }
+
+    #[test]
+    fn parse_surreal_address_https_with_slash() {
+        let (scheme, host) = parse_surreal_address("https://example.com:443/").unwrap();
+        assert_eq!(scheme, "https");
+        assert_eq!(host, "example.com:443");
+    }
+
+    #[test]
+    fn parse_surreal_address_bare_host_defaults_to_http() {
+        let (scheme, host) = parse_surreal_address("10.0.0.1:8000").unwrap();
+        assert_eq!(scheme, "http");
+        assert_eq!(host, "10.0.0.1:8000");
+    }
+
+    #[test]
+    fn parse_surreal_address_strips_path() {
+        let (scheme, host) = parse_surreal_address("http://10.0.0.1:8000/rpc").unwrap();
+        assert_eq!(scheme, "http");
+        assert_eq!(host, "10.0.0.1:8000");
+    }
 
     /// Test helper macro to temporarily set and restore environment variables during test execution.
     ///
