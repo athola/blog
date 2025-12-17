@@ -81,10 +81,13 @@ COPY --from=builder --chown=appuser:appuser /work/target/release/server /app/blo
 COPY --from=builder --chown=appuser:appuser /work/target/site /app/site
 COPY --from=builder --chown=appuser:appuser /work/Cargo.toml /app/Cargo.toml
 
+# Ensure the binary is executable
+RUN chmod +x /app/blog
+
 # Generate the hash file that Leptos hydration expects
 # When LEPTOS_HASH_FILES=true, Leptos expects to find a hash file to validate bundles
 WORKDIR /app/site
-RUN find . -type f -exec sha256sum {} \; | sort | sha256sum | cut -d' ' -f1 > .leptos-hash
+RUN if [ ! -f .leptos-hash ]; then find . -type f -exec sha256sum {} \; | sort | sha256sum | cut -d' ' -f1 > .leptos-hash; fi
 WORKDIR /app
 
 # Switch to non-root user
@@ -102,4 +105,4 @@ ENV PORT="8080"
 EXPOSE 8080
 
 # Run the application
-CMD ["/app/blog"]
+CMD ["./blog"]
