@@ -68,25 +68,36 @@ RUN LEPTOS_HASH_FILES=true cargo leptos build --release && \
 # Stage 2: Runtime Environment - using Ubuntu 24.04 LTS for latest stable support
 FROM ubuntu:24.04 as runner
 
+# Cache-busting argument - increment to force rebuild of runner stage
+# Last updated: 2025-12-18 (fix wasm-bindgen + cache issue)
+ARG CACHEBUST=2
+
 # Set shell options for proper pipe error handling
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Install runtime dependencies and create app user
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
+    file \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd -r appuser && useradd -r -g appuser appuser
 
 # Create app directory
 WORKDIR /app
 
+# Invalidate cache for COPY operations (depends on CACHEBUST arg)
+RUN echo "Cache bust: $CACHEBUST"
+
 # Copy the binary, site content, and config files from the builder stage
 COPY --from=builder --chown=appuser:appuser /work/target/release/server /app/blog
 COPY --from=builder --chown=appuser:appuser /work/target/site /app/site
 COPY --from=builder --chown=appuser:appuser /work/Cargo.toml /app/Cargo.toml
 
-# Ensure the binary is executable
-RUN chmod +x /app/blog
+# Ensure the binary is executable and verify it exists
+RUN chmod +x /app/blog && \
+    echo "Verifying /app/blog exists in runner stage:" && \
+    ls -la /app/blog && \
+    file /app/blog
 
 # Generate the hash file that Leptos hydration expects
 # When LEPTOS_HASH_FILES=true, Leptos expects to find a hash file to validate bundles
