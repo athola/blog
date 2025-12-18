@@ -192,6 +192,7 @@ jobs:
       with:
         app_name: blog
         token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+        spec_path: .do/app.yaml
     
     - name: Wait for deployment propagation
       timeout-minutes: 2  # Simple wait shouldn't exceed this
