@@ -13,8 +13,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     clang \
     && rm -rf /var/lib/apt/lists/*
 
-# Install cargo-leptos, wasm-bindgen-cli, and add WASM target
-RUN cargo install cargo-leptos wasm-bindgen-cli && \
+# Install cargo-leptos and wasm-bindgen-cli (pinned versions for reproducible builds)
+RUN cargo install cargo-leptos --version 0.3.1 && \
+    cargo install wasm-bindgen-cli --version 0.2.106 && \
     rustup target add wasm32-unknown-unknown
 
 # Configure WASM-specific environment for ring crate
@@ -59,7 +60,10 @@ COPY Cargo.toml Cargo.lock ./
 COPY build.rs ./
 
 # Build the application with optimizations
-RUN LEPTOS_HASH_FILES=true cargo leptos build --release
+RUN LEPTOS_HASH_FILES=true cargo leptos build --release && \
+    echo "Build complete. Verifying binary exists:" && \
+    ls -la /work/target/release/server && \
+    ls -la /work/target/site/
 
 # Stage 2: Runtime Environment - using Ubuntu 24.04 LTS for latest stable support
 FROM ubuntu:24.04 as runner
