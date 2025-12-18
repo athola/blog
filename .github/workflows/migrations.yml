@@ -69,7 +69,7 @@ jobs:
         
         echo "::notice::Validating migration syntax (no database access required)"
         if surreal validate "migrations/*.surql"; then
-          echo "✅ All migration files have valid syntax"
+          echo " All migration files have valid syntax"
         else
           echo "::error::Migration syntax validation failed"
           exit 1
@@ -224,7 +224,7 @@ jobs:
             echo "Attempt $attempt of $max_attempts (timeout: ${timeout}s)"
             
             if timeout ${timeout}s curl -f "${{ secrets.SURREAL_ADDRESS }}/status"; then
-              echo "✅ SurrealDB is reachable"
+              echo " SurrealDB is reachable"
               echo "connectivity=success" >> $GITHUB_OUTPUT
               return 0
             fi
@@ -244,7 +244,7 @@ jobs:
             ((attempt++))
           done
           
-          echo "❌ SurrealDB is unreachable at ${{ secrets.SURREAL_ADDRESS }} after $max_attempts attempts"
+          echo " SurrealDB is unreachable at ${{ secrets.SURREAL_ADDRESS }} after $max_attempts attempts"
           echo "connectivity=failed" >> $GITHUB_OUTPUT
           return 1
         }

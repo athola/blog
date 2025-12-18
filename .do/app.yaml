@@ -15,7 +15,7 @@ services:
     dockerfile_path: Dockerfile
 
     # Explicit run command (required for DigitalOcean to start the container)
-    run_command: ./blog
+    run_command: /app/blog
 
     # Runtime configuration
     instance_count: 1

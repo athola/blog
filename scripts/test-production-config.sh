@@ -57,7 +57,7 @@ if ! pgrep -f "surreal start" >/dev/null; then
         exit 1
     fi
 else
-    echo "✓ SurrealDB is running locally"
+    echo "SurrealDB is running locally"
 fi
 
 # Detect environment and get host IP
@@ -76,9 +76,9 @@ echo "Final SURREAL_HOST will be: $FINAL_HOST"
 # Test connection to SurrealDB
 echo "Testing SurrealDB connection..."
 if curl -s --connect-timeout 2 http://${FINAL_HOST}/health >/dev/null 2>&1; then
-    echo "✓ SurrealDB is accessible at http://$FINAL_HOST"
+    echo "SurrealDB is accessible at http://$FINAL_HOST"
 else
-    echo "✗ Cannot connect to SurrealDB at http://$FINAL_HOST"
+    echo "Cannot connect to SurrealDB at http://$FINAL_HOST"
     echo "Please check if SurrealDB is running and accessible"
     exit 1
 fi

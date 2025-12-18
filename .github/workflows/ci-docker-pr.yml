@@ -76,9 +76,9 @@ jobs:
           # Check if all workspace members are copied in Dockerfile
           for member in $WORKSPACE_MEMBERS; do
             if grep -q "COPY $member/" Dockerfile; then
-              echo "✅ $member found in Dockerfile"
+              echo " $member found in Dockerfile"
             else
-              echo "❌ $member not found in Dockerfile"
+              echo " $member not found in Dockerfile"
               exit 1
             fi
           done
@@ -94,9 +94,9 @@ jobs:
 
           for member in $WORKSPACE_MEMBERS; do
             if grep -q "COPY $member/Cargo.toml" Dockerfile; then
-              echo "✅ $member/Cargo.toml found in Dockerfile"
+              echo " $member/Cargo.toml found in Dockerfile"
             else
-              echo "❌ $member/Cargo.toml not found in Dockerfile"
+              echo " $member/Cargo.toml not found in Dockerfile"
               exit 1
             fi
           done
@@ -118,18 +118,18 @@ jobs:
         run: |
           # Check for clang (ring crate dependency)
           if ! grep -q "clang" Dockerfile; then
-            echo "❌ Dockerfile should include clang for ring crate compilation"
+            echo " Dockerfile should include clang for ring crate compilation"
             exit 1
           fi
-          echo "✅ clang dependency found"
+          echo " clang dependency found"
 
           # Check for required build tools
           REQUIRED_TOOLS=("pkg-config" "libssl-dev" "build-essential")
           for tool in "${REQUIRED_TOOLS[@]}"; do
             if grep -q "$tool" Dockerfile; then
-              echo "✅ $tool found in Dockerfile"
+              echo " $tool found in Dockerfile"
             else
-              echo "❌ $tool not found in Dockerfile"
+              echo " $tool not found in Dockerfile"
               exit 1
             fi
           done
@@ -138,23 +138,23 @@ jobs:
         run: |
           # Check for non-root user
           if grep -q "USER appuser" Dockerfile; then
-            echo "✅ Non-root user configured"
+            echo " Non-root user configured"
           else
-            echo "⚠️ Dockerfile should run as non-root user"
+            echo " Dockerfile should run as non-root user"
           fi
 
           # Check for health check
           if grep -q "HEALTHCHECK" Dockerfile; then
-            echo "✅ Health check configured"
+            echo " Health check configured"
           else
-            echo "⚠️ Dockerfile should include HEALTHCHECK"
+            echo " Dockerfile should include HEALTHCHECK"
           fi
 
           # Check exposed port
           if grep -q "EXPOSE 8080" Dockerfile; then
-            echo "✅ Port 8080 exposed"
+            echo " Port 8080 exposed"
           else
-            echo "⚠️ Dockerfile should expose port 8080 for DigitalOcean"
+            echo " Dockerfile should expose port 8080 for DigitalOcean"
           fi
 
   # Summary
@@ -174,19 +174,19 @@ jobs:
           DOCKER_RESULT="${{ needs.docker-file-checks.result }}"
 
           if [[ "$RUST_RESULT" == "success" ]]; then
-            echo "✅ Rust compilation and tests passed" >> $GITHUB_STEP_SUMMARY
+            echo " Rust compilation and tests passed" >> $GITHUB_STEP_SUMMARY
           else
-            echo "❌ Rust checks failed" >> $GITHUB_STEP_SUMMARY
+            echo " Rust checks failed" >> $GITHUB_STEP_SUMMARY
           fi
 
           if [[ "$VERIFY_RESULT" == "success" ]]; then
-            echo "✅ Docker-Cargo alignment verified" >> $GITHUB_STEP_SUMMARY
+            echo " Docker-Cargo alignment verified" >> $GITHUB_STEP_SUMMARY
           else
-            echo "❌ Docker-Cargo alignment failed" >> $GITHUB_STEP_SUMMARY
+            echo " Docker-Cargo alignment failed" >> $GITHUB_STEP_SUMMARY
           fi
 
           if [[ "$DOCKER_RESULT" == "success" ]]; then
-            echo "✅ Docker file checks passed" >> $GITHUB_STEP_SUMMARY
+            echo " Docker file checks passed" >> $GITHUB_STEP_SUMMARY
           else
-            echo "❌ Docker file checks failed" >> $GITHUB_STEP_SUMMARY
+            echo " Docker file checks failed" >> $GITHUB_STEP_SUMMARY
           fi

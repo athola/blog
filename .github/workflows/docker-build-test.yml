@@ -222,23 +222,23 @@ jobs:
 
           # Check if container is running
           if ! docker ps | grep test-container; then
-            echo "❌ Container failed to start with run_command: $RUN_COMMAND"
+            echo " Container failed to start with run_command: $RUN_COMMAND"
             echo "This is the EXACT error DigitalOcean would hit!"
             docker logs test-container
             exit 1
           fi
-          echo "✅ Container started successfully with run_command"
+          echo " Container started successfully with run_command"
 
           # Health check on /health endpoint (same as app.yaml health_check)
           echo "Testing /health endpoint..."
           for i in {1..10}; do
             if curl -sf http://localhost:8080/health; then
               echo ""
-              echo "✅ Health check passed"
+              echo " Health check passed"
               break
             fi
             if [ "$i" -eq 10 ]; then
-              echo "❌ Health check failed after 10 attempts"
+              echo " Health check failed after 10 attempts"
               docker logs test-container
               exit 1
             fi
@@ -247,11 +247,11 @@ jobs:
 
           # Also verify root path works
           curl -f http://localhost:8080/ || (
-            echo "❌ Site root not accessible"
+            echo " Site root not accessible"
             docker logs test-container
             exit 1
           )
-          echo "✅ Site root accessible"
+          echo " Site root accessible"
 
       - name: Cleanup test containers
         if: always()
@@ -276,7 +276,7 @@ jobs:
         run: |
           # Check if app.yaml exists and is valid YAML
           if [ ! -f ".do/app.yaml" ]; then
-            echo "❌ DigitalOcean app.yaml not found"
+            echo " DigitalOcean app.yaml not found"
             exit 1
           fi
 
@@ -285,17 +285,17 @@ jobs:
 
           # Check for required fields
           if ! grep -q "dockerfile_path: Dockerfile" .do/app.yaml; then
-            echo "❌ Dockerfile not configured in app.yaml"
+            echo " Dockerfile not configured in app.yaml"
             exit 1
           fi
 
           # CRITICAL: Check run_command is present (DigitalOcean ignores Docker CMD)
           if ! grep -q "run_command:" .do/app.yaml; then
-            echo "❌ CRITICAL: run_command missing in app.yaml!"
+            echo " CRITICAL: run_command missing in app.yaml!"
             echo "DigitalOcean App Platform ignores Docker CMD and requires explicit run_command"
             exit 1
           fi
-          echo "✅ run_command found in app.yaml"
+          echo " run_command found in app.yaml"
 
           # Extract and validate run_command matches what's in Dockerfile
           RUN_CMD=$(grep "run_command:" .do/app.yaml | sed 's/.*run_command:\s*//' | tr -d '"' | tr -d "'")
@@ -305,7 +305,7 @@ jobs:
 
           # Warn if they don't match (not fatal, but important to know)
           if [ "$RUN_CMD" != "$DOCKER_CMD" ]; then
-            echo "⚠️ Warning: run_command differs from Dockerfile CMD"
+            echo " Warning: run_command differs from Dockerfile CMD"
             echo "   This is OK if intentional, but verify both work"
           fi
 
@@ -354,25 +354,25 @@ jobs:
           PROD_RESULT="${{ needs.docker-build-production.result }}"
 
           if [[ "$LINT_RESULT" == "success" ]]; then
-            echo "✅ Dockerfile lint passed" >> $GITHUB_STEP_SUMMARY
+            echo " Dockerfile lint passed" >> $GITHUB_STEP_SUMMARY
           else
-            echo "❌ Dockerfile lint failed" >> $GITHUB_STEP_SUMMARY
+            echo " Dockerfile lint failed" >> $GITHUB_STEP_SUMMARY
           fi
 
           if [[ "$SECURITY_RESULT" == "success" ]]; then
-            echo "✅ Security scan passed" >> $GITHUB_STEP_SUMMARY
+            echo " Security scan passed" >> $GITHUB_STEP_SUMMARY
           else
-            echo "⚠️ Security scan found issues" >> $GITHUB_STEP_SUMMARY
+            echo " Security scan found issues" >> $GITHUB_STEP_SUMMARY
           fi
 
           if [[ "$BUILD_RESULT" == "success" ]]; then
-            echo "✅ Docker image build successful" >> $GITHUB_STEP_SUMMARY
+            echo " Docker image build successful" >> $GITHUB_STEP_SUMMARY
           else
-            echo "❌ Docker image build failed" >> $GITHUB_STEP_SUMMARY
+            echo " Docker image build failed" >> $GITHUB_STEP_SUMMARY
           fi
 
           if [[ "$PROD_RESULT" == "success" ]]; then
-            echo "✅ Production image build and test successful" >> $GITHUB_STEP_SUMMARY
+            echo " Production image build and test successful" >> $GITHUB_STEP_SUMMARY
           else
-            echo "❌ Production image build or test failed" >> $GITHUB_STEP_SUMMARY
+            echo " Production image build or test failed" >> $GITHUB_STEP_SUMMARY
           fi

@@ -201,13 +201,13 @@ jobs:
     - name: Build workspace
       timeout-minutes: 45
       run: |
-        echo "🔨 Building workspace (profile: ${{ matrix.profile }})..."
+        echo " Building workspace (profile: ${{ matrix.profile }})..."
         if [ "${{ matrix.profile }}" = "dev" ]; then
           cargo build --workspace
-          echo "🗄️ Initializing database for tests..."
+          echo " Initializing database for tests..."
           make init-db || echo "Database initialization completed"
           echo "SurrealDB version: $(surreal --version 2>/dev/null || echo "unknown")"
-          echo "🧪 Running fast unit and integration tests (excluding server integration tests)..."
+          echo " Running fast unit and integration tests (excluding server integration tests)..."
           # Run only unit tests, not resource-intensive server integration tests
           cargo test --workspace --no-fail-fast --lib --bins -- --test-threads=4
           cargo test migration_core_tests --no-fail-fast
@@ -221,7 +221,7 @@ jobs:
           cargo test schema_evolution_tests --profile server --no-fail-fast
           cargo test server_unit_tests --profile server --no-fail-fast
         fi
-        echo "✅ Build and tests completed"
+        echo " Build and tests completed"
     
     - name: Upload build artifacts
       if: matrix.profile == 'release'
@@ -303,7 +303,7 @@ jobs:
 
     - name: Install test tools
       run: |
-        echo "📦 Installing test tools..."
+        echo " Installing test tools..."
         cargo install --locked cargo-nextest cargo-llvm-cov --quiet 2>/dev/null || cargo install --locked cargo-nextest cargo-llvm-cov
 
     - name: Create test results directory
@@ -311,7 +311,7 @@ jobs:
 
     - name: Clean previous build artifacts
       run: |
-        echo "🧹 Cleaning previous build artifacts to ensure fresh compilation with safe flags..."
+        echo " Cleaning previous build artifacts to ensure fresh compilation with safe flags..."
         cargo clean
 
     - name: Run test coverage
@@ -324,7 +324,7 @@ jobs:
 
     - name: Generate HTML coverage report
       run: |
-        echo "📄 Generating HTML coverage report..."
+        echo " Generating HTML coverage report..."
         cargo llvm-cov nextest --workspace --html --output-dir test-results/coverage/html -E 'not (test(server_integration_tests) | test(activity_feed_tests))'
     
     - name: Upload coverage reports
@@ -390,18 +390,18 @@ jobs:
     - name: Check for unused dependencies
       timeout-minutes: 20
       run: |
-        echo "🧹 Checking for unused dependencies..."
+        echo " Checking for unused dependencies..."
         cargo install --locked cargo-udeps --quiet 2>/dev/null || cargo install --locked cargo-udeps
-        cargo +nightly udeps --all-targets || echo "⚠️ Unused dependencies found"
+        cargo +nightly udeps --all-targets || echo " Unused dependencies found"
 
     - name: Performance benchmarks
       timeout-minutes: 15
       run: |
-        echo "⚡ Running performance benchmarks..."
+        echo " Running performance benchmarks..."
         if find . -name "benches" -type d | grep -q .; then
-          timeout 600 cargo bench --workspace || echo "⚠️ Benchmarks failed or timed out"
+          timeout 600 cargo bench --workspace || echo " Benchmarks failed or timed out"
         else
-          echo "ℹ️ No benchmarks found, skipping performance tests"
+          echo " No benchmarks found, skipping performance tests"
         fi
     
     - name: Install WASM target
@@ -412,15 +412,15 @@ jobs:
       env:
         RUSTFLAGS: "-C opt-level=z --cfg getrandom_backend=\"wasm_js\""  # Override global RUSTFLAGS for WASM (remove target-cpu=native, add getrandom backend)
       run: |
-        echo "🔨 Building WASM bundle for size check..."
+        echo " Building WASM bundle for size check..."
         cargo build -p frontend --target wasm32-unknown-unknown --profile wasm-release --quiet
-        echo "✅ WASM build completed"
+        echo " WASM build completed"
 
     - name: WASM size check
       timeout-minutes: 2
       run: |
         set -euo pipefail
-        echo "📏 Checking WASM bundle size..."
+        echo " Checking WASM bundle size..."
 
         WASM_FILE=$(find target/wasm32-unknown-unknown/wasm-release -name "*.wasm" -type f | head -1 || echo "")
 
@@ -432,7 +432,7 @@ jobs:
           if [ "$WASM_SIZE" -gt 5242880 ]; then
             echo "::warning::WASM bundle is larger than 5MB (${WASM_SIZE_MB}MB)"
           else
-            echo "✅ WASM bundle size is acceptable (${WASM_SIZE_MB}MB)"
+            echo " WASM bundle size is acceptable (${WASM_SIZE_MB}MB)"
           fi
         else
           echo "::error::WASM build failed - no WASM files found"

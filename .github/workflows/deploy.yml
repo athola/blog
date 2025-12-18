@@ -32,7 +32,7 @@ jobs:
         # Security note: Never echo secrets directly to avoid log exposure
         # Check if required secrets are set and validate basic format
         if [ -z "${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}" ]; then
-          echo "❌ DIGITALOCEAN_ACCESS_TOKEN secret not configured"
+          echo " DIGITALOCEAN_ACCESS_TOKEN secret not configured"
           echo "enabled=false" >> $GITHUB_OUTPUT
           exit 0
         fi
@@ -40,33 +40,33 @@ jobs:
         # Validate DigitalOcean token format (should be 64 hex characters) - avoid logging secret
         DO_TOKEN_LENGTH=$(echo -n "${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}" | wc -c)
         if [ "$DO_TOKEN_LENGTH" -ne 64 ]; then
-          echo "❌ DIGITALOCEAN_ACCESS_TOKEN has invalid length (expected: 64 characters)"
+          echo " DIGITALOCEAN_ACCESS_TOKEN has invalid length (expected: 64 characters)"
           echo "enabled=false" >> $GITHUB_OUTPUT
           exit 0
         fi
         
         # Check if token contains only valid hex characters (without logging the token)
         if ! echo "${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}" | grep -q '^[a-f0-9]*$'; then
-          echo "❌ DIGITALOCEAN_ACCESS_TOKEN contains invalid characters (expected: hex only)"
+          echo " DIGITALOCEAN_ACCESS_TOKEN contains invalid characters (expected: hex only)"
           echo "enabled=false" >> $GITHUB_OUTPUT
           exit 0
         fi
         
         if [ -z "${{ secrets.SURREAL_ADDRESS }}" ]; then
-          echo "❌ SURREAL_ADDRESS secret not configured" 
+          echo " SURREAL_ADDRESS secret not configured" 
           echo "enabled=false" >> $GITHUB_OUTPUT
           exit 0
         fi
         
         # Validate SurrealDB address format (should be URL-like) - avoid logging sensitive URL
         if ! echo "${{ secrets.SURREAL_ADDRESS }}" | grep -q '^https\?://[a-zA-Z0-9.-]\+\(:[0-9]\+\)\?.*$'; then
-          echo "❌ SURREAL_ADDRESS has invalid URL format (expected: http(s)://host[:port])"
+          echo " SURREAL_ADDRESS has invalid URL format (expected: http(s)://host[:port])"
           echo "enabled=false" >> $GITHUB_OUTPUT
           exit 0
         fi
         
         if [ -z "${{ secrets.SURREAL_PASSWORD }}" ]; then
-          echo "❌ SURREAL_PASSWORD secret not configured"
+          echo " SURREAL_PASSWORD secret not configured"
           echo "enabled=false" >> $GITHUB_OUTPUT
           exit 0
         fi
@@ -74,44 +74,44 @@ jobs:
         # Validate password strength (minimum 8 characters) - avoid logging password
         PASSWORD_LENGTH=$(echo -n "${{ secrets.SURREAL_PASSWORD }}" | wc -c)
         if [ "$PASSWORD_LENGTH" -lt 8 ]; then
-          echo "❌ SURREAL_PASSWORD is too weak (minimum 8 characters required, current: $PASSWORD_LENGTH)"
+          echo " SURREAL_PASSWORD is too weak (minimum 8 characters required, current: $PASSWORD_LENGTH)"
           echo "enabled=false" >> $GITHUB_OUTPUT
           exit 0
         fi
         
         # Validate additional SurrealDB configuration secrets
         if [ -z "${{ secrets.SURREAL_NS }}" ]; then
-          echo "❌ SURREAL_NS secret not configured"
+          echo " SURREAL_NS secret not configured"
           echo "enabled=false" >> $GITHUB_OUTPUT
           exit 0
         fi
         
         if [ -z "${{ secrets.SURREAL_DB }}" ]; then
-          echo "❌ SURREAL_DB secret not configured"
+          echo " SURREAL_DB secret not configured"
           echo "enabled=false" >> $GITHUB_OUTPUT
           exit 0
         fi
         
         if [ -z "${{ secrets.SURREAL_USERNAME }}" ]; then
-          echo "❌ SURREAL_USERNAME secret not configured"
+          echo " SURREAL_USERNAME secret not configured"
           echo "enabled=false" >> $GITHUB_OUTPUT
           exit 0
         fi
         
         # Basic validation for namespace and database names (should be alphanumeric)
         if ! echo "${{ secrets.SURREAL_NS }}" | grep -q '^[a-zA-Z][a-zA-Z0-9_-]*$'; then
-          echo "❌ SURREAL_NS has invalid format (expected: alphanumeric starting with letter)"
+          echo " SURREAL_NS has invalid format (expected: alphanumeric starting with letter)"
           echo "enabled=false" >> $GITHUB_OUTPUT
           exit 0
         fi
         
         if ! echo "${{ secrets.SURREAL_DB }}" | grep -q '^[a-zA-Z][a-zA-Z0-9_-]*$'; then
-          echo "❌ SURREAL_DB has invalid format (expected: alphanumeric starting with letter)"
+          echo " SURREAL_DB has invalid format (expected: alphanumeric starting with letter)"
           echo "enabled=false" >> $GITHUB_OUTPUT
           exit 0
         fi
         
-        echo "✅ All required secrets are configured and validated"
+        echo " All required secrets are configured and validated"
         echo "enabled=true" >> $GITHUB_OUTPUT
     
     - name: Test domain accessibility
@@ -128,18 +128,18 @@ jobs:
         
         # First try a basic HTTPS connection to the root domain
         if timeout 15 curl -f -s --max-time 10 --connect-timeout 5 "https://alexthola.com/" > /dev/null 2>&1; then
-          echo "✅ Domain alexthola.com is accessible via HTTPS"
+          echo " Domain alexthola.com is accessible via HTTPS"
           DOMAIN_ACCESSIBLE=true
         elif timeout 15 curl -f -s --max-time 10 --connect-timeout 5 "http://alexthola.com/" > /dev/null 2>&1; then
-          echo "✅ Domain alexthola.com is accessible via HTTP"
+          echo " Domain alexthola.com is accessible via HTTP"
           DOMAIN_ACCESSIBLE=true  
         else
           # Try alternative endpoints that might respond even if main site is down
           if timeout 10 curl -s --max-time 5 --connect-timeout 3 "https://alexthola.com/health" > /dev/null 2>&1; then
-            echo "✅ Domain alexthola.com is accessible via health endpoint"
+            echo " Domain alexthola.com is accessible via health endpoint"
             DOMAIN_ACCESSIBLE=true
           else
-            echo "⚠️ Domain alexthola.com is not yet accessible via HTTP(S) - DNS may not be configured"
+            echo " Domain alexthola.com is not yet accessible via HTTP(S) - DNS may not be configured"
           fi
         fi
         
@@ -151,9 +151,9 @@ jobs:
         
         # Check if we can reach the health endpoint (might not exist yet on first deploy)
         if timeout 15 curl -f -s --max-time 10 "https://alexthola.com/health" > /dev/null 2>&1; then
-          echo "✅ Existing deployment is healthy"
+          echo " Existing deployment is healthy"
         else
-          echo "ℹ️ No existing deployment detected (normal for first deployment)"
+          echo " No existing deployment detected (normal for first deployment)"
         fi
 
   # Deploy to DigitalOcean App Platform
@@ -178,6 +178,7 @@ jobs:
         sparse-checkout: |
           .do/
           Dockerfile
+          Procfile
           *.toml
           *.md
           public/
@@ -225,14 +226,14 @@ jobs:
               echo "Testing endpoint: $endpoint"
               
               if timeout 15 curl -f -s --max-time $timeout "$endpoint" > /dev/null 2>&1; then
-                echo "✅ Application is healthy at $endpoint"
+                echo " Application is healthy at $endpoint"
                 
                 # Get and display health check response (with timeout)
                 echo "Health check response:"
                 timeout 10 curl -s "$endpoint" | jq '.' 2>/dev/null || timeout 10 curl -s "$endpoint"
                 return 0
               else
-                echo "❌ Health check failed for $endpoint"
+                echo " Health check failed for $endpoint"
               fi
             done
             
@@ -246,7 +247,7 @@ jobs:
             ((attempt++))
           done
           
-          echo "❌ All health checks failed after $max_attempts attempts"
+          echo " All health checks failed after $max_attempts attempts"
           echo "This might indicate a deployment issue or DNS propagation delay"
           return 1
         }
@@ -262,23 +263,23 @@ jobs:
         
         # Test main page
         if timeout 20 curl -f -s --max-time 15 "https://alexthola.com/" > /dev/null; then
-          echo "✅ Main page is accessible"
+          echo " Main page is accessible"
         else
-          echo "❌ Main page is not accessible"
+          echo " Main page is not accessible"
         fi
         
         # Test RSS feed
         if timeout 15 curl -f -s --max-time 10 "https://alexthola.com/rss.xml" > /dev/null; then
-          echo "✅ RSS feed is accessible"
+          echo " RSS feed is accessible"
         else
-          echo "⚠️ RSS feed is not accessible"
+          echo " RSS feed is not accessible"
         fi
         
         # Test sitemap
         if timeout 15 curl -f -s --max-time 10 "https://alexthola.com/sitemap.xml" > /dev/null; then
-          echo "✅ Sitemap is accessible"  
+          echo " Sitemap is accessible"  
         else
-          echo "⚠️ Sitemap is not accessible"
+          echo " Sitemap is not accessible"
         fi
     
     - name: Performance and security validation
@@ -293,14 +294,14 @@ jobs:
         RESPONSE_TIME=$(timeout 30 curl -w "%{time_total}" -s -o /dev/null "https://alexthola.com/" || echo "timeout")
         
         if [ "$RESPONSE_TIME" = "timeout" ]; then
-          echo "⚠️ Response time test timed out (>30s)"
+          echo " Response time test timed out (>30s)"
         else
           echo "Response time: ${RESPONSE_TIME}s"
           # Warn if response time is slow (using awk instead of bc for portability)
           if awk "BEGIN {exit !($RESPONSE_TIME > 3.0)}"; then
-            echo "⚠️ Response time is slow (>${RESPONSE_TIME}s). Consider performance optimization."
+            echo " Response time is slow (>${RESPONSE_TIME}s). Consider performance optimization."
           else
-            echo "✅ Response time is acceptable (${RESPONSE_TIME}s)"
+            echo " Response time is acceptable (${RESPONSE_TIME}s)"
           fi
         fi
         
@@ -309,23 +310,23 @@ jobs:
         HEADERS=$(timeout 20 curl -I -s "https://alexthola.com/" || echo "")
         
         if echo "$HEADERS" | grep -i "strict-transport-security" > /dev/null; then
-          echo "✅ HSTS header present"
+          echo " HSTS header present"
         else
-          echo "⚠️ HSTS header missing"
+          echo " HSTS header missing"
         fi
         
         if echo "$HEADERS" | grep -i "x-content-type-options" > /dev/null; then
-          echo "✅ X-Content-Type-Options header present"
+          echo " X-Content-Type-Options header present"
         else
-          echo "⚠️ X-Content-Type-Options header missing"
+          echo " X-Content-Type-Options header missing"
         fi
         
         # Check SSL certificate (with timeout)
         echo "Checking SSL certificate..."
         if timeout 15 bash -c "openssl s_client -connect alexthola.com:443 -servername alexthola.com < /dev/null 2>/dev/null | openssl x509 -noout -dates"; then
-          echo "✅ SSL certificate is valid"
+          echo " SSL certificate is valid"
         else
-          echo "⚠️ SSL certificate issue detected or check timed out"
+          echo " SSL certificate issue detected or check timed out"
         fi
 
   # Deployment status notification
@@ -343,9 +344,9 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         
         if [ "${{ needs.deployment-check.outputs.deploy-enabled }}" = "true" ]; then
-          echo "✅ **DigitalOcean Configuration**: Enabled" >> $GITHUB_STEP_SUMMARY
+          echo " **DigitalOcean Configuration**: Enabled" >> $GITHUB_STEP_SUMMARY
         else
-          echo "❌ **DigitalOcean Configuration**: Missing secrets" >> $GITHUB_STEP_SUMMARY
+          echo " **DigitalOcean Configuration**: Missing secrets" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Required secrets:**" >> $GITHUB_STEP_SUMMARY
           echo "- \`DIGITALOCEAN_ACCESS_TOKEN\`" >> $GITHUB_STEP_SUMMARY
@@ -358,15 +359,15 @@ jobs:
         fi
         
         if [ "${{ needs.deploy.result }}" = "success" ]; then
-          echo "✅ **Deployment Status**: Successful" >> $GITHUB_STEP_SUMMARY
-          echo "🌐 **Application URL**: https://alexthola.com" >> $GITHUB_STEP_SUMMARY
+          echo " **Deployment Status**: Successful" >> $GITHUB_STEP_SUMMARY
+          echo " **Application URL**: https://alexthola.com" >> $GITHUB_STEP_SUMMARY
         elif [ "${{ needs.deploy.result }}" = "failure" ]; then
-          echo "❌ **Deployment Status**: Failed" >> $GITHUB_STEP_SUMMARY
+          echo " **Deployment Status**: Failed" >> $GITHUB_STEP_SUMMARY
         elif [ "${{ needs.deploy.result }}" = "skipped" ]; then
-          echo "⏭️ **Deployment Status**: Skipped (configuration not ready)" >> $GITHUB_STEP_SUMMARY
+          echo "� **Deployment Status**: Skipped (configuration not ready)" >> $GITHUB_STEP_SUMMARY
         else
-          echo "⚠️ **Deployment Status**: Unknown" >> $GITHUB_STEP_SUMMARY
+          echo " **Deployment Status**: Unknown" >> $GITHUB_STEP_SUMMARY
         fi
         
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**Domain Status**: ${{ needs.deployment-check.outputs.domain-accessible == 'true' && '✅ Accessible' || '⚠️ DNS not configured' }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Domain Status**: ${{ needs.deployment-check.outputs.domain-accessible == 'true' && ' Accessible' || ' DNS not configured' }}" >> $GITHUB_STEP_SUMMARY
