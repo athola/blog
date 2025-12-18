@@ -14,6 +14,7 @@ on:
       - 'server/**'
       - 'shared_utils/**'
       - 'build.rs'
+      - '.do/**'  # DigitalOcean deployment config
 
 jobs:
   # Quick Rust compilation test

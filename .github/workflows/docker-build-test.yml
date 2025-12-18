@@ -18,6 +18,7 @@ on:
       - 'build.rs'
       - 'style/**'
       - 'public/**'
+      - '.do/**'  # DigitalOcean deployment config
   push:
     branches:
       - master
@@ -34,6 +35,7 @@ on:
       - 'build.rs'
       - 'style/**'
       - 'public/**'
+      - '.do/**'  # DigitalOcean deployment config
 
 # Cancel any in-progress workflow runs for the same PR
 concurrency:
@@ -172,7 +174,15 @@ jobs:
             sleep 1
           done
 
-      - name: Test production image
+      - name: Extract run_command from app.yaml
+        id: extract-cmd
+        run: |
+          # Extract run_command exactly as DigitalOcean will use it
+          RUN_CMD=$(grep "run_command:" .do/app.yaml | sed 's/.*run_command:\s*//' | tr -d '"' | tr -d "'")
+          echo "run_command=$RUN_CMD" >> "$GITHUB_OUTPUT"
+          echo "Extracted run_command: $RUN_CMD"
+
+      - name: Test production image with run_command
         env:
           TEST_RUST_LOG: info
           TEST_LEPTOS_SITE_ADDR: 0.0.0.0:8080
@@ -183,8 +193,14 @@ jobs:
           TEST_SURREAL_DB: test
           TEST_SURREAL_ROOT_USER: root
           TEST_SURREAL_ROOT_PASS: root
+          # Use extracted run_command - this simulates what DigitalOcean does
+          RUN_COMMAND: ${{ steps.extract-cmd.outputs.run_command }}
         run: |
-          # Start the container with correct environment variables
+          echo "Testing with run_command: $RUN_COMMAND"
+          echo "This simulates exactly what DigitalOcean App Platform will execute"
+
+          # Start container using run_command from app.yaml (NOT Docker CMD)
+          # This catches the exact error we saw: "no default process a command is required"
           docker run -d --name test-container -p 8080:8080 \
             --link surrealdb-test:surrealdb \
             -e RUST_LOG="$TEST_RUST_LOG" \
@@ -198,24 +214,44 @@ jobs:
             -e SURREAL_DB="$TEST_SURREAL_DB" \
             -e SURREAL_ROOT_USER="$TEST_SURREAL_ROOT_USER" \
             -e SURREAL_ROOT_PASS="$TEST_SURREAL_ROOT_PASS" \
-            production-test:latest
+            production-test:latest \
+            $RUN_COMMAND
 
           # Wait for container to start
           sleep 30
 
           # Check if container is running
           if ! docker ps | grep test-container; then
-            echo "Container failed to start"
+            echo "❌ Container failed to start with run_command: $RUN_COMMAND"
+            echo "This is the EXACT error DigitalOcean would hit!"
             docker logs test-container
             exit 1
           fi
+          echo "✅ Container started successfully with run_command"
 
-          # Health check
+          # Health check on /health endpoint (same as app.yaml health_check)
+          echo "Testing /health endpoint..."
+          for i in {1..10}; do
+            if curl -sf http://localhost:8080/health; then
+              echo ""
+              echo "✅ Health check passed"
+              break
+            fi
+            if [ "$i" -eq 10 ]; then
+              echo "❌ Health check failed after 10 attempts"
+              docker logs test-container
+              exit 1
+            fi
+            sleep 3
+          done
+
+          # Also verify root path works
           curl -f http://localhost:8080/ || (
-            echo "Site not accessible"
+            echo "❌ Site root not accessible"
             docker logs test-container
             exit 1
           )
+          echo "✅ Site root accessible"
 
       - name: Cleanup test containers
         if: always()
@@ -240,7 +276,7 @@ jobs:
         run: |
           # Check if app.yaml exists and is valid YAML
           if [ ! -f ".do/app.yaml" ]; then
-            echo "DigitalOcean app.yaml not found"
+            echo "❌ DigitalOcean app.yaml not found"
             exit 1
           fi
 
@@ -249,8 +285,28 @@ jobs:
 
           # Check for required fields
           if ! grep -q "dockerfile_path: Dockerfile" .do/app.yaml; then
-            echo "Dockerfile not configured in app.yaml"
+            echo "❌ Dockerfile not configured in app.yaml"
             exit 1
+          fi
+
+          # CRITICAL: Check run_command is present (DigitalOcean ignores Docker CMD)
+          if ! grep -q "run_command:" .do/app.yaml; then
+            echo "❌ CRITICAL: run_command missing in app.yaml!"
+            echo "DigitalOcean App Platform ignores Docker CMD and requires explicit run_command"
+            exit 1
+          fi
+          echo "✅ run_command found in app.yaml"
+
+          # Extract and validate run_command matches what's in Dockerfile
+          RUN_CMD=$(grep "run_command:" .do/app.yaml | sed 's/.*run_command:\s*//' | tr -d '"' | tr -d "'")
+          DOCKER_CMD=$(grep "^CMD" Dockerfile | sed 's/CMD \["\(.*\)"\]/\1/' | tr -d '"' | tr ',' ' ')
+          echo "app.yaml run_command: $RUN_CMD"
+          echo "Dockerfile CMD: $DOCKER_CMD"
+
+          # Warn if they don't match (not fatal, but important to know)
+          if [ "$RUN_CMD" != "$DOCKER_CMD" ]; then
+            echo "⚠️ Warning: run_command differs from Dockerfile CMD"
+            echo "   This is OK if intentional, but verify both work"
           fi
 
       - name: Check Dockerfile DigitalOcean compatibility
