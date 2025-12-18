@@ -104,5 +104,5 @@ ENV PORT="8080"
 # Expose port (DigitalOcean App Platform uses 8080)
 EXPOSE 8080
 
-# Run the application
-CMD ["./blog"]
+# Run the application (absolute path for DigitalOcean compatibility)
+CMD ["/app/blog"]

@@ -50,7 +50,7 @@ jobs:
           script: |
             const { total_lines, additions, deletions } = process.env
             const message = `
-            ## 📏 PR Size Warning
+            ##  PR Size Warning
             
             This pull request is quite large with **${total_lines} lines** changed.
             
@@ -62,7 +62,7 @@ jobs:
             - Reduce the chance of introducing bugs
             - Improve collaboration and feedback
             
-            Thank you for your contribution! 🙏
+            Thank you for your contribution! 
             `
             
             github.rest.issues.createComment({

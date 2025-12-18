@@ -88,20 +88,20 @@ jobs:
     # Build the server binary in advance to save time
     - name: Pre-build server binary
       run: |
-        echo "🔨 Pre-building server binary..."
+        echo "Pre-building server binary..."
         cargo build -p server
-        echo "✅ Server binary built"
+        echo "Server binary built"
 
     # Run only server integration tests
     - name: Run Server Integration Tests
       timeout-minutes: 60  # Additional timeout on the test command itself
       run: |
-        echo "🧪 Running server integration tests..."
+        echo "Running server integration tests..."
         echo "SurrealDB version: $(surreal --version 2>/dev/null || echo 'unknown')"
-        
+
         # Run only server integration tests with specific flags
         # Set environment variable to ensure they run even if normally disabled
         export RUN_SERVER_INTEGRATION_TESTS=1
         cargo test server_integration_tests -- --nocapture --test-threads=1
-        
-        echo "✅ Server integration tests completed"
+
+        echo "Server integration tests completed"
