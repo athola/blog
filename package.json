@@ -1,7 +1,4 @@
 {
-  "scripts": {
-    "start": "LEPTOS_SITE_ADDR=0.0.0.0:${PORT:-8080} PORT=${PORT:-8080} ./target/release/server"
-  },
   "dependencies": {
     "@tailwindcss/cli": "^4.1.1",
     "katex": "^0.16.21"

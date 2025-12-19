@@ -178,7 +178,6 @@ jobs:
         sparse-checkout: |
           .do/
           Dockerfile
-          Procfile
           *.toml
           *.md
           public/

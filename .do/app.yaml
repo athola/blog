@@ -6,7 +6,6 @@ region: nyc
 services:
   - name: blog-web
     source_dir: .
-    environment_slug: docker
     github:
       repo: athola/blog
       branch: master
@@ -15,7 +14,7 @@ services:
     # Use custom Dockerfile for multi-stage build
     dockerfile_path: Dockerfile
 
-    # Explicit run command (overrides Procfile and ensures Dockerfile binary is used)
+    # Explicit run command ensures Dockerfile binary is used.
     run_command: /app/blog
 
     # Runtime configuration

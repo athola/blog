@@ -152,6 +152,7 @@ Once the database is running, deploy the application on the DigitalOcean App Pla
 2.  Select your GitHub repository (`athola/blog`) and the `master` branch.
 3.  Enable **Autodeploy** to automatically redeploy on pushes to `master`.
 4.  DigitalOcean will detect the `Dockerfile` and configure the application.
+    Ensure the service uses the Dockerfile build type (not a buildpack).
 
 ### 2. Configure the App
 
