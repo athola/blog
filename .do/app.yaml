@@ -6,6 +6,7 @@ region: nyc
 services:
   - name: blog-web
     source_dir: .
+    environment_slug: docker
     github:
       repo: athola/blog
       branch: master
