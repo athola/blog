@@ -3,7 +3,7 @@
 # Database readiness script for CI/CD environments
 # This script ensures the database is running and initialized properly
 
-set -e
+set -euo pipefail
 
 # Configuration
 SURREAL_HOST=${SURREAL_HOST:-127.0.0.1:8000}
@@ -13,6 +13,7 @@ SURREAL_ROOT_PASS=${SURREAL_ROOT_PASS:-root}
 SURREAL_NS=${SURREAL_NS:-rustblog}
 SURREAL_DB=${SURREAL_DB:-rustblog}
 DB_FILE=${DB_FILE:-rustblog.db}
+PID_DIR=${PID_DIR:-target/tmp}
 
 echo "Ensuring database is ready..."
 echo "Host: $SURREAL_PROTOCOL://$SURREAL_HOST"
@@ -48,10 +49,10 @@ start_database() {
     # Show SurrealDB version
     echo "SurrealDB version: $(surreal --version 2>/dev/null || echo "unknown")"
     
+    mkdir -p "$PID_DIR"
+
     # Clean up any existing processes
-    pkill -f "surreal start" 2>/dev/null || true
-    pkill -f "surrealkv" 2>/dev/null || true
-    sleep 2
+    "$(dirname "$0")/stop-db.sh" || true
     
     # Clean up database file if it exists
     if [ -f "$DB_FILE" ] || [ -d "$DB_FILE" ]; then
@@ -71,6 +72,9 @@ start_database() {
     
     # Store the process ID
     DB_PID=$!
+    PID_FILE=$(mktemp "$PID_DIR/blog_db_pid.XXXXXX")
+    echo "$DB_PID" > "$PID_FILE"
+    echo "$DB_PID" > "$PID_DIR/blog_db_pid.latest"
     
     # Wait for database to be ready
     local max_attempts=30

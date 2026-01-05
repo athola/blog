@@ -3,7 +3,7 @@ use std::io::ErrorKind;
 use std::net::TcpListener;
 use std::process::{self, Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Mutex, Once};
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use once_cell::sync::Lazy;
@@ -11,17 +11,13 @@ use once_cell::sync::Lazy;
 fn ensure_server_binary() -> Result<(), Box<dyn std::error::Error>> {
     use std::path::Path;
 
-    static INIT: Once = Once::new();
-    static mut BUILD_RESULT: Option<Result<(), String>> = None;
+    static BUILD_RESULT: OnceLock<Result<(), String>> = OnceLock::new();
 
-    INIT.call_once(|| {
+    let result = BUILD_RESULT.get_or_init(|| {
         let binary_path = Path::new("./target/debug/server");
 
         if binary_path.exists() {
-            unsafe {
-                BUILD_RESULT = Some(Ok(()));
-            }
-            return;
+            return Ok(());
         }
 
         eprintln!("Building server binary for integration tests...");
@@ -32,26 +28,19 @@ fn ensure_server_binary() -> Result<(), Box<dyn std::error::Error>> {
             .stderr(Stdio::null())
             .status();
 
-        unsafe {
-            BUILD_RESULT = Some(match status {
-                Ok(s) if s.success() => Ok(()),
-                Ok(s) => Err(format!(
-                    "cargo build -p server exited with status {:?}",
-                    s.code()
-                )),
-                Err(e) => Err(format!("Failed to execute cargo build: {}", e)),
-            });
+        match status {
+            Ok(s) if s.success() => Ok(()),
+            Ok(s) => Err(format!(
+                "cargo build -p server exited with status {:?}",
+                s.code()
+            )),
+            Err(e) => Err(format!("Failed to execute cargo build: {}", e)),
         }
     });
 
-    unsafe {
-        match &raw const BUILD_RESULT {
-            ptr if (*ptr).is_some() => match (*ptr).as_ref().unwrap().clone() {
-                Ok(()) => Ok(()),
-                Err(e) => Err(std::io::Error::other(e).into()),
-            },
-            _ => Err("Server build result not initialized".into()),
-        }
+    match result {
+        Ok(()) => Ok(()),
+        Err(e) => Err(std::io::Error::other(e.clone()).into()),
     }
 }
 
@@ -63,8 +52,14 @@ fn ensure_server_binary() -> Result<(), Box<dyn std::error::Error>> {
 mod server_integration_tests {
     use super::*;
 
-    /// Test timeouts
+    /// HTTP client timeout for requests to the test server.
     const CLIENT_TIMEOUT: Duration = Duration::from_secs(5);
+
+    /// Polling/timing defaults for async server startup checks.
+    const SERVER_READY_TIMEOUT: Duration = Duration::from_secs(60);
+    const POLL_INTERVAL: Duration = Duration::from_millis(250);
+    const RETRY_DELAY: Duration = Duration::from_millis(500);
+    const ONE_SECOND: Duration = Duration::from_secs(1);
 
     /// Core application pages for testing
     const CORE_PAGES: &[(&str, &str)] = &[
@@ -155,16 +150,16 @@ mod server_integration_tests {
         }
     }
 
-    /// Ensure frontend assets are built once before tests run
-    /// Returns Ok if assets exist, Err if they don't and couldn't be built
+    /// Ensure frontend assets are built once before tests run.
+    ///
+    /// This is best-effort: in CI/dev environments where `cargo-leptos` isn't installed,
+    /// the integration tests can continue and simply skip asset-dependent checks.
     fn ensure_frontend_assets() -> Result<(), Box<dyn std::error::Error>> {
         use std::path::Path;
-        use std::sync::Once;
 
-        static INIT: Once = Once::new();
-        static mut BUILD_RESULT: Option<Result<(), String>> = None;
+        static BUILD_RESULT: OnceLock<Result<(), String>> = OnceLock::new();
 
-        INIT.call_once(|| {
+        let result = BUILD_RESULT.get_or_init(|| {
             let css_path = Path::new("target/site/pkg/blog.css");
             let js_path = Path::new("target/site/pkg/blog.js");
             let wasm_path = Path::new("target/site/pkg/blog.wasm");
@@ -172,10 +167,8 @@ mod server_integration_tests {
             // Check if assets already exist
             if css_path.exists() && js_path.exists() && wasm_path.exists() {
                 eprintln!("✓ Frontend assets already exist");
-                unsafe {
-                    BUILD_RESULT = Some(Ok(()));
-                }
-                return;
+                FRONTEND_ASSETS_UNAVAILABLE.store(false, Ordering::SeqCst);
+                return Ok(());
             }
 
             // Assets missing - try to build them
@@ -193,13 +186,8 @@ mod server_integration_tests {
                 eprintln!(
                     "  Run 'cargo install cargo-leptos' or 'make build-assets' to build frontend"
                 );
-                unsafe {
-                    FRONTEND_ASSETS_UNAVAILABLE.store(true, Ordering::SeqCst);
-                    BUILD_RESULT = Some(Err(
-                        "Frontend assets not found and cargo-leptos not available".to_string(),
-                    ));
-                }
-                return;
+                FRONTEND_ASSETS_UNAVAILABLE.store(true, Ordering::SeqCst);
+                return Err("Frontend assets not found and cargo-leptos not available".to_string());
             }
 
             // Try to build assets
@@ -209,30 +197,23 @@ mod server_integration_tests {
                 .stderr(Stdio::inherit())
                 .status();
 
-            unsafe {
-                BUILD_RESULT = Some(match status {
-                    Ok(s) if s.success() => {
-                        eprintln!("✓ Frontend assets built successfully");
-                        FRONTEND_ASSETS_UNAVAILABLE.store(false, Ordering::SeqCst);
-                        Ok(())
-                    }
-                    Ok(s) => Err(format!(
-                        "Frontend asset build failed with exit code {:?}",
-                        s.code()
-                    )),
-                    Err(e) => Err(format!("Failed to execute cargo leptos build: {}", e)),
-                });
+            match status {
+                Ok(s) if s.success() => {
+                    eprintln!("✓ Frontend assets built successfully");
+                    FRONTEND_ASSETS_UNAVAILABLE.store(false, Ordering::SeqCst);
+                    Ok(())
+                }
+                Ok(s) => Err(format!(
+                    "Frontend asset build failed with exit code {:?}",
+                    s.code()
+                )),
+                Err(e) => Err(format!("Failed to execute cargo leptos build: {}", e)),
             }
         });
 
-        unsafe {
-            match &raw const BUILD_RESULT {
-                ptr if (*ptr).is_some() => match (*ptr).as_ref().unwrap() {
-                    Ok(()) => Ok(()),
-                    Err(e) => Err(e.clone().into()),
-                },
-                _ => Err("Build result not initialized".into()),
-            }
+        match result {
+            Ok(()) => Ok(()),
+            Err(e) => Err(e.clone().into()),
         }
     }
 
@@ -326,7 +307,7 @@ mod server_integration_tests {
             let db_process = Self::start_database(port, db_port).await?;
 
             // Give database extra time to fully initialize
-            tokio::time::sleep(Duration::from_secs(1)).await;
+            tokio::time::sleep(ONE_SECOND).await;
 
             eprintln!("Starting Leptos development server on port {}...", port);
 
@@ -421,7 +402,7 @@ mod server_integration_tests {
                     ),
                 ])
                 .output();
-            tokio::time::sleep(Duration::from_millis(500)).await;
+            tokio::time::sleep(RETRY_DELAY).await;
 
             // Start the database process with unique port and file
             let db_command = format!("env SURREAL_EXPERIMENTAL_GRAPHQL=true surreal start --log info --user root --pass root --bind 127.0.0.1:{} surrealkv:{}", db_port, db_file);
@@ -436,7 +417,7 @@ mod server_integration_tests {
                 .map_err(|e| format!("Failed to start database: {}", e))?;
 
             // Give the process a moment to start
-            tokio::time::sleep(Duration::from_millis(500)).await;
+            tokio::time::sleep(RETRY_DELAY).await;
 
             // Check if the process is still running
             if let Ok(Some(status)) = db_process.try_wait() {
@@ -457,7 +438,7 @@ mod server_integration_tests {
             }
 
             // Wait for database to be ready
-            let timeout = Instant::now() + Duration::from_secs(60);
+            let timeout = Instant::now() + SERVER_READY_TIMEOUT;
 
             eprintln!(
                 "Waiting for database on port {} to be ready (up to 30 seconds)...",
@@ -473,10 +454,10 @@ mod server_integration_tests {
                         "Skipping explicit database initialization - relying on auto-creation"
                     );
                     // Give it a bit more time to fully initialize
-                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    tokio::time::sleep(ONE_SECOND).await;
                     return Ok(db_process);
                 }
-                tokio::time::sleep(Duration::from_millis(250)).await;
+                tokio::time::sleep(POLL_INTERVAL).await;
             }
 
             // If we timed out, try to get database logs for debugging
@@ -503,7 +484,7 @@ mod server_integration_tests {
 
             for _ in 0..5 {
                 match tokio::time::timeout(
-                    Duration::from_secs(1),
+                    ONE_SECOND,
                     tokio::net::TcpStream::connect(format!("127.0.0.1:{}", port)),
                 )
                 .await
@@ -537,7 +518,7 @@ mod server_integration_tests {
                         eprintln!("Database port {} connection timed out: {}", port, e);
                     }
                 }
-                tokio::time::sleep(Duration::from_millis(500)).await;
+                tokio::time::sleep(RETRY_DELAY).await;
             }
             false
         }
@@ -579,7 +560,7 @@ mod server_integration_tests {
                         ),
                     ])
                     .output();
-                tokio::time::sleep(Duration::from_millis(500)).await;
+                tokio::time::sleep(RETRY_DELAY).await;
 
                 // Check again after cleanup
                 let still_in_use = server_ports
@@ -604,7 +585,7 @@ mod server_integration_tests {
             server_url: &str,
             process: &mut Child,
         ) -> Result<(), Box<dyn std::error::Error>> {
-            let timeout = Instant::now() + Duration::from_secs(60); // Reduced timeout for CI environments
+            let timeout = Instant::now() + SERVER_READY_TIMEOUT; // Reduced timeout for CI environments
             let mut attempt = 0;
 
             eprintln!("Waiting for Leptos server on {} to respond...", server_url);
@@ -644,7 +625,7 @@ mod server_integration_tests {
                             server_url, attempt
                         );
                         // Give it a moment to fully initialize
-                        tokio::time::sleep(Duration::from_secs(1)).await;
+                        tokio::time::sleep(ONE_SECOND).await;
                         return Ok(());
                     }
                     Err(e) => {
@@ -680,7 +661,7 @@ mod server_integration_tests {
                     }
                 }
 
-                tokio::time::sleep(Duration::from_millis(250)).await; // Reduced sleep for faster response
+                tokio::time::sleep(POLL_INTERVAL).await; // Reduced sleep for faster response
             }
 
             // Before giving up, check if the process is still running
@@ -725,7 +706,7 @@ mod server_integration_tests {
                 .output();
 
             // Wait a bit for termination
-            tokio::time::sleep(Duration::from_millis(250)).await;
+            tokio::time::sleep(POLL_INTERVAL).await;
 
             // Force kill if still running
             let _ = Command::new("bash")

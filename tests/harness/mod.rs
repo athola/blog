@@ -18,6 +18,18 @@ struct CountResult {
 /// - Schema definition and constraint validation
 /// - Data creation and verification utilities
 /// - Performance testing and rollback capabilities
+///
+/// # Example
+/// ```no_run
+/// use crate::harness::MigrationTestFramework;
+///
+/// #[tokio::test]
+/// async fn migrations_smoke_test() -> surrealdb::Result<()> {
+///     let mut h = MigrationTestFramework::new().await?;
+///     h.apply_cached_migrations(&["initial", "indexes"]).await?;
+///     Ok(())
+/// }
+/// ```
 pub struct MigrationTestFramework {
     pub db: Surreal<Db>,
     applied_migrations: Vec<String>,

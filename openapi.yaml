@@ -1,0 +1,231 @@
+openapi: 3.0.3
+info:
+  title: Blog API
+  version: 0.1.0
+servers:
+  - url: https://<your-domain>
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+                  timestamp: { type: string }
+                  service: { type: string }
+                  version: { type: string }
+  /rss:
+    get:
+      summary: RSS feed
+      responses:
+        '200':
+          description: RSS XML
+          content:
+            application/rss+xml:
+              schema: { type: string }
+  /rss.xml:
+    get:
+      summary: RSS feed (xml)
+      responses:
+        '200':
+          description: RSS XML
+          content:
+            application/rss+xml:
+              schema: { type: string }
+  /sitemap.xml:
+    get:
+      summary: Sitemap
+      responses:
+        '200':
+          description: Sitemap XML
+          content:
+            application/xml:
+              schema: { type: string }
+  /api/posts:
+    post:
+      summary: List posts
+      requestBody:
+        required: false
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                tags:
+                  type: array
+                  items: { type: string }
+      responses:
+        '200':
+          description: Posts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Post'
+  /api/tags:
+    post:
+      summary: List tags
+      responses:
+        '200':
+          description: Tag counts
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: integer
+  /api/post:
+    post:
+      summary: Get post by slug
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [slug]
+              properties:
+                slug: { type: string }
+      responses:
+        '200':
+          description: Post
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Post'
+  /api/increment_views:
+    post:
+      summary: Increment post views
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id: { type: string }
+      responses:
+        '200':
+          description: OK
+  /api/references:
+    post:
+      summary: List references
+      responses:
+        '200':
+          description: References
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Reference'
+  /api/contact:
+    post:
+      summary: Send contact message
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [name, email, subject, message]
+              properties:
+                name: { type: string }
+                email: { type: string, format: email }
+                subject: { type: string }
+                message: { type: string }
+      responses:
+        '200':
+          description: OK
+  /api/activities:
+    get:
+      summary: List activities
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 0 }
+      responses:
+        '200':
+          description: Activities
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Activity'
+    post:
+      summary: Create activity
+      description: Uses Leptos server-function input encoding for the activity payload.
+      responses:
+        '200':
+          description: OK
+components:
+  schemas:
+    RecordId:
+      type: object
+      description: SurrealDB record id (opaque)
+    Author:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/RecordId' }
+        name: { type: string }
+        email: { type: string }
+        bio: { type: string, nullable: true }
+        linkedin: { type: string, nullable: true }
+        twitter: { type: string, nullable: true }
+        github: { type: string, nullable: true }
+    Post:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/RecordId' }
+        title: { type: string }
+        summary: { type: string }
+        body: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        author: { $ref: '#/components/schemas/Author' }
+        read_time: { type: integer }
+        total_views: { type: integer }
+        slug: { type: string, nullable: true }
+        created_at: { type: string }
+        updated_at: { type: string }
+        is_published: { type: boolean }
+        header_image: { type: string, nullable: true }
+    Reference:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/RecordId' }
+        title: { type: string }
+        description: { type: string }
+        url: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        tech_stack:
+          type: array
+          items: { type: string }
+        teck_stack_percentage:
+          type: array
+          items: { type: integer }
+        created_at: { type: string }
+        updated_at: { type: string }
+        is_published: { type: boolean }
+    Activity:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/RecordId', nullable: true }
+        content: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        source: { type: string, nullable: true }
+        created_at: { type: string }

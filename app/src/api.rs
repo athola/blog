@@ -265,13 +265,22 @@ pub async fn increment_views(id: String) -> Result<(), ServerFnError> {
     Ok(())
 }
 
-/// Represents a contact request submitted through the contact form.
+/// Contact form submission data.
+///
+/// # Security
+/// - The `website` field acts as a honeypot to detect automated bots.
+///   Legitimate users (with browsers) won't see or fill this field.
+/// - If `website` is not empty, the submission is rejected as likely bot traffic.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ContactRequest {
     pub name: String,
     pub email: String,
     pub subject: String,
     pub message: String,
+    /// Honeypot field - should be empty for legitimate submissions.
+    /// Bots often auto-fill all fields, so we check this server-side.
+    #[serde(default)]
+    pub website: Option<String>,
 }
 
 /// Handles contact form submissions by sending an email.
@@ -297,6 +306,16 @@ pub async fn contact(data: ContactRequest) -> Result<(), ServerFnError> {
         message::header::ContentType, transport::smtp::authentication::Credentials,
     };
     use std::env;
+
+    // CSRF protection: Validate honeypot field.
+    // Legitimate users won't see or fill this field, but bots often auto-fill all fields.
+    if let Some(ref website) = data.website
+        && !website.is_empty()
+    {
+        tracing::warn!("Contact form rejected: honeypot field was filled (likely bot)");
+        // Return success to avoid tipping off bots - they think it worked
+        return Ok(());
+    }
 
     let mailer = AsyncSmtpTransport::<Tokio1Executor>::relay(&env::var("SMTP_HOST")?)?
         .credentials(Credentials::new(
@@ -797,6 +816,7 @@ mod tests {
         assert_eq!(request.email, "");
         assert_eq!(request.subject, "");
         assert_eq!(request.message, "");
+        assert_eq!(request.website, None);
     }
 
     /// Confirms that `ContactRequest` serializes and deserializes correctly.
@@ -807,6 +827,7 @@ mod tests {
             email: "test@example.com".to_string(),
             subject: "Test Subject".to_string(),
             message: "Test Message".to_string(),
+            website: None,
         };
 
         let serialized = serde_json::to_string(&request).unwrap();

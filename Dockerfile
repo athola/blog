@@ -99,6 +99,9 @@ RUN chmod +x /app/blog && \
     ls -la /app/blog && \
     file /app/blog
 
+# Create an empty .env to avoid noisy "No .env file found" logs in hosted deployments.
+RUN touch /app/.env && chown appuser:appuser /app/.env
+
 # Generate the hash file that Leptos hydration expects
 # When LEPTOS_HASH_FILES=true, Leptos expects to find a hash file to validate bundles
 WORKDIR /app/site

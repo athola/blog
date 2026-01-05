@@ -10,7 +10,13 @@ mod security;
 mod utils;
 
 use app::{component, shell, types::AppState};
-use axum::{Router, http::StatusCode, response::Json, routing::get};
+use axum::{
+    Router,
+    body::Body,
+    http::{Request, StatusCode},
+    response::{Json, Redirect, Response},
+    routing::{any, get},
+};
 use dotenvy::dotenv;
 use leptos::logging;
 use leptos::prelude::*;
@@ -20,8 +26,12 @@ use redirect::redirect_www;
 use security::{RateLimiter, security_headers, validate_production_env};
 use serde_json::json;
 
+use std::convert::Infallible;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::OnceCell;
+use tower::ServiceExt as _;
 use tower_http::compression::predicate::{NotForContentType, SizeAbove};
 use tower_http::compression::{CompressionLayer, Predicate as _};
 use tower_http::services::ServeDir;
@@ -92,10 +102,13 @@ async fn main() {
         .init();
 
     // Load environment variables from a `.env` file if present.
-    if dotenv().is_err() {
-        logging::warn!(
-            "No .env file found. Proceeding without loading environment variables from file."
-        );
+    // In production (e.g. DigitalOcean App Platform), env vars are provided externally,
+    // so a missing `.env` should not be noisy.
+    if cfg!(debug_assertions) {
+        // Local development convenience; avoid noisy logs in hosted environments.
+        let _ = dotenv();
+    } else {
+        let _ = dotenv();
     }
 
     // Validate essential environment variables for production.
@@ -130,11 +143,37 @@ async fn main() {
     };
 
     let mut leptos_options = conf.leptos_options;
-    let chosen_addr = choose_site_addr(
+
+    let leptos_site_addr_env = std::env::var("LEPTOS_SITE_ADDR").ok();
+    let port_env = std::env::var("PORT").ok();
+
+    let mut chosen_addr = choose_site_addr(
         leptos_options.site_addr,
-        std::env::var("LEPTOS_SITE_ADDR").ok().as_deref(),
-        std::env::var("PORT").ok().as_deref(),
+        leptos_site_addr_env.as_deref(),
+        port_env.as_deref(),
     );
+
+    // Production deployments often probe the pod IP; binding to localhost will fail readiness.
+    if !cfg!(debug_assertions) {
+        if chosen_addr.ip().is_loopback() {
+            chosen_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), chosen_addr.port());
+        }
+
+        let has_leptos_site_addr = leptos_site_addr_env
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|s| !s.is_empty());
+        let has_port = port_env
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|s| !s.is_empty());
+
+        // If nothing is configured, default to DigitalOcean's expected port.
+        if !has_leptos_site_addr && !has_port && chosen_addr.port() == 3007 {
+            chosen_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 8080);
+        }
+    }
+
     if chosen_addr != leptos_options.site_addr {
         logging::log!(
             "Overriding site addr {} -> {} (env)",
@@ -148,82 +187,7 @@ async fn main() {
     let addr = leptos_options.site_addr;
     let routes = generate_route_list(component); // Generate Leptos-specific routes.
 
-    // Establish connection to SurrealDB.
-    let db = match connect().await {
-        Ok(db) => db,
-        Err(err) => {
-            logging::error!("Failed to establish SurrealDB connection: {err:?}");
-            return;
-        }
-    };
-    // Bundle application state for Axum.
-    let app_state = AppState {
-        db: Arc::new(db),
-        leptos_options: Arc::clone(&leptos_options),
-    };
-
-    // Initialize rate limiter: 100 requests per minute per IP.
-    let rate_limiter = RateLimiter::new(100, 60);
-
-    // Build the Axum router.
-    let app =
-        Router::<AppState>::new()
-            // Integrate Leptos routes and server-side rendering.
-            .leptos_routes_with_context(
-                &app_state,
-                routes,
-                {
-                    let app_state = app_state.clone();
-                    move || provide_context(app_state.clone())
-                },
-                {
-                    let leptos_options = Arc::clone(&leptos_options);
-                    move || shell(Arc::clone(&leptos_options))
-                },
-            )
-            // Define additional API and utility routes.
-            .route("/health", get(health_handler))
-            .route("/rss", get(rss_handler))
-            .route("/rss.xml", get(rss_handler))
-            .route("/sitemap.xml", get(sitemap_handler))
-            // Serve static assets.
-            .nest_service(
-                "/pkg", // WASM pkg assets
-                ServeDir::new(format!(
-                    "{}/{}",
-                    leptos_options.site_root.as_ref(),
-                    leptos_options.site_pkg_dir.as_ref()
-                )),
-            )
-            .nest_service("/public", ServeDir::new(leptos_options.site_root.as_ref())) // General public assets
-            .nest_service(
-                "/fonts", // Web fonts
-                ServeDir::new(format!("{}/fonts", leptos_options.site_root.as_ref())),
-            )
-            // Apply Tower-HTTP middleware layers.
-            .layer(
-                tower::ServiceBuilder::new()
-                    .layer(TraceLayer::new_for_http()) // Request tracing
-                    .layer(axum::middleware::from_fn(security_headers)) // Apply security HTTP headers
-                    .layer(axum::middleware::from_fn(redirect_www)) // Enforce non-www redirect
-                    .layer(axum::middleware::from_fn(move |req, next| {
-                        // Per-IP rate limiting
-                        let limiter = rate_limiter.clone();
-                        async move { limiter.middleware(req, next).await }
-                    })),
-            )
-            // Enable HTTP compression for responses larger than 1KB, excluding RSS feeds.
-            .layer(CompressionLayer::new().compress_when(
-                NotForContentType::new("application/rss+xml").and(SizeAbove::new(1024)),
-            ))
-            // Fallback handler for unmatched routes and error pages.
-            .fallback(leptos_axum::file_and_error_handler::<AppState, _>(
-                move |options| shell(Arc::new(options)),
-            ))
-            // Set the application state for Axum.
-            .with_state(app_state);
-
-    // Bind the TCP listener and start serving the application.
+    // Bind early so DigitalOcean readiness probes can connect even while the DB is starting.
     let listener = match tokio::net::TcpListener::bind(&addr).await {
         Ok(list) => list,
         Err(err) => {
@@ -231,9 +195,149 @@ async fn main() {
             return;
         }
     };
+
+    let ready_router: Arc<OnceCell<Router>> = Arc::new(OnceCell::new());
+
+    // Connect to SurrealDB and build the full router in the background.
+    tokio::spawn({
+        let ready_router = Arc::clone(&ready_router);
+        let leptos_options = Arc::clone(&leptos_options);
+
+        async move {
+            loop {
+                let db = match connect().await {
+                    Ok(db) => db,
+                    Err(err) => {
+                        logging::error!("Failed to establish SurrealDB connection: {err:?}");
+                        tokio::time::sleep(Duration::from_secs(5)).await;
+                        continue;
+                    }
+                };
+
+                let app_state = AppState {
+                    db: Arc::new(db),
+                    leptos_options: Arc::clone(&leptos_options),
+                };
+
+                // Initialize rate limiter: 100 requests per minute per IP.
+                let rate_limiter = RateLimiter::new(100, 60);
+
+                // Build the Axum router.
+                let app: Router = Router::<AppState>::new()
+                    // Integrate Leptos routes and server-side rendering.
+                    .leptos_routes_with_context(
+                        &app_state,
+                        routes,
+                        {
+                            let app_state = app_state.clone();
+                            move || provide_context(app_state.clone())
+                        },
+                        {
+                            let leptos_options = Arc::clone(&leptos_options);
+                            move || shell(Arc::clone(&leptos_options))
+                        },
+                    )
+                    // Define additional API and utility routes.
+                    // Backward-compatible redirects (older server-fn endpoints).
+                    .route(
+                        "/posts",
+                        any(|| async { Redirect::temporary("/api/posts") }),
+                    )
+                    .route("/tags", any(|| async { Redirect::temporary("/api/tags") }))
+                    .route("/post", any(|| async { Redirect::temporary("/api/post") }))
+                    .route(
+                        "/increment_views",
+                        any(|| async { Redirect::temporary("/api/increment_views") }),
+                    )
+                    .route(
+                        "/contact",
+                        any(|| async { Redirect::temporary("/api/contact") }),
+                    )
+                    .route(
+                        "/references",
+                        any(|| async { Redirect::temporary("/api/references") }),
+                    )
+                    .route(
+                        "/api/activities/create",
+                        any(|| async { Redirect::temporary("/api/activities") }),
+                    )
+                    .route("/health", get(health_handler))
+                    .route("/rss", get(rss_handler))
+                    .route("/rss.xml", get(rss_handler))
+                    .route("/sitemap.xml", get(sitemap_handler))
+                    // Serve static assets.
+                    .nest_service(
+                        "/pkg", // WASM pkg assets
+                        ServeDir::new(format!(
+                            "{}/{}",
+                            leptos_options.site_root.as_ref(),
+                            leptos_options.site_pkg_dir.as_ref()
+                        )),
+                    )
+                    .nest_service("/public", ServeDir::new(leptos_options.site_root.as_ref())) // General public assets
+                    .nest_service(
+                        "/fonts", // Web fonts
+                        ServeDir::new(format!("{}/fonts", leptos_options.site_root.as_ref())),
+                    )
+                    // Apply Tower-HTTP middleware layers.
+                    .layer(
+                        tower::ServiceBuilder::new()
+                            .layer(TraceLayer::new_for_http()) // Request tracing
+                            .layer(axum::middleware::from_fn(security_headers)) // Apply security HTTP headers
+                            .layer(axum::middleware::from_fn(redirect_www)) // Enforce non-www redirect
+                            .layer(axum::middleware::from_fn(move |req, next| {
+                                // Per-IP rate limiting
+                                let limiter = rate_limiter.clone();
+                                async move { limiter.middleware(req, next).await }
+                            })),
+                    )
+                    // Enable HTTP compression for responses larger than 1KB, excluding RSS feeds.
+                    .layer(CompressionLayer::new().compress_when(
+                        NotForContentType::new("application/rss+xml").and(SizeAbove::new(1024)),
+                    ))
+                    // Fallback handler for unmatched routes and error pages.
+                    .fallback(leptos_axum::file_and_error_handler::<AppState, _>(
+                        move |options| shell(Arc::new(options)),
+                    ))
+                    // Set the application state for Axum.
+                    .with_state(app_state);
+
+                if ready_router.set(app).is_ok() {
+                    logging::log!("Application router initialized");
+                }
+                break;
+            }
+        }
+    });
+
+    let bootstrap_app = Router::new()
+        .route("/health", get(health_handler))
+        .fallback_service(tower::service_fn({
+            let ready_router = Arc::clone(&ready_router);
+            move |req: Request<Body>| {
+                let ready_router = Arc::clone(&ready_router);
+                async move {
+                    if let Some(router) = ready_router.get() {
+                        let res = router
+                            .clone()
+                            .into_service::<Body>()
+                            .oneshot(req)
+                            .await
+                            .unwrap();
+                        Ok::<Response, Infallible>(res)
+                    } else {
+                        Ok(Response::builder()
+                            .status(StatusCode::SERVICE_UNAVAILABLE)
+                            .body(Body::from("starting up"))
+                            .unwrap())
+                    }
+                }
+            }
+        }));
+
     logging::log!("Listening on http://{}", &addr);
 
-    let serve_result = axum::serve(listener, app.into_make_service()).await;
+    let serve_result = axum::serve(listener, bootstrap_app.into_make_service()).await;
     match serve_result {
         Ok(_) => {
             logging::log!("Server shutdown gracefully");

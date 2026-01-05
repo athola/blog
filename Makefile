@@ -1,5 +1,8 @@
 .POSIX:
 
+SHELL := /bin/bash
+.DELETE_ON_ERROR:
+
 .PHONY: help format fmt build build-release rebuild rebuild-clean \
 	lint lint-fix lint-md test test-ci test-unit test-server-integration \
 	test-server-integration-embedded test-integration-pattern test-report \
@@ -125,36 +128,29 @@ endif
 
 test-server-integration:
 	$(ECHO_PREFIX) Running server integration tests
+	@test -f $(SCRIPTS_DIR)/db.sh || { echo "Error: missing $(SCRIPTS_DIR)/db.sh"; exit 1; }
+	@test -f $(SCRIPTS_DIR)/stop-db.sh || { echo "Error: missing $(SCRIPTS_DIR)/stop-db.sh"; exit 1; }
 	@echo "Starting database for integration tests..."
-	@$(SCRIPTS_DIR)/db.sh & echo $$! > /tmp/db_pid
-	@sleep 5
+	@bash $(SCRIPTS_DIR)/db.sh
 	@echo "Running server integration tests..."
 	@set -a; . ./.env.test; set +a; cargo test --test server_integration_tests --no-fail-fast || true
 	@echo "Cleaning up database..."
-	@kill `cat /tmp/db_pid` 2>/dev/null || true
-	@rm -f /tmp/db_pid
+	@bash $(SCRIPTS_DIR)/stop-db.sh
 
 test-server-integration-embedded:
 	@echo "  Checking for existing database process..."
-	@for pid in $$(ps aux | grep -v grep | grep surreal | awk '{print $$2}'); do \
-		kill $$pid 2>/dev/null || true; \
-	done
-	@sleep 2
+	@bash $(SCRIPTS_DIR)/stop-db.sh
 	@echo "  Starting fresh database instance..."
-	@$(SCRIPTS_DIR)/db.sh & echo $$! > /tmp/test_db_pid
-	@sleep 8
+	@bash $(SCRIPTS_DIR)/db.sh
 	@echo "  Running server integration tests..."
-	@set -a; . ./.env.test; set +a; cargo test --test server_integration_tests --no-fail-fast -- --test-threads=1 || (echo "Server integration tests failed, cleaning up..." && kill `cat /tmp/test_db_pid` 2>/dev/null || true && rm -f /tmp/test_db_pid && false)
+	@set -a; . ./.env.test; set +a; cargo test --test server_integration_tests --no-fail-fast -- --test-threads=1 || (echo "Server integration tests failed, cleaning up..." && bash $(SCRIPTS_DIR)/stop-db.sh && false)
 	@echo "  Cleaning up database process..."
-	@if [ -f /tmp/test_db_pid ]; then \
-		kill `cat /tmp/test_db_pid` 2>/dev/null || true; \
-		rm -f /tmp/test_db_pid; \
-	fi
+	@bash $(SCRIPTS_DIR)/stop-db.sh
 	@echo "  Server integration tests completed successfully"
 
 test-ci:
 	@echo "  Running lightweight CI tests..."
-	@for test in $(find . -name "*_ci*.rs" -o -name "*ci_*.rs" | sed 's/\.rs$$//' | xargs basename -a); do \
+	@for test in $$(find . -name "*_ci*.rs" -o -name "*ci_*.rs" | sed 's/\.rs$$//' | xargs basename -a); do \
 		echo "  Running CI test: $$test"; \
 		set -a; . ./.env.test; set +a; cargo test --test $$test --features ci --no-fail-fast -- --test-threads=1 || exit 1; \
 	done
@@ -162,7 +158,7 @@ test-ci:
 
 test-unit:
 	@echo "  Running unit tests only..."
-	@for test in $(find . -name "*_unit*.rs" -o -name "*unit_*.rs" | sed 's/\.rs$$//' | xargs basename -a); do \
+	@for test in $$(find . -name "*_unit*.rs" -o -name "*unit_*.rs" | sed 's/\.rs$$//' | xargs basename -a); do \
 		echo "  Running unit test: $$test"; \
 		set -a; . ./.env.test; set +a; cargo test --test $$test --no-fail-fast || exit 1; \
 	done
@@ -170,7 +166,7 @@ test-unit:
 
 test-integration-pattern:
 	@echo "  Running integration tests matching pattern..."
-	@for test in $(find . -name "*integration*.rs" | sed 's/\.rs$$//' | xargs basename -a); do \
+	@for test in $$(find . -name "*integration*.rs" | sed 's/\.rs$$//' | xargs basename -a); do \
 		echo "  Running integration test: $$test"; \
 		set -a; . ./.env.test; set +a; cargo test --test $$test --no-fail-fast -- --test-threads=1 || exit 1; \
 	done
@@ -237,9 +233,9 @@ githooks:
 init-db:
 	$(ECHO_PREFIX) Initializing database users
 	@if [ -f "$(SCRIPTS_DIR)/ensure-db-ready.sh" ]; then \
-		$(SCRIPTS_DIR)/ensure-db-ready.sh; \
+		bash $(SCRIPTS_DIR)/ensure-db-ready.sh; \
 	elif [ -f "$(SCRIPTS_DIR)/init-db.sh" ]; then \
-		$(SCRIPTS_DIR)/init-db.sh; \
+		bash $(SCRIPTS_DIR)/init-db.sh; \
 	else \
 		echo "No database initialization script found"; \
 		exit 1; \
@@ -247,16 +243,17 @@ init-db:
 
 start-db:
 	$(ECHO_PREFIX) Starting SurrealDB {background}
+	@test -f $(SCRIPTS_DIR)/ensure-db-ready.sh || { echo "Error: missing $(SCRIPTS_DIR)/ensure-db-ready.sh"; exit 1; }
 	@if [ -f .env ]; then \
-		export $$(grep -v '^#' .env | xargs) && $(SCRIPTS_DIR)/ensure-db-ready.sh; \
+		export $$(grep -v '^#' .env | xargs) && bash $(SCRIPTS_DIR)/ensure-db-ready.sh; \
 	else \
-		$(SCRIPTS_DIR)/ensure-db-ready.sh; \
+		bash $(SCRIPTS_DIR)/ensure-db-ready.sh; \
 	fi
 
 stop-db:
 	$(ECHO_PREFIX) Stopping SurrealDB processes
-	@pkill -f "surreal start" 2>/dev/null || true
-	@pkill -f "surrealkv" 2>/dev/null || true
+	@test -f $(SCRIPTS_DIR)/stop-db.sh || { echo "Error: missing $(SCRIPTS_DIR)/stop-db.sh"; exit 1; }
+	@bash $(SCRIPTS_DIR)/stop-db.sh
 
 reset-db: stop-db
 	$(ECHO_PREFIX) Resetting database state

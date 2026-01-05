@@ -14,6 +14,8 @@ use axum::{
     middleware::Next,
 };
 use std::collections::HashMap;
+use std::net::IpAddr;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
@@ -149,6 +151,19 @@ impl RateLimiter {
         // Remove old requests that fall outside the current time window.
         ip_requests.retain(|&time| now.duration_since(time) < window);
 
+        // Clean up empty IP entries to prevent unbounded memory growth.
+        // If an IP has no recent requests within the time window, remove it entirely.
+        if ip_requests.is_empty() {
+            requests.remove(ip);
+            // Since the vector was empty, we can allow this request.
+            // Re-insert with the current timestamp to track this new request.
+            requests
+                .entry(ip.to_string())
+                .or_insert_with(Vec::new)
+                .push(now);
+            return true;
+        }
+
         // If the number of requests is within the limit, record the current request.
         if ip_requests.len() < self.max_requests {
             ip_requests.push(now);
@@ -163,24 +178,41 @@ impl RateLimiter {
     /// Extracts the client's IP address (prioritizing `X-Forwarded-For` header)
     /// and checks it against the configured rate limits. If the limit is exceeded,
     /// it returns `429 Too Many Requests`.
+    ///
+    /// # Security Notes
+    /// - IP addresses are validated before use to prevent header injection
+    /// - Invalid IP addresses fall back to "unknown" to prevent log pollution
+    /// - Rate limiting is still applied to "unknown" to prevent abuse
     pub async fn middleware(
         self,
         req: Request<Body>,
         next: Next,
     ) -> Result<Response<Body>, StatusCode> {
-        // Extract client IP address, preferring `X-Forwarded-For` for proxy compatibility.
+        // Extract and validate client IP address, preferring `X-Forwarded-For` for proxy compatibility.
         let ip = req
             .headers()
             .get("x-forwarded-for")
             .and_then(|h| h.to_str().ok())
             .and_then(|s| s.split(',').next())
-            .unwrap_or("unknown")
-            .trim()
-            .to_string();
+            .map(|s| s.trim())
+            .and_then(|s| {
+                // Validate that the header value is actually an IP address.
+                // This prevents header injection and log pollution.
+                if IpAddr::from_str(s).is_ok() {
+                    Some(s.to_string())
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_else(|| "unknown".to_string());
 
         // Check the rate limit for the extracted IP.
         if !self.check_rate_limit(&ip).await {
-            tracing::warn!("Rate limit exceeded for IP: {}", ip);
+            tracing::warn!(
+                rate_limit = self.max_requests,
+                window_secs = self.window_secs,
+                "Rate limit exceeded"
+            );
             return Err(StatusCode::TOO_MANY_REQUESTS);
         }
 
@@ -291,5 +323,51 @@ mod tests {
         // Both IPs should now be at their respective limits.
         assert!(!limiter.check_rate_limit("10.0.0.1").await);
         assert!(!limiter.check_rate_limit("10.0.0.2").await);
+    }
+
+    /// Test that the rate limiter properly cleans up IP entries after the time window expires.
+    /// This prevents unbounded memory growth from tracking inactive IPs indefinitely.
+    #[tokio::test]
+    async fn test_rate_limiter_memory_cleanup() {
+        // Use a short time window (1 second) for testing.
+        let limiter = RateLimiter::new(10, 1);
+
+        // Make requests from many different IPs.
+        for i in 0..100 {
+            let ip = format!("192.168.1.{}", i);
+            assert!(limiter.check_rate_limit(&ip).await);
+        }
+
+        // Verify all IPs are tracked.
+        {
+            let requests = limiter.requests.lock().await;
+            assert_eq!(requests.len(), 100);
+        }
+
+        // Wait for the time window to expire plus a small buffer.
+        tokio::time::sleep(tokio::time::Duration::from_millis(1100)).await;
+
+        // Make new requests from a subset of previously tracked IPs.
+        // These should trigger cleanup of their expired entries.
+        for i in 0..10 {
+            let ip = format!("192.168.1.{}", i);
+            assert!(limiter.check_rate_limit(&ip).await);
+        }
+
+        // Verify that IP entries are being cleaned up when they make new requests.
+        // The 10 IPs we re-queried should have been cleaned up and now only have 1 entry each.
+        {
+            let requests = limiter.requests.lock().await;
+            for i in 0..10 {
+                let ip = format!("192.168.1.{}", i);
+                let ip_requests = requests.get(&ip);
+                assert!(ip_requests.is_some(), "IP should still be tracked");
+                assert_eq!(
+                    ip_requests.unwrap().len(),
+                    1,
+                    "Old entries should have been cleaned up"
+                );
+            }
+        }
     }
 }

@@ -3,19 +3,22 @@
 # Improved SurrealDB startup script for test environments
 # This script handles database startup more robustly
 
-set -e
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Configuration
 ROOT_USER=${SURREAL_ROOT_USER:-root}
 ROOT_PASS=${SURREAL_ROOT_PASS:-root}
 DB_FILE=${DB_FILE:-rustblog.db}
 SURREAL_HOST=${SURREAL_HOST:-127.0.0.1:8000}
+PID_DIR=${PID_DIR:-target/tmp}
+
+mkdir -p "$PID_DIR"
 
 # Clean up any existing database processes
 echo "Cleaning up existing database processes..."
-pkill -f "surreal start" 2>/dev/null || true
-pkill -f "surrealkv" 2>/dev/null || true
-sleep 2
+"$SCRIPT_DIR/stop-db.sh" || true
 
 # Clean up database file if it exists and we want a fresh start
 if [ -f "$DB_FILE" ] || [ -d "$DB_FILE" ]; then
@@ -40,9 +43,9 @@ env SURREAL_EXPERIMENTAL_GRAPHQL=true \
 
 # Store the process ID
 DB_PID=$!
-
-# Give the database a moment to start
-sleep 3
+PID_FILE=$(mktemp "$PID_DIR/blog_db_pid.XXXXXX")
+echo "$DB_PID" > "$PID_FILE"
+echo "$DB_PID" > "$PID_DIR/blog_db_pid.latest"
 
 # Function to check if database is ready
 check_database_ready() {
@@ -114,11 +117,11 @@ if check_database_ready; then
     fi
     
     echo "Database startup and initialization completed!"
-    
-    # Keep the process running in foreground
-    wait $DB_PID
+    echo "Database PID: $DB_PID"
+    echo "PID file: $PID_FILE"
 else
     echo "Failed to start database"
     kill $DB_PID 2>/dev/null || true
+    rm -f "$PID_FILE" "$PID_DIR/blog_db_pid.latest" 2>/dev/null || true
     exit 1
 fi

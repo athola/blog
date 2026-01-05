@@ -6,7 +6,7 @@ use std::path::Path;
 use std::process::{self, Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use std::sync::Once;
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 use once_cell::sync::Lazy;
@@ -17,6 +17,13 @@ mod activity_feed_tests {
     use reqwest::StatusCode;
 
     const CLIENT_TIMEOUT: Duration = Duration::from_secs(15);
+
+    // Polling/timing defaults for async server startup checks.
+    const SERVER_READY_TIMEOUT: Duration = Duration::from_secs(45);
+    const ACTIVITY_POLL_TIMEOUT: Duration = Duration::from_secs(30);
+    const POLL_INTERVAL: Duration = Duration::from_millis(250);
+    const RETRY_DELAY: Duration = Duration::from_millis(500);
+    const ONE_SECOND: Duration = Duration::from_secs(1);
     static PORT_PERMISSION_DENIED: AtomicBool = AtomicBool::new(false);
 
     static PORT_REGISTRY: Lazy<Mutex<HashSet<u16>>> = Lazy::new(|| Mutex::new(HashSet::new()));
@@ -161,7 +168,7 @@ mod activity_feed_tests {
 
             let db_file = format!("rustblog_test_{}.db", port);
             let db_process = Self::start_database(db_port, &db_file).await?;
-            tokio::time::sleep(Duration::from_secs(1)).await;
+            tokio::time::sleep(ONE_SECOND).await;
 
             Self::ensure_server_binary()
                 .map_err(|e| format!("Failed to prepare server binary: {}", e))?;
@@ -228,7 +235,7 @@ mod activity_feed_tests {
                     ),
                 ])
                 .output();
-            tokio::time::sleep(Duration::from_millis(500)).await;
+            tokio::time::sleep(RETRY_DELAY).await;
 
             let db_command = format!("env SURREAL_EXPERIMENTAL_GRAPHQL=true surreal start --log info --user root --pass root --bind 127.0.0.1:{} surrealkv:{} --allow-hosts '127.0.0.1'", db_port, db_file);
             eprintln!("Starting database with command: {}", db_command);
@@ -242,7 +249,7 @@ mod activity_feed_tests {
                 .map_err(|e| format!("Failed to start database: {}", e))?;
             eprintln!("Database process started with PID: {}", db_process.id());
 
-            tokio::time::sleep(Duration::from_millis(500)).await;
+            tokio::time::sleep(RETRY_DELAY).await;
 
             if let Ok(Some(status)) = db_process.try_wait() {
                 eprintln!(
@@ -261,13 +268,13 @@ mod activity_feed_tests {
                 return Err("Database process failed to start".into());
             }
 
-            let timeout = Instant::now() + Duration::from_secs(30);
+            let timeout = Instant::now() + ACTIVITY_POLL_TIMEOUT;
             while Instant::now() < timeout {
                 if Self::test_database_connection(db_port).await {
-                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    tokio::time::sleep(ONE_SECOND).await;
                     return Ok(db_process);
                 }
-                tokio::time::sleep(Duration::from_millis(250)).await;
+                tokio::time::sleep(POLL_INTERVAL).await;
             }
 
             // If we timed out, try to get database logs for debugging
@@ -290,7 +297,7 @@ mod activity_feed_tests {
         async fn test_database_connection(port: u16) -> bool {
             matches!(
                 tokio::time::timeout(
-                    Duration::from_secs(1),
+                    ONE_SECOND,
                     tokio::net::TcpStream::connect(format!("127.0.0.1:{}", port))
                 )
                 .await,
@@ -307,7 +314,7 @@ mod activity_feed_tests {
             server_url: &str,
             process: &mut Child,
         ) -> Result<(), Box<dyn std::error::Error>> {
-            let timeout = Instant::now() + Duration::from_secs(45);
+            let timeout = Instant::now() + SERVER_READY_TIMEOUT;
             while Instant::now() < timeout {
                 if let Ok(Some(status)) = process.try_wait() {
                     return Err(format!("Server process exited unexpectedly: {}", status).into());
@@ -317,7 +324,7 @@ mod activity_feed_tests {
                         return Ok(());
                     }
                 }
-                tokio::time::sleep(Duration::from_millis(250)).await;
+                tokio::time::sleep(POLL_INTERVAL).await;
             }
             Err(format!(
                 "Server on {} failed to start within timeout period",
@@ -336,7 +343,7 @@ mod activity_feed_tests {
                     ),
                 ])
                 .output();
-            tokio::time::sleep(Duration::from_millis(250)).await;
+            tokio::time::sleep(POLL_INTERVAL).await;
             let _ = Command::new("bash")
                 .args([
                     "-c",
@@ -369,17 +376,13 @@ mod activity_feed_tests {
         fn ensure_server_binary() -> Result<(), Box<dyn std::error::Error>> {
             use std::path::Path;
 
-            static INIT: Once = Once::new();
-            static mut BUILD_RESULT: Option<Result<(), String>> = None;
+            static BUILD_RESULT: OnceLock<Result<(), String>> = OnceLock::new();
 
-            INIT.call_once(|| {
+            let result = BUILD_RESULT.get_or_init(|| {
                 let binary_path = Path::new("./target/debug/server");
 
                 if binary_path.exists() {
-                    unsafe {
-                        BUILD_RESULT = Some(Ok(()));
-                    }
-                    return;
+                    return Ok(());
                 }
 
                 eprintln!("Building server binary for activity feed tests...");
@@ -390,26 +393,19 @@ mod activity_feed_tests {
                     .stderr(Stdio::null())
                     .status();
 
-                unsafe {
-                    BUILD_RESULT = Some(match status {
-                        Ok(s) if s.success() => Ok(()),
-                        Ok(s) => Err(format!(
-                            "cargo build -p server exited with status {:?}",
-                            s.code()
-                        )),
-                        Err(e) => Err(format!("Failed to execute cargo build: {}", e)),
-                    });
+                match status {
+                    Ok(s) if s.success() => Ok(()),
+                    Ok(s) => Err(format!(
+                        "cargo build -p server exited with status {:?}",
+                        s.code()
+                    )),
+                    Err(e) => Err(format!("Failed to execute cargo build: {}", e)),
                 }
             });
 
-            unsafe {
-                match &raw const BUILD_RESULT {
-                    ptr if (*ptr).is_some() => match (*ptr).as_ref().unwrap().clone() {
-                        Ok(()) => Ok(()),
-                        Err(e) => Err(std::io::Error::other(e).into()),
-                    },
-                    _ => Err("Server build result not initialized".into()),
-                }
+            match result {
+                Ok(()) => Ok(()),
+                Err(e) => Err(std::io::Error::other(e.clone()).into()),
             }
         }
     }

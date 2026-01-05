@@ -2,6 +2,22 @@
 
 # Script to run integration tests sequentially to avoid resource conflicts
 
+set -euo pipefail
+
+SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SURREAL_HOST=${SURREAL_HOST:-127.0.0.1:8000}
+
+wait_for_cleanup() {
+    # Best-effort: stop any leftover DB and wait until HTTP endpoint stops responding.
+    "$SCRIPTS_DIR/stop-db.sh" >/dev/null 2>&1 || true
+    for _ in $(seq 1 30); do
+        if ! curl -s --connect-timeout 1 --max-time 1 "http://$SURREAL_HOST/version" >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 1
+    done
+}
+
 echo "Running server integration tests sequentially..."
 
 # List of test functions to run
@@ -39,7 +55,7 @@ for TEST in "${TESTS[@]}"; do
     
     # Wait between tests to ensure cleanup
     echo "Waiting for cleanup..."
-    sleep 5
+    wait_for_cleanup
 
 done
 
