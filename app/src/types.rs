@@ -4,13 +4,9 @@
 //! It includes definitions for `AppState` (for server-side state management),
 //! `Author`, `Post`, `Reference`, and `Activity` records, along with their
 //! serialization/deserialization logic and `Default` implementations.
-//! `SurrealValue` trait implementations are provided for seamless integration
-//! with SurrealDB 3.0.
 
 use serde::{Deserialize, Serialize};
-#[cfg(any(feature = "ssr", test))]
-use serde_json;
-use surrealdb_types::{Kind, RecordId, SurrealValue};
+use surrealdb::sql::Thing;
 
 #[cfg(feature = "ssr")]
 use axum::extract::FromRef;
@@ -36,7 +32,7 @@ impl FromRef<AppState> for LeptosOptions {
 /// Represents an author of a blog post.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Author {
-    pub id: RecordId,
+    pub id: Thing,
     pub name: String,
     pub email: String,
     pub bio: Option<String>,
@@ -49,7 +45,7 @@ impl Default for Author {
     /// Provides default values for `Author` fields.
     fn default() -> Self {
         Self {
-            id: RecordId::new("author", "0"),
+            id: Thing::from(("author", "0")),
             name: String::new(),
             email: String::new(),
             bio: None,
@@ -63,7 +59,7 @@ impl Default for Author {
 /// Represents a blog post.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Post {
-    pub id: RecordId,
+    pub id: Thing,
     pub title: String,
     pub summary: String,
     pub body: String,
@@ -82,7 +78,7 @@ impl Default for Post {
     /// Provides default values for `Post` fields.
     fn default() -> Self {
         Self {
-            id: RecordId::new("post", "0"),
+            id: Thing::from(("post", "0")),
             title: String::new(),
             summary: String::new(),
             body: String::new(),
@@ -102,7 +98,7 @@ impl Default for Post {
 /// Represents a project reference or portfolio item.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Reference {
-    pub id: RecordId,
+    pub id: Thing,
     pub title: String,
     pub description: String,
     pub url: String,
@@ -119,7 +115,7 @@ pub struct Reference {
 pub struct Activity {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub id: Option<RecordId>,
+    pub id: Option<Thing>,
     pub content: String,
     #[serde(default)]
     pub tags: Vec<String>,
@@ -134,7 +130,7 @@ impl Activity {
     /// Builds the deterministic `activity:post-<slug>` identifier used by newsletter
     /// sync jobs for deduplicating post announcements.
     #[must_use]
-    pub fn deterministic_post_id<S: AsRef<str>>(slug: S) -> RecordId {
+    pub fn deterministic_post_id<S: AsRef<str>>(slug: S) -> Thing {
         let slug = slug.as_ref();
         let trimmed = slug.trim();
         let stripped = trimmed.trim_matches('/');
@@ -150,101 +146,10 @@ impl Activity {
         } else {
             without_mid_post
         };
-        RecordId::new("activity", format!("post-{}", cleaned))
+        Thing::from(("activity", format!("post-{}", cleaned).as_str()))
     }
 }
 
-// Implement the SurrealValue trait for application types using the correct SurrealDB 3.0 approach.
-#[cfg(any(feature = "ssr", test))]
-/// Implements `SurrealValue` for the `Activity` struct, enabling direct
-/// serialization and deserialization with SurrealDB 3.0's value system.
-impl SurrealValue for Activity {
-    /// Returns the `Kind` of the `Activity` record in SurrealDB, which is a record of type "activity".
-    fn kind_of() -> surrealdb_types::Kind {
-        Kind::Record(vec!["activity".to_string()])
-    }
-
-    /// Converts an `Activity` instance into a `surrealdb_types::Value`.
-    /// This is done by first serializing to JSON and then converting the JSON value.
-    fn into_value(self) -> surrealdb_types::Value {
-        let json_value = serde_json::to_value(self).unwrap_or_default();
-        json_value.into_value()
-    }
-
-    /// Attempts to convert a `surrealdb_types::Value` into an `Activity` instance.
-    /// This involves first converting the SurrealDB value to JSON, then deserializing from JSON.
-    fn from_value(value: surrealdb_types::Value) -> Result<Self, surrealdb_types::anyhow::Error> {
-        let json_value: serde_json::Value = serde_json::Value::from_value(value)?;
-        serde_json::from_value(json_value)
-            .map_err(|e| surrealdb_types::anyhow::anyhow!("Deserialization error: {}", e))
-    }
-}
-
-#[cfg(any(feature = "ssr", test))]
-/// Implements `SurrealValue` for the `Post` struct.
-impl SurrealValue for Post {
-    /// Returns the `Kind` of the `Post` record in SurrealDB, which is a record of type "post".
-    fn kind_of() -> surrealdb_types::Kind {
-        Kind::Record(vec!["post".to_string()])
-    }
-
-    /// Converts a `Post` instance into a `surrealdb_types::Value`.
-    fn into_value(self) -> surrealdb_types::Value {
-        let json_value = serde_json::to_value(self).unwrap_or_default();
-        json_value.into_value()
-    }
-
-    /// Attempts to convert a `surrealdb_types::Value` into a `Post` instance.
-    fn from_value(value: surrealdb_types::Value) -> Result<Self, surrealdb_types::anyhow::Error> {
-        let json_value: serde_json::Value = serde_json::Value::from_value(value)?;
-        serde_json::from_value(json_value)
-            .map_err(|e| surrealdb_types::anyhow::anyhow!("Deserialization error: {}", e))
-    }
-}
-
-#[cfg(any(feature = "ssr", test))]
-/// Implements `SurrealValue` for the `Author` struct.
-impl SurrealValue for Author {
-    /// Returns the `Kind` of the `Author` record in SurrealDB, which is a record of type "author".
-    fn kind_of() -> surrealdb_types::Kind {
-        Kind::Record(vec!["author".to_string()])
-    }
-
-    /// Converts an `Author` instance into a `surrealdb_types::Value`.
-    fn into_value(self) -> surrealdb_types::Value {
-        let json_value = serde_json::to_value(self).unwrap_or_default();
-        json_value.into_value()
-    }
-
-    /// Attempts to convert a `surrealdb_types::Value` into an `Author` instance.
-    fn from_value(value: surrealdb_types::Value) -> Result<Self, surrealdb_types::anyhow::Error> {
-        let json_value: serde_json::Value = serde_json::Value::from_value(value)?;
-        serde_json::from_value(json_value)
-            .map_err(|e| surrealdb_types::anyhow::anyhow!("Deserialization error: {}", e))
-    }
-}
-
-#[cfg(any(feature = "ssr", test))]
-/// Implements `SurrealValue` for the `Reference` struct.
-impl SurrealValue for Reference {
-    /// Returns the `Kind` of the `Reference` record in SurrealDB, which is a record of type "reference".
-    fn kind_of() -> surrealdb_types::Kind {
-        Kind::Record(vec!["reference".to_string()])
-    }
-
-    /// Converts a `Reference` instance into a `surrealdb_types::Value`.
-    fn into_value(self) -> surrealdb_types::Value {
-        let json_value = serde_json::to_value(self).unwrap_or_default();
-        json_value.into_value()
-    }
-
-    /// Attempts to convert a `surrealdb_types::Value` into a `Reference` instance.
-    fn from_value(value: surrealdb_types::Value) -> Result<Self, surrealdb_types::anyhow::Error> {
-        let json_value: serde_json::Value = serde_json::Value::from_value(value)?;
-        serde_json::from_value(json_value)
-            .map_err(|e| surrealdb_types::anyhow::anyhow!("Deserialization error: {}", e))
-    }
-}
 #[cfg(test)]
 mod activity_type_tests {
     use super::*;
@@ -415,13 +320,13 @@ mod activity_type_tests {
     #[test]
     fn test_activity_deterministic_id_helper_normalizes_slug() {
         let id = Activity::deterministic_post_id(" /Rust-Launch/ ");
-        assert_eq!(id, RecordId::new("activity", "post-rust-launch"));
+        assert_eq!(id, Thing::from(("activity", "post-rust-launch")));
 
         let id_with_trailing = Activity::deterministic_post_id(" demo-post ");
-        assert_eq!(id_with_trailing, RecordId::new("activity", "post-demo"));
+        assert_eq!(id_with_trailing, Thing::from(("activity", "post-demo")));
 
         let id_with_mid = Activity::deterministic_post_id(" demo-post-beta ");
-        assert_eq!(id_with_mid, RecordId::new("activity", "post-demo-beta"));
+        assert_eq!(id_with_mid, Thing::from(("activity", "post-demo-beta")));
     }
 
     /// Ensures `deterministic_post_id` panics when given an empty or whitespace-only slug.

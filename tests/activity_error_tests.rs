@@ -7,18 +7,19 @@ use activity_test_api::{
 use app::types::Activity;
 use leptos::prelude::ServerFnError;
 use surrealdb::engine::any;
-use surrealdb_types::RecordId as Thing;
+use surrealdb::sql::Thing;
 
 fn make_thing<T, K>((table, key): (T, K)) -> Thing
 where
-    T: Into<surrealdb_types::Table>,
-    K: Into<surrealdb_types::RecordIdKey>,
+    T: Into<String>,
+    K: Into<String>,
 {
-    Thing::new(table, key)
+    Thing::from((table.into(), key.into()))
 }
 
 fn mock_db_error(message: &str) -> surrealdb::Error {
-    surrealdb::Error::Query(message.to_string())
+    // In 2.4.0, use Api error for remote database errors
+    surrealdb::Error::Api(surrealdb::error::Api::Query(message.to_string()))
 }
 
 #[cfg(test)]
@@ -295,8 +296,8 @@ mod activity_error_tests {
         let db = any::connect("mem://").await.unwrap();
         let _ = db
             .signin(surrealdb::opt::auth::Root {
-                username: "root".to_string(),
-                password: "root".to_string(),
+                username: "root",
+                password: "root",
             })
             .await;
         db.use_ns("test").await.unwrap();

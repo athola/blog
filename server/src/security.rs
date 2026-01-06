@@ -77,8 +77,8 @@ pub async fn security_headers(
     // Configured to support Leptos/WASM requirements.
     let csp = [
         "default-src 'self'",
-        "script-src 'self' 'wasm-unsafe-eval'", // Required for WASM execution.
-        "style-src 'self' 'unsafe-inline'",     // Required for Leptos's inline styles.
+        "script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline'", // Required for WASM execution and Leptos hydration scripts.
+        "style-src 'self' 'unsafe-inline'", // Required for Leptos's inline styles.
         "img-src 'self' data: https:",
         "font-src 'self' data:",
         "connect-src 'self'",

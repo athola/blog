@@ -8,9 +8,11 @@
 //!
 //! All database operations are wrapped with a retry mechanism to enhance resilience.
 
-#![allow(deprecated)] // Deprecated due to the use of `Thing` from `surrealdb_types` directly.
+#![allow(deprecated)]
+
 extern crate alloc;
 use alloc::collections::BTreeMap;
+use std::str::FromStr;
 
 use leptos::prelude::{ServerFnError, server};
 use leptos::server_fn::codec::GetUrl;
@@ -25,8 +27,9 @@ use std::time::Duration;
 use tokio_retry::{Retry, strategy::ExponentialBackoff};
 
 use crate::types::{Activity, Post, Reference};
-use surrealdb_types::{RecordId, RecordIdKey, Value};
+use surrealdb::sql::{Thing, Value};
 
+#[cfg(any(feature = "ssr", test))]
 const ACTIVITIES_PER_PAGE: usize = 10;
 
 /// Validates that a slug contains only safe characters for use in database queries.
@@ -41,6 +44,7 @@ const ACTIVITIES_PER_PAGE: usize = 10;
 /// # Returns
 ///
 /// `true` if the slug is safe, `false` otherwise.
+#[cfg(any(feature = "ssr", test))]
 fn is_valid_slug(slug: &str) -> bool {
     !slug.is_empty()
         && slug.len() <= 200
@@ -60,6 +64,7 @@ fn is_valid_slug(slug: &str) -> bool {
 /// # Returns
 ///
 /// `true` if the tag is safe, `false` otherwise.
+#[cfg(feature = "ssr")]
 fn is_valid_tag(tag: &str) -> bool {
     !tag.is_empty()
         && tag.len() <= 100
@@ -407,6 +412,8 @@ pub struct Pagination {
 /// # Returns
 ///
 /// A `Result` containing the SurrealQL query string or a `ServerFnError` on serialization failure.
+#[cfg(feature = "ssr")]
+#[allow(deprecated)]
 fn build_activity_create_query(mut activity: Activity) -> Result<String, ServerFnError> {
     let explicit_id = activity.id.take();
 
@@ -430,6 +437,7 @@ fn build_activity_create_query(mut activity: Activity) -> Result<String, ServerF
 /// # Returns
 ///
 /// A `String` containing the SurrealQL query.
+#[cfg(feature = "ssr")]
 fn build_select_activities_query(page: usize) -> String {
     let start = page * ACTIVITIES_PER_PAGE;
     format!(
@@ -437,40 +445,18 @@ fn build_select_activities_query(page: usize) -> String {
     )
 }
 
-/// Converts a `RecordId` into a string literal suitable for SurrealQL queries.
+/// Converts a `Thing` into a string literal suitable for SurrealQL queries.
 ///
 /// # Arguments
 ///
-/// * `id` - A reference to the `RecordId`.
+/// * `id` - A reference to the `Thing`.
 ///
 /// # Returns
 ///
 /// A `String` representing the SurrealQL record ID literal (e.g., `table:id`).
-fn record_id_literal(id: &RecordId) -> String {
-    let table = id.table.as_str();
-    let key = record_key_literal(&id.key);
-    format!("{table}:{key}")
-}
-
-/// Converts a `RecordIdKey` into its string representation.
-///
-/// # Arguments
-///
-/// * `key` - A reference to the `RecordIdKey`.
-///
-/// # Returns
-///
-/// A `String` representation of the key.
-///
-/// # Panics
-///
-/// If an unsupported `RecordIdKey` variant is encountered.
-fn record_key_literal(key: &RecordIdKey) -> String {
-    match key {
-        RecordIdKey::String(value) => value.clone(),
-        RecordIdKey::Number(value) => value.to_string(),
-        other => panic!("Unsupported record id key variant: {other:?}"),
-    }
+#[cfg(feature = "ssr")]
+fn record_id_literal(id: &Thing) -> String {
+    format!("{}", id)
 }
 
 /// Creates a `ServerFnError` from a context string and a displayable error.
@@ -485,6 +471,8 @@ fn record_key_literal(key: &RecordIdKey) -> String {
 /// # Returns
 ///
 /// A `ServerFnError` with the formatted error message.
+#[cfg(feature = "ssr")]
+#[allow(deprecated)]
 fn server_error(context: &str, err: impl std::fmt::Display) -> ServerFnError {
     ServerFnError::<NoCustomError>::ServerError(format!("{context}: {err}"))
 }
@@ -502,6 +490,7 @@ fn server_error(context: &str, err: impl std::fmt::Display) -> ServerFnError {
 ///
 /// A `Result` containing an `Activity` struct on success, or a `String` error if
 /// the value is not an object or parsing fails.
+#[cfg(feature = "ssr")]
 fn value_to_activity(value: Value) -> Result<Activity, String> {
     let map = match value {
         Value::Object(object) => object.into_iter().collect::<BTreeMap<_, _>>(),
@@ -525,6 +514,8 @@ fn value_to_activity(value: Value) -> Result<Activity, String> {
 /// # Returns
 ///
 /// A `Result` containing a `Vec<Activity>` on success, or a `ServerFnError` on deserialization failure.
+#[cfg(feature = "ssr")]
+#[allow(deprecated)]
 fn deserialize_activity_values(values: Vec<Value>) -> Result<Vec<Activity>, ServerFnError> {
     values
         .into_iter()
@@ -545,6 +536,7 @@ fn deserialize_activity_values(values: Vec<Value>) -> Result<Vec<Activity>, Serv
 ///
 /// A `Result` containing an `Activity` struct on success, or a `String` error if
 /// a field cannot be extracted or converted.
+#[cfg(feature = "ssr")]
 fn build_activity_from_map(mut map: BTreeMap<String, Value>) -> Result<Activity, String> {
     let content = take_string(&mut map, "content")?.unwrap_or_default();
     let tags = take_string_vec(&mut map, "tags")?;
@@ -572,9 +564,10 @@ fn build_activity_from_map(mut map: BTreeMap<String, Value>) -> Result<Activity,
 ///
 /// A `Result` containing `Option<String>` (Some if found and a string, None if not found or null)
 /// or a `String` error if the value is not a string.
+#[cfg(feature = "ssr")]
 fn take_string(map: &mut BTreeMap<String, Value>, key: &str) -> Result<Option<String>, String> {
     match map.remove(key) {
-        Some(Value::String(value)) => Ok(Some(value)),
+        Some(Value::Strand(value)) => Ok(Some(value.as_str().to_string())),
         Some(Value::None) | Some(Value::Null) | None => Ok(None),
         Some(other) => Err(format!(
             "Expected string for field '{key}' but found {other:?}"
@@ -595,13 +588,14 @@ fn take_string(map: &mut BTreeMap<String, Value>, key: &str) -> Result<Option<St
 ///
 /// A `Result` containing `Option<String>` or a `String` error if the value is not
 /// a string, `None`, or `Null`.
+#[cfg(feature = "ssr")]
 fn take_optional_string(
     map: &mut BTreeMap<String, Value>,
     key: &str,
 ) -> Result<Option<String>, String> {
     match map.remove(key) {
         None | Some(Value::None) | Some(Value::Null) => Ok(None),
-        Some(Value::String(value)) => Ok(Some(value)),
+        Some(Value::Strand(value)) => Ok(Some(value.as_str().to_string())),
         Some(other) => Err(format!(
             "Expected string or null for field '{key}' but found {other:?}"
         )),
@@ -619,13 +613,14 @@ fn take_optional_string(
 ///
 /// A `Result` containing `Vec<String>` or a `String` error if the value is not
 /// an array of strings.
+#[cfg(feature = "ssr")]
 fn take_string_vec(map: &mut BTreeMap<String, Value>, key: &str) -> Result<Vec<String>, String> {
     match map.remove(key) {
         None => Ok(Vec::new()),
         Some(Value::Array(array)) => array
             .into_iter()
             .map(|value| match value {
-                Value::String(item) => Ok(item),
+                Value::Strand(item) => Ok(item.as_str().to_string()),
                 Value::None | Value::Null => Ok(String::new()),
                 other => Err(format!(
                     "Expected string inside array field '{key}' but found {other:?}"
@@ -639,31 +634,33 @@ fn take_string_vec(map: &mut BTreeMap<String, Value>, key: &str) -> Result<Vec<S
     }
 }
 
-/// Extracts a `RecordId` from a `BTreeMap`.
+/// Extracts a `Thing` from a `BTreeMap`.
 ///
-/// Handles `RecordId` values directly or attempts to parse from a `String`.
+/// Handles `Thing` values directly or attempts to parse from a `String`.
 ///
 /// # Arguments
 ///
 /// * `map` - A mutable `BTreeMap<String, Value>`.
-/// * `key` - The key of the `RecordId` to extract.
+/// * `key` - The key of the `Thing` to extract.
 ///
 /// # Returns
 ///
-/// A `Result` containing `Option<RecordId>` or a `String` error if the value
-/// cannot be converted to a `RecordId`.
-fn take_record_id(
-    map: &mut BTreeMap<String, Value>,
-    key: &str,
-) -> Result<Option<RecordId>, String> {
+/// A `Result` containing `Option<Thing>` or a `String` error if the value
+/// cannot be converted to a `Thing`.
+#[cfg(feature = "ssr")]
+fn take_record_id(map: &mut BTreeMap<String, Value>, key: &str) -> Result<Option<Thing>, String> {
     match map.remove(key) {
         None | Some(Value::None) | Some(Value::Null) => Ok(None),
-        Some(Value::RecordId(record_id)) => Ok(Some(record_id)),
-        Some(Value::String(text)) => RecordId::parse_simple(&text)
-            .map(Some)
-            .map_err(|e| format!("Failed to parse record id '{text}': {e}")),
+        Some(Value::Thing(thing)) => Ok(Some(thing)),
+        Some(Value::Strand(s)) => {
+            // In SurrealDB 2.x, string values use the Strand variant
+            let s = s.as_str();
+            Thing::from_str(s)
+                .map(Some)
+                .map_err(|e| format!("Failed to parse thing '{s}': {e:?}"))
+        }
         Some(other) => Err(format!(
-            "Expected record id for field '{key}' but found {other:?}"
+            "Expected thing for field '{key}' but found {other:?}"
         )),
     }
 }
@@ -692,16 +689,12 @@ pub async fn create_activity(activity: crate::types::Activity) -> Result<(), Ser
 
     let query = build_activity_create_query(activity)?;
 
-    let create_result: Result<(), surrealdb::Error> =
+    let create_result: Result<(), String> =
         retry_async("create_activity", RetryConfig::default(), || async {
-            let mut response = db.query(&query).await?;
-            let values = response
-                .take::<Vec<Value>>(0)
-                .map_err(|e| surrealdb::Error::Query(e.to_string()))?;
+            let mut response = db.query(&query).await.map_err(|e| e.to_string())?;
+            let values = response.take::<Vec<Value>>(0).map_err(|e| e.to_string())?;
             if values.is_empty() {
-                return Err(surrealdb::Error::Query(
-                    "CREATE returned no record".to_string(),
-                ));
+                return Err("CREATE returned no record".to_string());
             }
             Ok(())
         })
@@ -761,7 +754,7 @@ mod tests {
     #[cfg(feature = "ssr")]
     use surrealdb::engine::any::Any;
     #[cfg(feature = "ssr")]
-    use surrealdb_types::RecordId as Thing;
+    use surrealdb::sql::Thing;
     #[cfg(feature = "ssr")]
     use tokio_test::block_on;
 
@@ -1158,7 +1151,7 @@ mod tests {
     async fn test_create_activity_mock_db() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Some(Thing::new("activity", "test_id")),
+            id: Some(Thing::from(("activity", "test_id"))),
             content: "This is a test activity".to_string(),
             created_at: "2023-01-01T12:00:00Z".to_string(),
             ..Default::default()
@@ -1178,7 +1171,7 @@ mod tests {
     async fn test_create_activity_with_tags_mock_db() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Some(Thing::new("activity", "tagged_activity")),
+            id: Some(Thing::from(("activity", "tagged_activity"))),
             content: "Activity with tags".to_string(),
             tags: vec!["rust".to_string(), "testing".to_string(), "tdd".to_string()],
             created_at: "2023-01-01T12:00:00Z".to_string(),
@@ -1200,7 +1193,7 @@ mod tests {
     async fn test_create_activity_with_source_mock_db() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Some(Thing::new("activity", "sourced_activity")),
+            id: Some(Thing::from(("activity", "sourced_activity"))),
             content: "Activity with source".to_string(),
             source: Some("https://github.com/rust-lang/rust".to_string()),
             created_at: "2023-01-01T12:00:00Z".to_string(),
@@ -1225,7 +1218,7 @@ mod tests {
     async fn test_create_activity_empty_content_mock_db() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Some(Thing::new("activity", "empty_content")),
+            id: Some(Thing::from(("activity", "empty_content"))),
             content: "".to_string(),
             created_at: "2023-01-01T12:00:00Z".to_string(),
             ..Default::default()
@@ -1245,7 +1238,7 @@ mod tests {
     async fn test_create_activity_long_content_mock_db() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Some(Thing::new("activity", "long_content")),
+            id: Some(Thing::from(("activity", "long_content"))),
             content: "a".repeat(10000),
             created_at: "2023-01-01T12:00:00Z".to_string(),
             ..Default::default()
@@ -1267,7 +1260,7 @@ mod tests {
         let db = setup_mock_db().await;
         let special_content = "Special chars: áéíóú ñ ¿¡ 🚀 \n\t\r\"'\\";
         let activity = Activity {
-            id: Some(Thing::new("activity", "special_chars")),
+            id: Some(Thing::from(("activity", "special_chars"))),
             content: special_content.to_string(),
             tags: vec!["español".to_string(), "unicode".to_string()],
             created_at: "2023-01-01T12:00:00Z".to_string(),
@@ -1292,7 +1285,7 @@ mod tests {
     async fn test_create_activity_unicode_tags_mock_db() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Some(Thing::new("activity", "unicode_tags")),
+            id: Some(Thing::from(("activity", "unicode_tags"))),
             content: "Unicode tags test".to_string(),
             tags: vec![
                 "中文".to_string(),
@@ -1324,7 +1317,7 @@ mod tests {
     async fn test_create_activity_empty_tags_mock_db() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Some(Thing::new("activity", "empty_tags")),
+            id: Some(Thing::from(("activity", "empty_tags"))),
             content: "Empty tags test".to_string(),
             tags: Vec::new(),
             created_at: "2023-01-01T12:00:00Z".to_string(),
@@ -1345,7 +1338,7 @@ mod tests {
     async fn test_create_activity_invalid_source_url_mock_db() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Some(Thing::new("activity", "invalid_url")),
+            id: Some(Thing::from(("activity", "invalid_url"))),
             content: "Invalid URL test".to_string(),
             source: Some("not-a-valid-url".to_string()),
             created_at: "2023-01-01T12:00:00Z".to_string(),
@@ -1367,20 +1360,20 @@ mod tests {
         let db = setup_mock_db().await;
         let activities = vec![
             Activity {
-                id: Some(Thing::new("activity", "multi_1")),
+                id: Some(Thing::from(("activity", "multi_1"))),
                 content: "First activity".to_string(),
                 created_at: "2023-01-01T12:00:00Z".to_string(),
                 ..Default::default()
             },
             Activity {
-                id: Some(Thing::new("activity", "multi_2")),
+                id: Some(Thing::from(("activity", "multi_2"))),
                 content: "Second activity".to_string(),
                 tags: vec!["test".to_string()],
                 created_at: "2023-01-01T12:01:00Z".to_string(),
                 ..Default::default()
             },
             Activity {
-                id: Some(Thing::new("activity", "multi_3")),
+                id: Some(Thing::from(("activity", "multi_3"))),
                 content: "Third activity".to_string(),
                 source: Some("https://example.com".to_string()),
                 created_at: "2023-01-01T12:02:00Z".to_string(),
@@ -1408,7 +1401,7 @@ mod tests {
         let db = setup_mock_db().await;
         for i in 0..5 {
             let activity = Activity {
-                id: Some(Thing::new("activity", format!("test_id_{i}"))),
+                id: Some(Thing::from(("activity", format!("test_id_{i}").as_str()))),
                 content: format!("Activity {i}"),
                 created_at: format!("2023-01-01T12:00:0{i}Z"),
                 ..Default::default()
@@ -1427,7 +1420,7 @@ mod tests {
         let db = setup_mock_db().await;
         for i in 0..25 {
             let activity = Activity {
-                id: Some(Thing::new("activity", format!("page_test_{i}"))),
+                id: Some(Thing::from(("activity", format!("page_test_{i}").as_str()))),
                 content: format!("Page test activity {i}"),
                 created_at: format!("2023-01-01T12:{i:02}:00Z"),
                 ..Default::default()
@@ -1463,10 +1456,10 @@ mod tests {
 
         for (timestamp, content) in activities_data {
             let activity = Activity {
-                id: Some(Thing::new(
+                id: Some(Thing::from((
                     "activity",
-                    content.replace(" ", "_").to_lowercase(),
-                )),
+                    content.replace(" ", "_").to_lowercase().as_str(),
+                ))),
                 content: content.to_string(),
                 created_at: timestamp.to_string(),
                 ..Default::default()
@@ -1494,7 +1487,7 @@ mod tests {
 
         for (id, content) in activities_data {
             let activity = Activity {
-                id: Some(Thing::new("activity", id)),
+                id: Some(Thing::from(("activity", id))),
                 content: content.to_string(),
                 created_at: same_timestamp.to_string(),
                 ..Default::default()
@@ -1537,7 +1530,7 @@ mod tests {
 
         for (id, content) in activities_data {
             let activity = Activity {
-                id: Some(Thing::new("activity", id)),
+                id: Some(Thing::from(("activity", id))),
                 content,
                 created_at: "2023-01-01T12:00:00Z".to_string(),
                 ..Default::default()
@@ -1564,28 +1557,28 @@ mod tests {
         let db = setup_mock_db().await;
         let activities_data = vec![
             Activity {
-                id: Some(Thing::new("activity", "tagged_1")),
+                id: Some(Thing::from(("activity", "tagged_1"))),
                 content: "Activity with tags".to_string(),
                 tags: vec!["rust".to_string(), "web".to_string()],
                 source: None,
                 created_at: "2023-01-01T12:00:00Z".to_string(),
             },
             Activity {
-                id: Some(Thing::new("activity", "sourced_1")),
+                id: Some(Thing::from(("activity", "sourced_1"))),
                 content: "Activity with source".to_string(),
                 tags: Vec::new(),
                 source: Some("https://github.com".to_string()),
                 created_at: "2023-01-01T12:01:00Z".to_string(),
             },
             Activity {
-                id: Some(Thing::new("activity", "both_1")),
+                id: Some(Thing::from(("activity", "both_1"))),
                 content: "Activity with both".to_string(),
                 tags: vec!["fullstack".to_string()],
                 source: Some("https://example.com".to_string()),
                 created_at: "2023-01-01T12:02:00Z".to_string(),
             },
             Activity {
-                id: Some(Thing::new("activity", "neither_1")),
+                id: Some(Thing::from(("activity", "neither_1"))),
                 content: "Activity with neither".to_string(),
                 tags: Vec::new(),
                 source: None,
@@ -1646,7 +1639,7 @@ mod tests {
         let db = setup_mock_db().await;
         for i in 0..5 {
             let activity = Activity {
-                id: Some(Thing::new("activity", format!("large_page_{i}"))),
+                id: Some(Thing::from(("activity", format!("large_page_{i}").as_str()))),
                 content: format!("Activity {i}"),
                 created_at: format!("2023-01-01T12:00:0{i}Z"),
                 ..Default::default()

@@ -272,8 +272,17 @@ watch:
 
 teardown:
 	$(ECHO_PREFIX) Stopping development processes
-	@echo "Use Ctrl+C to stop cargo leptos watch"
-	@echo "Use 'make stop-db' to stop database processes"
+	@echo "Killing any processes on reload port 3002..."
+	@if command -v lsof >/dev/null 2>&1; then \
+		lsof -ti:3002 | xargs -r kill 2>/dev/null || true; \
+	elif command -v fuser >/dev/null 2>&1; then \
+		fuser -k 3002/tcp 2>/dev/null || true; \
+	elif command -v ss >/dev/null 2>&1; then \
+		pid=$$(ss -ltnp "sport = :3002" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1); \
+		if [ -n "$$pid" ]; then kill "$$pid" 2>/dev/null || true; fi; \
+	fi
+	@echo "Stopping database processes..."
+	@$(MAKE) -s stop-db 2>/dev/null || true
 	@echo "Development processes stopped"
 
 server:

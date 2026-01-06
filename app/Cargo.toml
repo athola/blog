@@ -54,7 +54,6 @@ serde.workspace = true
 serde_json.workspace = true
 shared_utils = { workspace = true, optional = true }
 surrealdb.workspace = true
-surrealdb-types.workspace = true
 thiserror = "2"
 tokio-retry = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }

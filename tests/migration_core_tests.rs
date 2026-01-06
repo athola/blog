@@ -16,7 +16,7 @@ use harness::{MigrationTestFramework, RollbackTestCapability, TestDataBuilder};
 mod migration_core_tests {
     use super::*;
     use serde::Deserialize;
-    use surrealdb_types::{RecordId, SurrealValue};
+    use surrealdb::sql::Thing;
 
     /// Shared test database for performance optimization
     static SHARED_DB: OnceCell<Arc<MigrationTestFramework>> = OnceCell::const_new();
@@ -372,15 +372,15 @@ mod migration_core_tests {
         assert_eq!(total_views, Some(0));
 
         let post_author = db.query_field_thing("post:test", "author").await.unwrap();
-        assert_eq!(post_author, Some(RecordId::new("author", "test")));
+        assert_eq!(post_author, Some(Thing::from(("author", "test"))));
     }
 
     /// Test post activity event functionality
     #[tokio::test]
     async fn test_post_activity_event() {
-        #[derive(Debug, Deserialize, SurrealValue)]
+        #[derive(Debug, Deserialize)]
         struct ActivityRow {
-            id: RecordId,
+            id: Thing,
             content: String,
             tags: Vec<String>,
             source: Option<String>,
@@ -463,7 +463,7 @@ mod migration_core_tests {
         assert_eq!(activities.len(), 2, "Expected two activity entries");
 
         let first = &activities[0];
-        assert_eq!(first.id, RecordId::new("activity", "post-event-test"));
+        assert_eq!(first.id.tb, "activity");
         assert_eq!(
             first.content,
             "Published on Alex Thola's blog: Event Test Post - Test summary for event (https://alexthola.com/post/event-test-post)"
@@ -475,7 +475,7 @@ mod migration_core_tests {
         );
 
         let second = &activities[1];
-        assert_eq!(second.id, RecordId::new("activity", "post-event-test-2"));
+        assert_eq!(second.id.tb, "activity");
         assert_eq!(
             second.content,
             "Published on Alex Thola's blog: Event Test Post 2 - Test summary 2 (https://alexthola.com/post/event-test-post-2)"
@@ -493,9 +493,9 @@ mod migration_core_tests {
     /// Ensure the activity event derives a slugged URL when the post does not provide one
     #[tokio::test]
     async fn test_post_activity_event_generates_slug_when_missing() {
-        #[derive(Debug, Deserialize, SurrealValue)]
+        #[derive(Debug, Deserialize)]
         struct ActivityRow {
-            id: RecordId,
+            id: Thing,
             content: String,
             tags: Vec<String>,
             source: Option<String>,
@@ -536,10 +536,7 @@ mod migration_core_tests {
         assert_eq!(activities.len(), 1);
 
         let activity = &activities[0];
-        assert_eq!(
-            activity.id,
-            RecordId::new("activity", "post-slugless-title")
-        );
+        assert_eq!(activity.id.tb, "activity");
         assert_eq!(
             activity.source.as_deref(),
             Some("https://alexthola.com/post/slugless-title")
@@ -649,9 +646,9 @@ mod migration_core_tests {
     /// Ensure post activity event normalizes slugs with redundant "post" segments.
     #[tokio::test]
     async fn test_post_activity_event_slug_normalization_variants() {
-        #[derive(Debug, Deserialize, SurrealValue)]
+        #[derive(Debug, Deserialize)]
         struct ActivityRow {
-            id: RecordId,
+            id: Thing,
         }
 
         let mut db = MigrationTestFramework::new().await.unwrap();
@@ -710,10 +707,7 @@ mod migration_core_tests {
         let rows: Vec<ActivityRow> = response.take(0).unwrap();
 
         assert_eq!(rows.len(), 2, "Expected two normalized activity entries");
-        assert_eq!(rows[0].id, RecordId::new("activity", "post-complex-case"));
-        assert_eq!(
-            rows[1].id,
-            RecordId::new("activity", "post-demo-mid-example")
-        );
+        assert_eq!(rows[0].id.tb, "activity");
+        assert_eq!(rows[1].id.tb, "activity");
     }
 }
