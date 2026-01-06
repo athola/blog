@@ -1094,11 +1094,6 @@ mod tests {
         let db: Surreal<Any> = Surreal::init();
         db.connect("memory").await.unwrap();
         db.use_ns("test").use_db("test").await.unwrap();
-        db.query(
-            "DEFINE TABLE activity SCHEMALESS;\nDEFINE TABLE post SCHEMALESS;\nDEFINE TABLE author SCHEMALESS;\nDEFINE TABLE reference SCHEMALESS;",
-        )
-        .await
-        .unwrap();
         db
     }
 

@@ -292,7 +292,7 @@ validate: fmt lint test
 	@if [ -f "$(SCRIPTS_DIR)/run_secret_scan.sh" ]; then chmod +x $(SCRIPTS_DIR)/run_secret_scan.sh && $(SCRIPTS_DIR)/run_secret_scan.sh; else echo "Note: Secret scan script not found"; fi
 	@echo "Running security audit..."
 	@if command -v cargo-audit >/dev/null 2>&1; then \
-		cargo audit --no-fetch --deny warnings --ignore RUSTSEC-2024-0436 --ignore RUSTSEC-2024-0320 --ignore RUSTSEC-2026-0001 || echo "Warning: Security audit found issues"; \
+		cargo audit --no-fetch --deny warnings --ignore RUSTSEC-2024-0436 --ignore RUSTSEC-2024-0320 || echo "Warning: Security audit found issues"; \
 	else \
 		echo "Note: cargo-audit not installed; skipping security audit"; \
 	fi
