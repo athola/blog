@@ -161,7 +161,7 @@ impl Activity {
 impl SurrealValue for Activity {
     /// Returns the `Kind` of the `Activity` record in SurrealDB, which is a record of type "activity".
     fn kind_of() -> surrealdb_types::Kind {
-        Kind::Record(vec!["activity".to_string()])
+        Kind::Record(vec!["activity".to_string().into()])
     }
 
     /// Converts an `Activity` instance into a `surrealdb_types::Value`.
@@ -185,7 +185,7 @@ impl SurrealValue for Activity {
 impl SurrealValue for Post {
     /// Returns the `Kind` of the `Post` record in SurrealDB, which is a record of type "post".
     fn kind_of() -> surrealdb_types::Kind {
-        Kind::Record(vec!["post".to_string()])
+        Kind::Record(vec!["post".to_string().into()])
     }
 
     /// Converts a `Post` instance into a `surrealdb_types::Value`.
@@ -207,7 +207,7 @@ impl SurrealValue for Post {
 impl SurrealValue for Author {
     /// Returns the `Kind` of the `Author` record in SurrealDB, which is a record of type "author".
     fn kind_of() -> surrealdb_types::Kind {
-        Kind::Record(vec!["author".to_string()])
+        Kind::Record(vec!["author".to_string().into()])
     }
 
     /// Converts an `Author` instance into a `surrealdb_types::Value`.
@@ -229,7 +229,7 @@ impl SurrealValue for Author {
 impl SurrealValue for Reference {
     /// Returns the `Kind` of the `Reference` record in SurrealDB, which is a record of type "reference".
     fn kind_of() -> surrealdb_types::Kind {
-        Kind::Record(vec!["reference".to_string()])
+        Kind::Record(vec!["reference".to_string().into()])
     }
 
     /// Converts a `Reference` instance into a `surrealdb_types::Value`.
