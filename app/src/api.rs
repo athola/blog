@@ -1639,7 +1639,10 @@ mod tests {
         let db = setup_mock_db().await;
         for i in 0..5 {
             let activity = Activity {
-                id: Some(Thing::from(("activity", format!("large_page_{i}").as_str()))),
+                id: Some(Thing::from((
+                    "activity",
+                    format!("large_page_{i}").as_str(),
+                ))),
                 content: format!("Activity {i}"),
                 created_at: format!("2023-01-01T12:00:0{i}Z"),
                 ..Default::default()
