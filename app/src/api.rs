@@ -12,8 +12,6 @@
 
 extern crate alloc;
 use alloc::collections::BTreeMap;
-use std::str::FromStr;
-
 use leptos::prelude::{ServerFnError, server};
 use leptos::server_fn::codec::GetUrl;
 use leptos::server_fn::error::NoCustomError;
@@ -27,7 +25,7 @@ use std::time::Duration;
 use tokio_retry::{Retry, strategy::ExponentialBackoff};
 
 use crate::types::{Activity, Post, Reference};
-use surrealdb::sql::{Thing, Value};
+use surrealdb::RecordId;
 
 #[cfg(any(feature = "ssr", test))]
 const ACTIVITIES_PER_PAGE: usize = 10;
@@ -399,277 +397,10 @@ pub struct Pagination {
     pub page: usize,
 }
 
-/// Constructs a SurrealQL `CREATE` query for an activity record.
-///
-/// If the activity has an explicit `id`, it will be used in the `CREATE` statement;
-/// otherwise, SurrealDB will generate a new one. The activity data is serialized
-/// to JSON for the `CONTENT` clause.
-///
-/// # Arguments
-///
-/// * `activity` - The `Activity` struct to create.
-///
-/// # Returns
-///
-/// A `Result` containing the SurrealQL query string or a `ServerFnError` on serialization failure.
-#[cfg(feature = "ssr")]
-#[allow(deprecated)]
-fn build_activity_create_query(mut activity: Activity) -> Result<String, ServerFnError> {
-    let explicit_id = activity.id.take();
-
-    let json =
-        serde_json::to_string(&activity).map_err(|e| server_error("Serialization error", e))?;
-
-    if let Some(id) = explicit_id {
-        let record_literal = record_id_literal(&id);
-        Ok(format!("CREATE {record_literal} CONTENT {json} RETURN *;"))
-    } else {
-        Ok(format!("CREATE activity CONTENT {json} RETURN *;"))
-    }
-}
-
-/// Constructs a SurrealQL `SELECT` query for fetching activity records with pagination.
-///
-/// # Arguments
-///
-/// * `page` - The 0-indexed page number.
-///
-/// # Returns
-///
-/// A `String` containing the SurrealQL query.
-#[cfg(feature = "ssr")]
-fn build_select_activities_query(page: usize) -> String {
-    let start = page * ACTIVITIES_PER_PAGE;
-    format!(
-        "SELECT * FROM activity ORDER BY created_at DESC LIMIT {ACTIVITIES_PER_PAGE} START {start}"
-    )
-}
-
-/// Converts a `Thing` into a string literal suitable for SurrealQL queries.
-///
-/// # Arguments
-///
-/// * `id` - A reference to the `Thing`.
-///
-/// # Returns
-///
-/// A `String` representing the SurrealQL record ID literal (e.g., `table:id`).
-#[cfg(feature = "ssr")]
-fn record_id_literal(id: &Thing) -> String {
-    format!("{}", id)
-}
-
-/// Creates a `ServerFnError` from a context string and a displayable error.
-///
-/// This helper standardizes error reporting for server functions.
-///
-/// # Arguments
-///
-/// * `context` - A string providing context for the error.
-/// * `err` - An error type that implements `std::fmt::Display`.
-///
-/// # Returns
-///
-/// A `ServerFnError` with the formatted error message.
-#[cfg(feature = "ssr")]
-#[allow(deprecated)]
-fn server_error(context: &str, err: impl std::fmt::Display) -> ServerFnError {
-    ServerFnError::<NoCustomError>::ServerError(format!("{context}: {err}"))
-}
-
-/// Converts a SurrealDB `Value` into an `Activity` struct.
-///
-/// This function expects the `Value` to be an object and attempts to
-/// build an `Activity` from its fields.
-///
-/// # Arguments
-///
-/// * `value` - The `SurrealDB::Value` to convert.
-///
-/// # Returns
-///
-/// A `Result` containing an `Activity` struct on success, or a `String` error if
-/// the value is not an object or parsing fails.
-#[cfg(feature = "ssr")]
-fn value_to_activity(value: Value) -> Result<Activity, String> {
-    let map = match value {
-        Value::Object(object) => object.into_iter().collect::<BTreeMap<_, _>>(),
-        other => {
-            return Err(format!(
-                "Expected activity object but received value: {other:?}"
-            ));
-        }
-    };
-    build_activity_from_map(map)
-}
-
-/// Deserializes a vector of SurrealDB `Value`s into a vector of `Activity` structs.
-///
-/// This function maps over the input vector, converting each `Value` to an `Activity`.
-///
-/// # Arguments
-///
-/// * `values` - A `Vec<Value>` representing raw activity records from SurrealDB.
-///
-/// # Returns
-///
-/// A `Result` containing a `Vec<Activity>` on success, or a `ServerFnError` on deserialization failure.
-#[cfg(feature = "ssr")]
-#[allow(deprecated)]
-fn deserialize_activity_values(values: Vec<Value>) -> Result<Vec<Activity>, ServerFnError> {
-    values
-        .into_iter()
-        .map(|value| value_to_activity(value).map_err(|e| server_error("Deserialization error", e)))
-        .collect()
-}
-
-/// Builds an `Activity` struct from a `BTreeMap` of field names to SurrealDB `Value`s.
-///
-/// This helper extracts and converts specific fields from the map into the `Activity` struct's
-/// corresponding types.
-///
-/// # Arguments
-///
-/// * `map` - A mutable `BTreeMap<String, Value>` containing the activity's fields.
-///
-/// # Returns
-///
-/// A `Result` containing an `Activity` struct on success, or a `String` error if
-/// a field cannot be extracted or converted.
-#[cfg(feature = "ssr")]
-fn build_activity_from_map(mut map: BTreeMap<String, Value>) -> Result<Activity, String> {
-    let content = take_string(&mut map, "content")?.unwrap_or_default();
-    let tags = take_string_vec(&mut map, "tags")?;
-    let source = take_optional_string(&mut map, "source")?;
-    let created_at = take_string(&mut map, "created_at")?.unwrap_or_default();
-    let id = take_record_id(&mut map, "id")?;
-
-    Ok(Activity {
-        id,
-        content,
-        tags,
-        source,
-        created_at,
-    })
-}
-
-/// Extracts a `String` value from a `BTreeMap`, removing the key-value pair.
-///
-/// # Arguments
-///
-/// * `map` - A mutable `BTreeMap<String, Value>`.
-/// * `key` - The key of the string to extract.
-///
-/// # Returns
-///
-/// A `Result` containing `Option<String>` (Some if found and a string, None if not found or null)
-/// or a `String` error if the value is not a string.
-#[cfg(feature = "ssr")]
-fn take_string(map: &mut BTreeMap<String, Value>, key: &str) -> Result<Option<String>, String> {
-    match map.remove(key) {
-        Some(Value::Strand(value)) => Ok(Some(value.as_str().to_string())),
-        Some(Value::None) | Some(Value::Null) | None => Ok(None),
-        Some(other) => Err(format!(
-            "Expected string for field '{key}' but found {other:?}"
-        )),
-    }
-}
-
-/// Extracts an optional `String` value from a `BTreeMap`.
-///
-/// Similar to `take_string`, but specifically handles cases where the string might be `None` or `Null`.
-///
-/// # Arguments
-///
-/// * `map` - A mutable `BTreeMap<String, Value>`.
-/// * `key` - The key of the optional string to extract.
-///
-/// # Returns
-///
-/// A `Result` containing `Option<String>` or a `String` error if the value is not
-/// a string, `None`, or `Null`.
-#[cfg(feature = "ssr")]
-fn take_optional_string(
-    map: &mut BTreeMap<String, Value>,
-    key: &str,
-) -> Result<Option<String>, String> {
-    match map.remove(key) {
-        None | Some(Value::None) | Some(Value::Null) => Ok(None),
-        Some(Value::Strand(value)) => Ok(Some(value.as_str().to_string())),
-        Some(other) => Err(format!(
-            "Expected string or null for field '{key}' but found {other:?}"
-        )),
-    }
-}
-
-/// Extracts a `Vec<String>` from a `BTreeMap`.
-///
-/// # Arguments
-///
-/// * `map` - A mutable `BTreeMap<String, Value>`.
-/// * `key` - The key of the string vector to extract.
-///
-/// # Returns
-///
-/// A `Result` containing `Vec<String>` or a `String` error if the value is not
-/// an array of strings.
-#[cfg(feature = "ssr")]
-fn take_string_vec(map: &mut BTreeMap<String, Value>, key: &str) -> Result<Vec<String>, String> {
-    match map.remove(key) {
-        None => Ok(Vec::new()),
-        Some(Value::Array(array)) => array
-            .into_iter()
-            .map(|value| match value {
-                Value::Strand(item) => Ok(item.as_str().to_string()),
-                Value::None | Value::Null => Ok(String::new()),
-                other => Err(format!(
-                    "Expected string inside array field '{key}' but found {other:?}"
-                )),
-            })
-            .collect(),
-        Some(Value::None) | Some(Value::Null) => Ok(Vec::new()),
-        Some(other) => Err(format!(
-            "Expected array for field '{key}' but found {other:?}"
-        )),
-    }
-}
-
-/// Extracts a `Thing` from a `BTreeMap`.
-///
-/// Handles `Thing` values directly or attempts to parse from a `String`.
-///
-/// # Arguments
-///
-/// * `map` - A mutable `BTreeMap<String, Value>`.
-/// * `key` - The key of the `Thing` to extract.
-///
-/// # Returns
-///
-/// A `Result` containing `Option<Thing>` or a `String` error if the value
-/// cannot be converted to a `Thing`.
-#[cfg(feature = "ssr")]
-fn take_record_id(map: &mut BTreeMap<String, Value>, key: &str) -> Result<Option<Thing>, String> {
-    match map.remove(key) {
-        None | Some(Value::None) | Some(Value::Null) => Ok(None),
-        Some(Value::Thing(thing)) => Ok(Some(thing)),
-        Some(Value::Strand(s)) => {
-            // In SurrealDB 2.x, string values use the Strand variant
-            let s = s.as_str();
-            Thing::from_str(s)
-                .map(Some)
-                .map_err(|e| format!("Failed to parse thing '{s}': {e:?}"))
-        }
-        Some(other) => Err(format!(
-            "Expected thing for field '{key}' but found {other:?}"
-        )),
-    }
-}
-
 /// Creates a new activity record in the database.
 ///
-/// This server function constructs a SurrealQL `CREATE` query from the provided
-/// `Activity` data and executes it. It includes a retry mechanism for database
-/// operations to handle transient errors.
+/// This server function uses SurrealDB's native API to create the activity record.
+/// It includes a retry mechanism for database operations to handle transient errors.
 ///
 /// # Arguments
 ///
@@ -687,15 +418,29 @@ pub async fn create_activity(activity: crate::types::Activity) -> Result<(), Ser
     let AppState { db, .. } = expect_context::<AppState>();
     let db = db.as_ref();
 
-    let query = build_activity_create_query(activity)?;
-
+    // Use SurrealDB's native API for creating records
     let create_result: Result<(), String> =
         retry_async("create_activity", RetryConfig::default(), || async {
-            let mut response = db.query(&query).await.map_err(|e| e.to_string())?;
-            let values = response.take::<Vec<Value>>(0).map_err(|e| e.to_string())?;
-            if values.is_empty() {
-                return Err("CREATE returned no record".to_string());
-            }
+            let _: Option<Activity> = if let Some(id) = activity.id.clone() {
+                // Convert Thing to RecordId
+                // Note: We need to remove the id field from content since we're specifying it in the create call
+                let mut content_activity = activity.clone();
+                content_activity.id = None;
+
+                // Convert Thing to RecordId by extracting table and id
+                let table: &str = &id.tb;
+                let id_str = id.id.to_string();
+                let record_id = RecordId::from((table, id_str.as_str()));
+                db.create::<Option<Activity>>(record_id)
+                    .content(content_activity)
+                    .await
+                    .map_err(|e| e.to_string())?
+            } else {
+                db.create::<Option<Activity>>("activity")
+                    .content(activity.clone())
+                    .await
+                    .map_err(|e| e.to_string())?
+            };
             Ok(())
         })
         .await;
@@ -730,17 +475,27 @@ pub async fn select_activities(
 
     let AppState { db, .. } = expect_context::<AppState>();
     let db = db.as_ref();
-    let query = build_select_activities_query(page);
 
-    let mut query = retry_async("select_activities", RetryConfig::default(), || async {
-        db.query(&query).await
-    })
-    .await
-    .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Database error: {e}")))?;
-    let raw_values = query
-        .take::<Vec<Value>>(0)
-        .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {e}")))?;
-    let activities = deserialize_activity_values(raw_values)?;
+    // Use SurrealDB's native API for selecting records
+    let start = page * ACTIVITIES_PER_PAGE;
+    let activities: Vec<Activity> =
+        retry_async("select_activities", RetryConfig::default(), || async {
+            let result: Vec<Activity> = db
+                .query("SELECT * FROM activity ORDER BY created_at DESC LIMIT $limit START $start")
+                .bind(("limit", ACTIVITIES_PER_PAGE))
+                .bind(("start", start))
+                .await
+                .map_err(|e| {
+                    ServerFnError::<NoCustomError>::ServerError(format!("Database error: {e}"))
+                })?
+                .take(0)
+                .map_err(|e| {
+                    ServerFnError::<NoCustomError>::ServerError(format!("Query error: {e}"))
+                })?;
+            Ok::<_, ServerFnError>(result)
+        })
+        .await
+        .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Database error: {e}")))?;
 
     Ok(activities)
 }
@@ -1095,20 +850,32 @@ mod tests {
         db: &Surreal<Any>,
         activity: Activity,
     ) -> Result<(), ServerFnError> {
-        let query = build_activity_create_query(activity)?;
-        let mut response = db.query(&query).await.map_err(|e| {
-            ServerFnError::<NoCustomError>::ServerError(format!("Create error: {e}"))
-        })?;
+        // Use SurrealDB's native API for creating records
+        let _: Option<Activity> = if let Some(id) = activity.id.clone() {
+            // Convert Thing to RecordId
+            // Note: We need to remove the id field from content since we're specifying it in the create call
+            let mut content_activity = activity.clone();
+            content_activity.id = None;
 
-        let values = response.take::<Vec<Value>>(0).map_err(|e| {
-            ServerFnError::<NoCustomError>::ServerError(format!("Query result error: {e}"))
-        })?;
-
-        if values.is_empty() {
-            return Err(ServerFnError::<NoCustomError>::ServerError(
-                "Create returned no record".to_string(),
-            ));
-        }
+            // Use the SurrealDB RecordId directly with explicit type annotation
+            // Convert Thing to RecordId by extracting table and id
+            let table: &str = &id.tb;
+            let id_str = id.id.to_string();
+            let record_id = RecordId::from((table, id_str.as_str()));
+            db.create::<Option<Activity>>(record_id)
+                .content(content_activity)
+                .await
+                .map_err(|e| {
+                    ServerFnError::<NoCustomError>::ServerError(format!("Create error: {e}"))
+                })?
+        } else {
+            db.create::<Option<Activity>>("activity")
+                .content(activity)
+                .await
+                .map_err(|e| {
+                    ServerFnError::<NoCustomError>::ServerError(format!("Create error: {e}"))
+                })?
+        };
         Ok(())
     }
 
@@ -1117,33 +884,25 @@ mod tests {
         db: &Surreal<Any>,
         page: usize,
     ) -> Result<Vec<Activity>, ServerFnError> {
-        let query = build_select_activities_query(page);
-        let mut response = db.query(&query).await.map_err(|e| {
-            ServerFnError::<NoCustomError>::ServerError(format!("Query error: {e}"))
-        })?;
-        let raw_values = response.take::<Vec<Value>>(0).map_err(|e| {
-            ServerFnError::<NoCustomError>::ServerError(format!("Query result error: {e}"))
-        })?;
-        deserialize_activity_values(raw_values)
+        // Use SurrealDB's native API for selecting records
+        let start = page * ACTIVITIES_PER_PAGE;
+        let activities: Vec<Activity> = db
+            .query("SELECT * FROM activity ORDER BY created_at DESC LIMIT $limit START $start")
+            .bind(("limit", ACTIVITIES_PER_PAGE))
+            .bind(("start", start))
+            .await
+            .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {e}")))?
+            .take(0)
+            .map_err(|e| {
+                ServerFnError::<NoCustomError>::ServerError(format!("Query result error: {e}"))
+            })?;
+        Ok(activities)
     }
 
     /// Helper to fetch a specific activity by its ID from the mock database.
     async fn fetch_activity_by_id_from_db(db: &Surreal<Any>, id: &str) -> Option<Activity> {
-        match db.select::<Option<Activity>>(("activity", id)).await {
-            Ok(record) => record,
-            Err(_) => {
-                // Fallback to a query if direct select fails (e.g., if ID contains special chars)
-                let query = format!("SELECT * FROM activity:{id} LIMIT 1;");
-                if let Ok(mut response) = db.query(&query).await
-                    && let Ok(values) = response.take::<Vec<Value>>(0)
-                    && let Some(value) = values.into_iter().next()
-                    && let Ok(activity) = value_to_activity(value)
-                {
-                    return Some(activity);
-                }
-                None
-            }
-        }
+        // Use SurrealDB's native API - it handles special characters properly
+        (db.select::<Option<Activity>>(("activity", id)).await).unwrap_or_default()
     }
 
     /// Tests basic activity creation with a mock database.
@@ -1594,12 +1353,7 @@ mod tests {
         assert_eq!(activities.len(), 4);
         for activity in &activities {
             let id = activity.id.as_ref().expect("Activity ID should be present");
-            let id_literal = record_id_literal(id);
-            let id_part = id_literal
-                .split(':')
-                .nth(1)
-                .unwrap_or(&id_literal)
-                .to_string();
+            let id_part = id.id.to_string();
             match id_part.as_str() {
                 "tagged_1" => {
                     assert_eq!(activity.tags, vec!["rust".to_string(), "web".to_string()]);
@@ -1617,7 +1371,7 @@ mod tests {
                     assert!(activity.tags.is_empty());
                     assert!(activity.source.is_none());
                 }
-                _ => panic!("Unexpected activity ID: {}", id_literal),
+                _ => panic!("Unexpected activity ID: {}", id_part),
             }
         }
     }
