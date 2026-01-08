@@ -43,6 +43,6 @@ if $SURREAL_CMD validate "migrations/*.surql" 2>&1; then
     exit 0
 else
     echo -e "${RED}[validate-migrations]: Migration syntax validation failed${NC}"
-    echo "Run 'make install-surrealdb' to install the SurrealDB CLI (v3.0.0-alpha.16)"
+    echo "Run 'make install-surrealdb' to install the SurrealDB CLI (v2.4.0)"
     exit 1
 fi
