@@ -3,10 +3,10 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use surrealdb::engine::local::{Db, Mem};
-use surrealdb::{IndexedResults, Result as SurrealResult, Surreal};
-use surrealdb_types::{RecordId, SurrealValue};
+use surrealdb::sql::Thing;
+use surrealdb::{Response, Result as SurrealResult, Surreal};
 
-#[derive(Debug, Deserialize, SurrealValue)]
+#[derive(Debug, Deserialize)]
 struct CountResult {
     count: i64,
 }
@@ -18,6 +18,18 @@ struct CountResult {
 /// - Schema definition and constraint validation
 /// - Data creation and verification utilities
 /// - Performance testing and rollback capabilities
+///
+/// # Example
+/// ```no_run
+/// use crate::harness::MigrationTestFramework;
+///
+/// #[tokio::test]
+/// async fn migrations_smoke_test() -> surrealdb::Result<()> {
+///     let mut h = MigrationTestFramework::new().await?;
+///     h.apply_cached_migrations(&["initial", "indexes"]).await?;
+///     Ok(())
+/// }
+/// ```
 pub struct MigrationTestFramework {
     pub db: Surreal<Db>,
     applied_migrations: Vec<String>,
@@ -102,9 +114,8 @@ impl MigrationTestFramework {
             if let Some(migration) = self.migration_cache.get(key).cloned() {
                 self.execute_migration(&migration).await?;
             } else {
-                return Err(surrealdb::Error::Query(format!(
-                    "Migration not found: {}",
-                    key
+                return Err(surrealdb::Error::Api(surrealdb::error::Api::Query(
+                    format!("Migration not found: {}", key),
                 )));
             }
         }
@@ -149,9 +160,9 @@ impl MigrationTestFramework {
             .query(
                 r#"
             DEFINE FIELD OVERWRITE name ON author TYPE string ASSERT $value != NONE;
-            DEFINE FIELD OVERWRITE email ON author TYPE string ASSERT string::is_email($value);
+            DEFINE FIELD OVERWRITE email ON author TYPE string ASSERT string::is::email($value);
             DEFINE FIELD OVERWRITE bio ON author TYPE option<string>;
-            
+
             DEFINE FIELD OVERWRITE title ON post TYPE string ASSERT $value != NONE;
             DEFINE FIELD OVERWRITE summary ON post TYPE string ASSERT $value != NONE;
             DEFINE FIELD OVERWRITE body ON post TYPE string ASSERT $value != NONE;
@@ -379,7 +390,7 @@ impl MigrationTestFramework {
         &self,
         table_record: &str,
         field: &str,
-    ) -> SurrealResult<Option<RecordId>> {
+    ) -> SurrealResult<Option<Thing>> {
         let mut result = self
             .db
             .query(format!("SELECT VALUE {} FROM {}", field, table_record))
@@ -388,7 +399,7 @@ impl MigrationTestFramework {
     }
 
     /// Execute raw query for complex operations
-    pub async fn execute_query(&self, query: &str) -> SurrealResult<IndexedResults> {
+    pub async fn execute_query(&self, query: &str) -> SurrealResult<Response> {
         self.db.query(query).await
     }
 

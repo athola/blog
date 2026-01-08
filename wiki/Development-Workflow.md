@@ -56,4 +56,4 @@ This sequence ensures that code with build errors, failing tests, or exposed sec
 
 -   **Build Failures**: If the build fails, try `cargo clean && make build`. If the problem persists, `make install-pkgs` ensures build tools are updated.
 -   **Database Issues**: Resolve database problems with `make reset-db` for a fresh start. Confirm you are running SurrealDB `3.0.0-alpha.16`.
--   **Lingering Processes**: If a service does not shut down correctly, you may need to terminate it manually. Use `pkill -f surreal` to stop the database or `pkill -f server` to stop the backend server.
+-   **Lingering Processes**: If a service does not shut down correctly, you may need to terminate it manually. Prefer `make stop-db` (or `./scripts/stop-db.sh`) to stop the database.

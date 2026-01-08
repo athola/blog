@@ -5,7 +5,8 @@
 //! It encapsulates logic for interacting with the database, handling external
 //! data formats (RSS, sitemap), and managing server-side response construction.
 
-#![allow(deprecated)] // Deprecated due to the use of `Thing` from `surrealdb_types` directly.
+#![allow(deprecated)]
+
 use app::types::{AppState, Author, Post};
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -24,7 +25,6 @@ use std::time::Duration;
 use surrealdb::Surreal;
 use surrealdb::engine::remote::http::{Client, Http, Https};
 use surrealdb::opt::auth::{Database, Namespace, Root};
-use surrealdb_types::SurrealValue;
 use tokio_retry::{Retry, strategy::ExponentialBackoff};
 use tracing::{error, warn};
 
@@ -206,10 +206,10 @@ pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
             if let Some((ref username, ref password)) = database_credentials {
                 match db
                     .signin(Database {
-                        namespace: ns_clone.clone(),
-                        database: db_name_clone.clone(),
-                        username: username.clone(),
-                        password: password.clone(),
+                        namespace: &ns_clone.clone(),
+                        database: &db_name_clone.clone(),
+                        username: &username.clone(),
+                        password: &password.clone(),
                     })
                     .await
                 {
@@ -228,9 +228,9 @@ pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
             if let Some((ref username, ref password)) = namespace_credentials {
                 match db
                     .signin(Namespace {
-                        namespace: ns_clone.clone(),
-                        username: username.clone(),
-                        password: password.clone(),
+                        namespace: &ns_clone.clone(),
+                        username: &username.clone(),
+                        password: &password.clone(),
                     })
                     .await
                 {
@@ -247,7 +247,7 @@ pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
 
             // Fallback to root-level authentication.
             if let Some((ref username, ref password)) = root_credentials {
-                match db.signin(Root { username: username.clone(), password: password.clone() }).await {
+                match db.signin(Root { username: &username.clone(), password: &password.clone() }).await {
                     Ok(_) => return Ok(()),
                     Err(e) => {
                         tracing::debug!("Root authentication attempt failed: {:?}", e);
@@ -261,9 +261,9 @@ pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
                 Err(err)
             } else {
                 // This case should ideally not be reached if at least one credential set is provided.
-                Err(surrealdb::Error::Query(
+                Err(surrealdb::Error::Api(surrealdb::error::Api::Query(
                     "No SurrealDB authentication methods succeeded".to_string(),
-                ))
+                )))
             }
         }
     })
@@ -464,30 +464,6 @@ pub async fn sitemap_handler(State(state): State<AppState>) -> Response<String> 
     struct Post {
         slug: Option<String>,
         created_at: String,
-    }
-
-    /// Implements `SurrealValue` for the internal `Post` struct, enabling its
-    /// direct use with SurrealDB's value system for sitemap generation.
-    impl SurrealValue for Post {
-        /// Returns the `Kind` of the `Post` record, which is an `Object`.
-        fn kind_of() -> surrealdb_types::Kind {
-            surrealdb_types::Kind::Object
-        }
-
-        /// Converts an internal `Post` instance into a `surrealdb_types::Value`.
-        fn into_value(self) -> surrealdb_types::Value {
-            let json_value = serde_json::to_value(self).unwrap_or_default();
-            json_value.into_value()
-        }
-
-        /// Attempts to convert a `surrealdb_types::Value` into an internal `Post` instance.
-        fn from_value(
-            value: surrealdb_types::Value,
-        ) -> Result<Self, surrealdb_types::anyhow::Error> {
-            let json_value: serde_json::Value = serde_json::Value::from_value(value)?;
-            serde_json::from_value(json_value)
-                .map_err(|e| surrealdb_types::anyhow::anyhow!("Deserialization error: {}", e))
-        }
     }
 
     let AppState { db, .. } = state;

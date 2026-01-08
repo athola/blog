@@ -14,7 +14,7 @@ THEN {
     LET $activity_content = "Published on Alex Thola's blog: " + $after.title + $summary_segment + " (" + $post_url + ")";
     LET $activity_key = "post-" + $slug_cleaned;
 
-    CREATE type::record("activity", $activity_key) CONTENT {
+    CREATE activity CONTENT {
         content: $activity_content,
         tags: ["new post", "blog"],
         source: $post_url,

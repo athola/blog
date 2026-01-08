@@ -22,9 +22,11 @@ pub fn hydrate() {
 #[cfg(test)]
 mod tests {
     #[test]
-    /// Verify that `console_log` initialization does not panic and returns a result.
+    /// Smoke-test that `console_log` initialization is callable in tests.
+    ///
+    /// This may return `Err` if a logger was already installed by another test;
+    /// we only require that this call does not panic.
     fn test_console_log_initialization() {
-        let result = console_log::init_with_level(log::Level::Debug);
-        assert!(result.is_ok() || result.is_err());
+        let _ = console_log::init_with_level(log::Level::Debug);
     }
 }

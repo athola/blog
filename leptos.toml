@@ -1,0 +1,33 @@
+# Leptos configuration for the blog application
+
+[site]
+# The root URL of your site (optional, for SSR without integration)
+site-root = "target/site"
+
+# The site URL for use in SSR without integration (optional)
+site-pkg-dir = "target/site/pkg"
+
+# The style priority for the application (optional)
+style-priority = "Tailwind"
+
+# The reload port for the development server (defaults to 3001)
+# Changed from 3001 to avoid conflict with other applications
+reload-port = 3002
+
+# The browserlist query for styling (optional)
+browserquery = "defaults"
+
+# The tailwind version to use (optional)
+tailwind-version = "3.4.1"
+
+# The bin-target feature (optional)
+bin-target = "frontend"
+
+# The features to use when compiling the client (optional)
+# client-features = ["hydrate"]
+
+[site.wasm-opt]
+# The optimization level to use for WASM compilation (optional)
+level = "z"
+# Enable memory sanitization (optional)
+memory = false
