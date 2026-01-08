@@ -102,14 +102,9 @@ async fn main() {
         .init();
 
     // Load environment variables from a `.env` file if present.
-    // In production (e.g. DigitalOcean App Platform), env vars are provided externally,
-    // so a missing `.env` should not be noisy.
-    if cfg!(debug_assertions) {
-        // Local development convenience; avoid noisy logs in hosted environments.
-        let _ = dotenv();
-    } else {
-        let _ = dotenv();
-    }
+    // In production, env vars are typically provided externally by the host platform,
+    // so a missing `.env` should not cause errors.
+    let _ = dotenv();
 
     // Validate essential environment variables for production.
     if let Err(errors) = validate_production_env() {
@@ -187,7 +182,7 @@ async fn main() {
     let addr = leptos_options.site_addr;
     let routes = generate_route_list(component); // Generate Leptos-specific routes.
 
-    // Bind early so DigitalOcean readiness probes can connect even while the DB is starting.
+    // Bind early so readiness probes can connect even while the database is initializing.
     let listener = match tokio::net::TcpListener::bind(&addr).await {
         Ok(list) => list,
         Err(err) => {
