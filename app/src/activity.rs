@@ -2,8 +2,8 @@
 //! displaying recent actions or updates. It interacts with server functions to
 //! fetch and potentially create activity entries.
 //!
-//! Features infinite scroll pagination - loads 10 activities per page and
-//! automatically fetches more when the user scrolls to the bottom.
+//! Features paginated loading - loads 10 activities per page with a "Load More"
+//! button to fetch additional pages on demand.
 
 extern crate alloc;
 use leptos::prelude::*;
@@ -15,11 +15,11 @@ use crate::types::Activity;
 /// Number of activities per page (matches server-side ACTIVITIES_PER_PAGE).
 const ACTIVITIES_PER_PAGE: usize = 10;
 
-/// Renders the activity stream component with infinite scroll pagination.
+/// Renders the activity stream component with paginated loading.
 ///
 /// This component fetches activities page by page, accumulating results as the
-/// user scrolls. Uses a sentinel element at the bottom to trigger loading of
-/// the next page when it becomes visible.
+/// user requests more. Displays a "Load More" button when additional pages are
+/// available.
 pub fn component() -> impl IntoView {
     // Accumulated list of all loaded activities
     let all_activities = RwSignal::new(Vec::<Activity>::new());
@@ -38,20 +38,30 @@ pub fn component() -> impl IntoView {
 
     // Effect to accumulate fetched activities
     Effect::new(move || {
-        if let Some(Ok(new_activities)) = page_resource.get() {
-            // Check if we've reached the end (fewer than full page returned)
-            if new_activities.len() < ACTIVITIES_PER_PAGE {
-                has_more.set(false);
-            }
+        match page_resource.get() {
+            Some(Ok(new_activities)) => {
+                // Check if we've reached the end (fewer than full page returned)
+                if new_activities.len() < ACTIVITIES_PER_PAGE {
+                    has_more.set(false);
+                }
 
-            // Append new activities to the accumulated list
-            if !new_activities.is_empty() {
-                all_activities.update(|list| {
-                    list.extend(new_activities);
-                });
-            }
+                // Append new activities to the accumulated list
+                if !new_activities.is_empty() {
+                    all_activities.update(|list| {
+                        list.extend(new_activities);
+                    });
+                }
 
-            is_loading.set(false);
+                is_loading.set(false);
+            }
+            Some(Err(e)) => {
+                leptos::logging::error!("Failed to fetch activities: {:?}", e);
+                is_loading.set(false);
+                has_more.set(false); // Stop attempting to load more on error
+            }
+            None => {
+                // Resource is still loading, nothing to do
+            }
         }
     });
 

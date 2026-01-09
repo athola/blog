@@ -237,7 +237,9 @@ pub async fn security_headers_with_config(
         HeaderValue::from_static("nosniff"),
     );
 
-    // X-XSS-Protection: Enables the browser's XSS filter.
+    // X-XSS-Protection: Legacy XSS filter for older browsers.
+    // NOTE: Deprecated in modern browsers (Chrome/Edge removed it). CSP is the modern solution.
+    // Retained for defense-in-depth with legacy browser support.
     headers.insert(
         HeaderName::from_static("x-xss-protection"),
         HeaderValue::from_static("1; mode=block"),

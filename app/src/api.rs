@@ -307,6 +307,43 @@ pub struct ContactRequest {
     pub website: Option<String>,
 }
 
+/// Sanitizes a string by escaping HTML entities to prevent XSS attacks.
+///
+/// This function replaces dangerous HTML characters with their entity equivalents.
+#[cfg(feature = "ssr")]
+fn sanitize_html(input: &str) -> String {
+    let mut result = String::with_capacity(input.len());
+    for c in input.chars() {
+        match c {
+            '&' => result.push_str("&amp;"),
+            '<' => result.push_str("&lt;"),
+            '>' => result.push_str("&gt;"),
+            '"' => result.push_str("&quot;"),
+            '\'' => result.push_str("&#x27;"),
+            '/' => result.push_str("&#x2F;"),
+            '`' => result.push_str("&#x60;"),
+            _ => result.push(c),
+        }
+    }
+    result
+}
+
+/// Validates an email address format (basic validation).
+#[cfg(feature = "ssr")]
+fn validate_contact_email(input: &str) -> Result<String, String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Err("Email cannot be empty".to_string());
+    }
+    if trimmed.len() > 254 {
+        return Err("Email too long".to_string());
+    }
+    if !trimmed.contains('@') || !trimmed.contains('.') {
+        return Err("Invalid email format".to_string());
+    }
+    Ok(trimmed.to_lowercase())
+}
+
 /// Handles contact form submissions by sending an email.
 ///
 /// This function constructs an email from the `ContactRequest` data and attempts
@@ -314,6 +351,12 @@ pub struct ContactRequest {
 /// mechanism to enhance reliability in case of transient email sending failures.
 ///
 /// SMTP configuration (host, user, password) is loaded from environment variables.
+///
+/// # Security
+///
+/// - All user inputs are sanitized to prevent XSS in email clients
+/// - Email format is validated before processing
+/// - Honeypot field is checked for bot detection
 ///
 /// # Arguments
 ///
@@ -331,7 +374,7 @@ pub async fn contact(data: ContactRequest) -> Result<(), ServerFnError> {
     };
     use std::env;
 
-    // CSRF protection: Validate honeypot field.
+    // Anti-bot protection: Validate honeypot field.
     // Legitimate users won't see or fill this field, but bots often auto-fill all fields.
     if let Some(ref website) = data.website
         && !website.is_empty()
@@ -341,6 +384,41 @@ pub async fn contact(data: ContactRequest) -> Result<(), ServerFnError> {
         return Ok(());
     }
 
+    // Validate and sanitize all user inputs to prevent XSS in email clients
+    let validated_email =
+        validate_contact_email(&data.email).map_err(ServerFnError::<NoCustomError>::ServerError)?;
+
+    let sanitized_name = sanitize_html(data.name.trim());
+    if sanitized_name.is_empty() {
+        return Err(ServerFnError::<NoCustomError>::ServerError(
+            "Name cannot be empty".to_string(),
+        ));
+    }
+    if sanitized_name.len() > 100 {
+        return Err(ServerFnError::<NoCustomError>::ServerError(
+            "Name too long (max 100 characters)".to_string(),
+        ));
+    }
+
+    let sanitized_subject = sanitize_html(data.subject.trim());
+    if sanitized_subject.len() > 200 {
+        return Err(ServerFnError::<NoCustomError>::ServerError(
+            "Subject too long (max 200 characters)".to_string(),
+        ));
+    }
+
+    let sanitized_message = sanitize_html(data.message.trim());
+    if sanitized_message.is_empty() {
+        return Err(ServerFnError::<NoCustomError>::ServerError(
+            "Message cannot be empty".to_string(),
+        ));
+    }
+    if sanitized_message.len() > 5000 {
+        return Err(ServerFnError::<NoCustomError>::ServerError(
+            "Message too long (max 5000 characters)".to_string(),
+        ));
+    }
+
     let mailer = AsyncSmtpTransport::<Tokio1Executor>::relay(&env::var("SMTP_HOST")?)?
         .credentials(Credentials::new(
             env::var("SMTP_USER")?,
@@ -348,12 +426,18 @@ pub async fn contact(data: ContactRequest) -> Result<(), ServerFnError> {
         ))
         .build::<Tokio1Executor>();
 
+    // Build email body using sanitized inputs
+    let email_body = format!(
+        "From: {} ({})\n\nMessage:\n{}",
+        sanitized_name, validated_email, sanitized_message
+    );
+
     let email = Message::builder()
         .from(env::var("SMTP_USER")?.parse()?)
         .to(env::var("SMTP_USER")?.parse()?)
-        .subject(format!("{} - {}", data.email, data.subject))
-        .header(ContentType::TEXT_HTML)
-        .body(data.message)?;
+        .subject(format!("{} - {}", validated_email, sanitized_subject))
+        .header(ContentType::TEXT_PLAIN)
+        .body(email_body)?;
 
     // Configure email sending with exponential backoff for resilience.
     let retry_strategy = ExponentialBackoff::from_millis(200)
