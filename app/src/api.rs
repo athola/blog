@@ -94,12 +94,22 @@ pub async fn select_posts(
 
     let AppState { db, .. } = expect_context::<AppState>();
     let db = db.as_ref();
-    let query_str = if tags.is_empty() {
-        String::from(
-            "SELECT *, author.* from post WHERE is_published = true ORDER BY created_at DESC;",
-        )
+
+    // Use parameterized queries to prevent SQL injection
+    let mut posts: Vec<Post> = if tags.is_empty() {
+        let mut query = retry_async("select_posts", RetryConfig::default(), || async {
+            db.query(
+                "SELECT *, author.* FROM post WHERE is_published = true ORDER BY created_at DESC",
+            )
+            .await
+        })
+        .await
+        .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Database error: {e}")))?;
+        query
+            .take(0)
+            .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {e}")))?
     } else {
-        // Validate all tags before constructing query to prevent injection
+        // Validate all tags as secondary defense layer
         for tag in &tags {
             if !is_valid_tag(tag) {
                 return Err(ServerFnError::<NoCustomError>::ServerError(format!(
@@ -108,24 +118,22 @@ pub async fn select_posts(
                 )));
             }
         }
-        let tags = tags
-            .iter()
-            .map(|tag| format!(r#""{tag}""#))
-            .collect::<Vec<_>>();
-        format!(
-            "SELECT *, author.* from post WHERE tags CONTAINSANY [{0}] ORDER BY created_at DESC;",
-            tags.join(", ")
-        )
+        // Use parameterized query with array binding
+        let tags_param = tags.clone();
+        let mut query = retry_async("select_posts", RetryConfig::default(), || {
+            let t = tags_param.clone();
+            async move {
+                db.query("SELECT *, author.* FROM post WHERE tags CONTAINSANY $tags ORDER BY created_at DESC")
+                    .bind(("tags", t))
+                    .await
+            }
+        })
+        .await
+        .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Database error: {e}")))?;
+        query
+            .take(0)
+            .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {e}")))?
     };
-
-    let mut query = retry_async("select_posts", RetryConfig::default(), || async {
-        db.query(&query_str).await
-    })
-    .await
-    .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Database error: {e}")))?;
-    let mut posts = query
-        .take::<Vec<Post>>(0)
-        .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {e}")))?;
     for post in &mut posts.iter_mut() {
         if let Ok(parsed_date) = DateTime::parse_from_rfc3339(&post.created_at) {
             let date_time = parsed_date.with_timezone(&Utc);
@@ -198,7 +206,7 @@ pub async fn select_post(slug: String) -> Result<Post, ServerFnError> {
     let AppState { db, .. } = expect_context::<AppState>();
     let db = db.as_ref();
 
-    // Validate slug format to prevent injection attacks
+    // Validate slug format as secondary defense layer
     if !is_valid_slug(&slug) {
         return Err(ServerFnError::<NoCustomError>::ServerError(format!(
             "Invalid slug format: '{}'",
@@ -206,14 +214,20 @@ pub async fn select_post(slug: String) -> Result<Post, ServerFnError> {
         )));
     }
 
-    let query_str = format!(r#"SELECT *, author.* from post WHERE slug = "{slug}""#);
-    let mut query = retry_async("select_post", RetryConfig::default(), || async {
-        db.query(&query_str).await
+    // Use parameterized query to prevent SQL injection
+    let slug_param = slug.clone();
+    let mut query = retry_async("select_post", RetryConfig::default(), || {
+        let s = slug_param.clone();
+        async move {
+            db.query("SELECT *, author.* FROM post WHERE slug = $slug")
+                .bind(("slug", s))
+                .await
+        }
     })
     .await
     .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Database error: {e}")))?;
-    let post = query
-        .take::<Vec<Post>>(0)
+    let post: Vec<Post> = query
+        .take(0)
         .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {e}")))?;
     let mut post = match post.first() {
         Some(first_post) => first_post.clone(),
@@ -250,7 +264,7 @@ pub async fn increment_views(id: String) -> Result<(), ServerFnError> {
     let AppState { db, .. } = expect_context::<AppState>();
     let db = db.as_ref();
 
-    // Validate id format to prevent injection attacks (same rules as slug)
+    // Validate id format as secondary defense layer
     if !is_valid_slug(&id) {
         return Err(ServerFnError::<NoCustomError>::ServerError(format!(
             "Invalid post id format: '{}'",
@@ -258,9 +272,16 @@ pub async fn increment_views(id: String) -> Result<(), ServerFnError> {
         )));
     }
 
-    let query_str = format!("UPDATE post:{id} SET total_views = total_views + 1;");
-    retry_async("increment_views", RetryConfig::default(), || async {
-        db.query(&query_str).await
+    // Use parameterized query to prevent SQL injection
+    // SurrealDB record ID syntax: type:id (e.g., post:abc123)
+    let id_param = id.clone();
+    retry_async("increment_views", RetryConfig::default(), || {
+        let i = id_param.clone();
+        async move {
+            db.query("UPDATE type::thing('post', $id) SET total_views = total_views + 1")
+                .bind(("id", i))
+                .await
+        }
     })
     .await
     .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Database error: {e}")))?;
