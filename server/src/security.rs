@@ -7,12 +7,15 @@
 
 use axum::{
     body::Body,
+    extract::State,
     http::{
         Request, Response, StatusCode,
         header::{HeaderName, HeaderValue},
     },
     middleware::Next,
+    response::IntoResponse,
 };
+use serde::Serialize;
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::str::FromStr;
@@ -20,11 +23,155 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
+/// Configuration for security headers based on environment.
+///
+/// This struct controls the behavior of security headers middleware,
+/// allowing different configurations for development and production environments.
+#[derive(Clone, Copy, Debug)]
+pub struct SecurityConfig {
+    /// Whether the application is running in production mode.
+    pub is_production: bool,
+}
+
+impl SecurityConfig {
+    /// Creates a new `SecurityConfig` instance.
+    ///
+    /// # Arguments
+    /// * `is_production` - Set to `true` for production environments with strict security,
+    ///   `false` for development environments with relaxed policies.
+    pub fn new(is_production: bool) -> Self {
+        Self { is_production }
+    }
+
+    /// Creates a `SecurityConfig` by checking the `RUST_ENV` environment variable.
+    ///
+    /// Returns production config if `RUST_ENV=production`, otherwise development config.
+    pub fn from_env() -> Self {
+        let is_production =
+            std::env::var("RUST_ENV").unwrap_or_else(|_| "development".to_string()) == "production";
+        Self::new(is_production)
+    }
+}
+
+/// Categorizes endpoints for rate limiting purposes.
+///
+/// Different endpoint categories have different rate limits to balance
+/// security needs with usability.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum EndpointCategory {
+    /// API endpoints: 100 requests/minute (default)
+    Api,
+    /// Contact form: 10 requests/minute (stricter to prevent spam)
+    Contact,
+    /// Static assets: 1000 requests/minute (relaxed)
+    Static,
+    /// Health check: Unlimited (for monitoring)
+    Health,
+}
+
+#[allow(dead_code)]
+impl EndpointCategory {
+    /// Returns the rate limit configuration for this endpoint category.
+    ///
+    /// Returns `None` for unlimited categories (like Health).
+    pub fn rate_limit(&self) -> Option<(usize, u64)> {
+        match self {
+            EndpointCategory::Api => Some((100, 60)), // 100 requests per minute
+            EndpointCategory::Contact => Some((10, 60)), // 10 requests per minute
+            EndpointCategory::Static => Some((1000, 60)), // 1000 requests per minute
+            EndpointCategory::Health => None,         // Unlimited
+        }
+    }
+
+    /// Returns a human-readable name for this category.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            EndpointCategory::Api => "api",
+            EndpointCategory::Contact => "contact",
+            EndpointCategory::Static => "static",
+            EndpointCategory::Health => "health",
+        }
+    }
+}
+
+impl std::fmt::Display for EndpointCategory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+/// Status information about rate limiting for a specific IP and category.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize)]
+pub struct RateLimitStatus {
+    /// Number of requests remaining in the current window.
+    pub remaining: usize,
+    /// Seconds until the rate limit window resets.
+    pub reset_in_seconds: u64,
+    /// Whether the client is currently rate limited.
+    pub is_limited: bool,
+}
+
+/// Error returned when a request is rate limited.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize)]
+pub struct RateLimitError {
+    /// Error message.
+    pub error: String,
+    /// Seconds until the client can retry.
+    pub retry_after: u64,
+    /// Number of requests remaining (always 0 when limited).
+    pub remaining: usize,
+    /// The endpoint category that was rate limited.
+    pub category: String,
+}
+
+#[allow(dead_code)]
+impl RateLimitError {
+    /// Creates a new rate limit error.
+    pub fn new(category: EndpointCategory, retry_after: u64) -> Self {
+        Self {
+            error: "Rate limit exceeded".to_string(),
+            retry_after,
+            remaining: 0,
+            category: category.as_str().to_string(),
+        }
+    }
+}
+
+impl IntoResponse for RateLimitError {
+    fn into_response(self) -> axum::response::Response {
+        let retry_after = self.retry_after.to_string();
+        let body = serde_json::to_string(&self)
+            .unwrap_or_else(|_| r#"{"error":"Rate limit exceeded"}"#.to_string());
+
+        let mut response = (
+            StatusCode::TOO_MANY_REQUESTS,
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            body,
+        )
+            .into_response();
+
+        // Add Retry-After header
+        if let Ok(value) = HeaderValue::from_str(&retry_after) {
+            response
+                .headers_mut()
+                .insert(HeaderName::from_static("retry-after"), value);
+        }
+
+        response
+    }
+}
+
 /// Axum middleware that adds a set of HTTP security headers to all responses.
 ///
 /// These headers help protect against common web vulnerabilities like XSS,
 /// clickjacking, and MIME type sniffing. It also enforces HTTPS and sets
 /// a strict Content Security Policy (CSP).
+///
+/// This version uses the default production configuration. For environment-aware
+/// configuration, use `security_headers_with_config` instead.
 ///
 /// # Arguments
 ///
@@ -35,7 +182,42 @@ use tokio::sync::Mutex;
 ///
 /// A `Result` containing the `Response` with added security headers, or an
 /// `Axum` `StatusCode` if an error occurs (e.g., invalid header value).
+#[allow(dead_code)]
 pub async fn security_headers(
+    req: Request<Body>,
+    next: Next,
+) -> Result<Response<Body>, StatusCode> {
+    // Default to production-safe configuration
+    security_headers_with_config(State(SecurityConfig::new(true)), req, next).await
+}
+
+/// Axum middleware that adds environment-aware HTTP security headers to all responses.
+///
+/// This middleware adjusts security headers based on whether the application is
+/// running in production or development mode:
+///
+/// ## Production Mode (strict)
+/// - Full HSTS with 1-year max-age and includeSubDomains
+/// - Strict CSP without unsafe-eval
+/// - All Cross-Origin policies enabled
+///
+/// ## Development Mode (relaxed)
+/// - Shorter HSTS (1 day) without includeSubDomains
+/// - Relaxed CSP with unsafe-eval for hot reload
+/// - WebSocket connections allowed for live reload
+///
+/// # Arguments
+///
+/// * `config` - The `SecurityConfig` extracted from Axum state.
+/// * `req` - The incoming `Request`.
+/// * `next` - The `Next` middleware in the stack.
+///
+/// # Returns
+///
+/// A `Result` containing the `Response` with added security headers, or an
+/// `Axum` `StatusCode` if an error occurs (e.g., invalid header value).
+pub async fn security_headers_with_config(
+    State(config): State<SecurityConfig>,
     req: Request<Body>,
     next: Next,
 ) -> Result<Response<Body>, StatusCode> {
@@ -67,26 +249,52 @@ pub async fn security_headers(
         HeaderValue::from_static("strict-origin-when-cross-origin"),
     );
 
-    // Strict-Transport-Security (HSTS): Forces all communication over HTTPS for one year.
+    // Strict-Transport-Security (HSTS): Environment-dependent configuration.
+    // Production: 1 year with includeSubDomains for maximum security.
+    // Development: 1 day without includeSubDomains to avoid HSTS issues during testing.
+    let hsts = if config.is_production {
+        "max-age=31536000; includeSubDomains"
+    } else {
+        "max-age=86400"
+    };
     headers.insert(
         HeaderName::from_static("strict-transport-security"),
-        HeaderValue::from_static("max-age=31536000; includeSubDomains"),
+        HeaderValue::from_static(hsts),
     );
 
-    // Content-Security-Policy: Restricts resource loading to trusted sources.
-    // Configured to support Leptos/WASM requirements.
-    let csp = [
-        "default-src 'self'",
-        "script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline'", // Required for WASM execution and Leptos hydration scripts.
-        "style-src 'self' 'unsafe-inline'", // Required for Leptos's inline styles.
-        "img-src 'self' data: https:",
-        "font-src 'self' data:",
-        "connect-src 'self'",
-        "frame-ancestors 'none'", // Prevents embedding in iframes.
-        "base-uri 'self'",
-        "form-action 'self'",
-    ]
-    .join("; ");
+    // Content-Security-Policy: Environment-dependent configuration.
+    // Production: Strict CSP without unsafe-eval.
+    // Development: Relaxed CSP with unsafe-eval for hot reload and ws:// for live reload.
+    let csp = if config.is_production {
+        // Production CSP: No unsafe-eval, strict sources.
+        [
+            "default-src 'self'",
+            "script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline'", // unsafe-inline for Leptos hydration
+            "style-src 'self' 'unsafe-inline'", // Required for Leptos inline styles
+            "img-src 'self' data: https:",
+            "font-src 'self' data:",
+            "connect-src 'self'",
+            "frame-ancestors 'none'",
+            "base-uri 'self'",
+            "form-action 'self'",
+            "upgrade-insecure-requests",
+        ]
+        .join("; ")
+    } else {
+        // Development CSP: Allow unsafe-eval for hot reload, ws:// for live reload.
+        [
+            "default-src 'self'",
+            "script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline' 'unsafe-eval'", // unsafe-eval for hot reload
+            "style-src 'self' 'unsafe-inline'",
+            "img-src 'self' data: https: http:",
+            "font-src 'self' data:",
+            "connect-src 'self' ws://localhost:* ws://127.0.0.1:* http://localhost:* http://127.0.0.1:*", // WebSocket for live reload
+            "frame-ancestors 'none'",
+            "base-uri 'self'",
+            "form-action 'self'",
+        ]
+        .join("; ")
+    };
 
     headers.insert(
         HeaderName::from_static("content-security-policy"),
@@ -94,15 +302,67 @@ pub async fn security_headers(
             .unwrap_or_else(|_| HeaderValue::from_static("default-src 'self'")),
     );
 
-    // Permissions-Policy: Disables potentially risky or unnecessary browser features.
+    // Permissions-Policy: Comprehensive list of disabled browser features.
+    // These are disabled in both production and development for security.
     headers.insert(
         HeaderName::from_static("permissions-policy"),
         HeaderValue::from_static(
-            "geolocation=(), microphone=(), camera=(), payment=(), usb=(), magnetometer=()",
+            "accelerometer=(), ambient-light-sensor=(), autoplay=(), battery=(), camera=(), \
+             cross-origin-isolated=(), display-capture=(), document-domain=(), encrypted-media=(), \
+             execution-while-not-rendered=(), execution-while-out-of-viewport=(), fullscreen=(), \
+             geolocation=(), gyroscope=(), keyboard-map=(), magnetometer=(), microphone=(), midi=(), \
+             navigation-override=(), payment=(), picture-in-picture=(), publickey-credentials-get=(), \
+             screen-wake-lock=(), sync-xhr=(), usb=(), web-share=(), xr-spatial-tracking=()",
         ),
     );
 
+    // Cross-Origin-Opener-Policy: Isolates the browsing context.
+    // Prevents other windows from holding a reference to this window.
+    headers.insert(
+        HeaderName::from_static("cross-origin-opener-policy"),
+        HeaderValue::from_static("same-origin"),
+    );
+
+    // Cross-Origin-Resource-Policy: Restricts which origins can load this resource.
+    // same-origin prevents other sites from embedding our resources.
+    headers.insert(
+        HeaderName::from_static("cross-origin-resource-policy"),
+        HeaderValue::from_static("same-origin"),
+    );
+
+    // Cross-Origin-Embedder-Policy: Controls embedding of cross-origin resources.
+    // Note: require-corp is commented out as it may break loading of external
+    // resources (fonts, images) that don't set CORP headers. Enable if needed
+    // for SharedArrayBuffer or other cross-origin isolation features.
+    // Uncomment the following if cross-origin isolation is required:
+    // headers.insert(
+    //     HeaderName::from_static("cross-origin-embedder-policy"),
+    //     HeaderValue::from_static("require-corp"),
+    // );
+
     Ok(response)
+}
+
+/// Creates a closure suitable for use with `axum::middleware::from_fn_with_state`.
+///
+/// This is a convenience function that creates the security headers middleware
+/// with the given configuration.
+///
+/// # Arguments
+/// * `is_production` - Whether the application is running in production mode.
+///
+/// # Example
+/// ```ignore
+/// let app = Router::new()
+///     .route("/", get(handler))
+///     .layer(axum::middleware::from_fn_with_state(
+///         SecurityConfig::new(is_production),
+///         security_headers_with_config,
+///     ));
+/// ```
+#[allow(dead_code)]
+pub fn create_security_config(is_production: bool) -> SecurityConfig {
+    SecurityConfig::new(is_production)
 }
 
 /// Implements a simple IP-based rate limiting mechanism.
@@ -220,12 +480,132 @@ impl RateLimiter {
     }
 }
 
+/// SMTP configuration validation result.
+#[derive(Debug, Clone)]
+pub struct SmtpValidation {
+    /// Whether all SMTP credentials are configured.
+    pub is_configured: bool,
+    /// Any validation errors encountered.
+    pub errors: Vec<String>,
+    /// Any warnings (non-fatal issues).
+    pub warnings: Vec<String>,
+}
+
+impl SmtpValidation {
+    /// Returns `true` if SMTP is properly configured with no errors.
+    pub fn is_valid(&self) -> bool {
+        self.is_configured && self.errors.is_empty()
+    }
+}
+
+/// Validates SMTP configuration for email functionality.
+///
+/// Checks that all required SMTP environment variables are set and validates
+/// their format where possible. This function can be called at startup to
+/// ensure email functionality will work.
+///
+/// # Required Environment Variables
+///
+/// - `SMTP_HOST`: The SMTP server hostname (e.g., "smtp.gmail.com")
+/// - `SMTP_USER`: The SMTP username/email for authentication
+/// - `SMTP_PASSWORD`: The SMTP password or app-specific password
+///
+/// # Returns
+///
+/// An `SmtpValidation` struct containing configuration status and any errors/warnings.
+///
+/// # Example
+///
+/// ```ignore
+/// let smtp_status = validate_smtp_config();
+/// if !smtp_status.is_valid() {
+///     for error in &smtp_status.errors {
+///         eprintln!("SMTP Error: {}", error);
+///     }
+/// }
+/// ```
+pub fn validate_smtp_config() -> SmtpValidation {
+    let mut errors = Vec::new();
+    let mut warnings = Vec::new();
+
+    // Check required SMTP environment variables
+    let smtp_host = std::env::var("SMTP_HOST");
+    let smtp_user = std::env::var("SMTP_USER");
+    let smtp_password = std::env::var("SMTP_PASSWORD");
+
+    let is_configured = smtp_host.is_ok() && smtp_user.is_ok() && smtp_password.is_ok();
+
+    // Validate SMTP_HOST
+    match &smtp_host {
+        Ok(host) if host.trim().is_empty() => {
+            errors.push("SMTP_HOST is empty".to_string());
+        }
+        Ok(host) => {
+            // Basic hostname validation
+            if !host.contains('.') && host != "localhost" {
+                warnings.push(format!(
+                    "SMTP_HOST '{}' may be invalid (no domain suffix)",
+                    host
+                ));
+            }
+        }
+        Err(_) => {
+            errors.push("Missing required environment variable: SMTP_HOST".to_string());
+        }
+    }
+
+    // Validate SMTP_USER (typically an email address)
+    match &smtp_user {
+        Ok(user) if user.trim().is_empty() => {
+            errors.push("SMTP_USER is empty".to_string());
+        }
+        Ok(user) => {
+            // Basic email format check
+            if !user.contains('@') {
+                warnings.push(format!(
+                    "SMTP_USER '{}' does not appear to be an email address",
+                    user
+                ));
+            }
+        }
+        Err(_) => {
+            errors.push("Missing required environment variable: SMTP_USER".to_string());
+        }
+    }
+
+    // Validate SMTP_PASSWORD
+    match &smtp_password {
+        Ok(password) if password.is_empty() => {
+            errors.push("SMTP_PASSWORD is empty".to_string());
+        }
+        Ok(password) if password.len() < 8 => {
+            warnings.push("SMTP_PASSWORD is short (less than 8 characters)".to_string());
+        }
+        Err(_) => {
+            errors.push("Missing required environment variable: SMTP_PASSWORD".to_string());
+        }
+        _ => {}
+    }
+
+    SmtpValidation {
+        is_configured,
+        errors,
+        warnings,
+    }
+}
+
 /// Environment validation utility.
 ///
 /// Ensures that all critical environment variables are set when the application
 /// is running in "production" mode (`RUST_ENV=production`). This helps prevent
-/// deployment-time misconfigurations related to database access or server settings.
-/// It also includes basic password strength validation.
+/// deployment-time misconfigurations related to database access, server settings,
+/// and email (SMTP) functionality.
+///
+/// # Validated Configuration
+///
+/// - **Database**: SurrealDB namespace, database, and credentials
+/// - **Server**: Leptos site address configuration
+/// - **Email**: SMTP host, user, and password for contact form functionality
 ///
 /// # Returns
 ///
@@ -271,6 +651,15 @@ pub fn validate_production_env() -> Result<(), Vec<String>> {
         {
             errors.push("SURREAL_PASSWORD is too weak (minimum 8 characters required)".to_string());
         }
+
+        // Validate SMTP configuration for email functionality.
+        let smtp_validation = validate_smtp_config();
+        errors.extend(smtp_validation.errors);
+
+        // Log warnings but don't fail on them
+        for warning in smtp_validation.warnings {
+            tracing::warn!("SMTP configuration warning: {}", warning);
+        }
     }
 
     if errors.is_empty() {
@@ -283,6 +672,55 @@ pub fn validate_production_env() -> Result<(), Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
+
+    /// Test SecurityConfig creation with explicit production flag.
+    #[test]
+    fn test_security_config_new() {
+        let prod_config = SecurityConfig::new(true);
+        assert!(prod_config.is_production);
+
+        let dev_config = SecurityConfig::new(false);
+        assert!(!dev_config.is_production);
+    }
+
+    /// Test SecurityConfig creation from environment variable.
+    /// Note: Uses unsafe blocks as env var manipulation is unsafe in Rust 2024+ edition.
+    #[test]
+    #[serial]
+    fn test_security_config_from_env() {
+        // SAFETY: This test runs in isolation and we clean up after ourselves.
+        // Environment variable access is single-threaded in test context.
+        unsafe {
+            // Test with RUST_ENV unset (should default to development)
+            std::env::remove_var("RUST_ENV");
+            let config = SecurityConfig::from_env();
+            assert!(!config.is_production);
+
+            // Test with RUST_ENV=production
+            std::env::set_var("RUST_ENV", "production");
+            let config = SecurityConfig::from_env();
+            assert!(config.is_production);
+
+            // Test with RUST_ENV=development
+            std::env::set_var("RUST_ENV", "development");
+            let config = SecurityConfig::from_env();
+            assert!(!config.is_production);
+
+            // Clean up
+            std::env::remove_var("RUST_ENV");
+        }
+    }
+
+    /// Test create_security_config helper function.
+    #[test]
+    fn test_create_security_config() {
+        let prod_config = create_security_config(true);
+        assert!(prod_config.is_production);
+
+        let dev_config = create_security_config(false);
+        assert!(!dev_config.is_production);
+    }
 
     /// Test that the rate limiter allows requests under the configured limit.
     #[tokio::test]
@@ -369,5 +807,177 @@ mod tests {
                 );
             }
         }
+    }
+
+    // === SMTP Validation Tests ===
+
+    /// Test SMTP validation with all variables missing.
+    #[test]
+    #[serial]
+    fn test_smtp_validation_missing_all() {
+        // SAFETY: Test isolation with cleanup.
+        unsafe {
+            std::env::remove_var("SMTP_HOST");
+            std::env::remove_var("SMTP_USER");
+            std::env::remove_var("SMTP_PASSWORD");
+
+            let result = validate_smtp_config();
+
+            assert!(!result.is_configured);
+            assert!(!result.is_valid());
+            assert_eq!(result.errors.len(), 3);
+            assert!(result.errors.iter().any(|e| e.contains("SMTP_HOST")));
+            assert!(result.errors.iter().any(|e| e.contains("SMTP_USER")));
+            assert!(result.errors.iter().any(|e| e.contains("SMTP_PASSWORD")));
+        }
+    }
+
+    /// Test SMTP validation with valid configuration.
+    #[test]
+    #[serial]
+    fn test_smtp_validation_valid() {
+        // SAFETY: Test isolation with cleanup.
+        unsafe {
+            std::env::set_var("SMTP_HOST", "smtp.example.com");
+            std::env::set_var("SMTP_USER", "user@example.com");
+            std::env::set_var("SMTP_PASSWORD", "secure_password_123");
+
+            let result = validate_smtp_config();
+
+            assert!(result.is_configured);
+            assert!(result.is_valid());
+            assert!(result.errors.is_empty());
+            assert!(result.warnings.is_empty());
+
+            // Clean up
+            std::env::remove_var("SMTP_HOST");
+            std::env::remove_var("SMTP_USER");
+            std::env::remove_var("SMTP_PASSWORD");
+        }
+    }
+
+    /// Test SMTP validation with empty values.
+    #[test]
+    #[serial]
+    fn test_smtp_validation_empty_values() {
+        // SAFETY: Test isolation with cleanup.
+        unsafe {
+            std::env::set_var("SMTP_HOST", "");
+            std::env::set_var("SMTP_USER", "");
+            std::env::set_var("SMTP_PASSWORD", "");
+
+            let result = validate_smtp_config();
+
+            assert!(!result.is_valid());
+            assert!(
+                result
+                    .errors
+                    .iter()
+                    .any(|e| e.contains("SMTP_HOST is empty"))
+            );
+            assert!(
+                result
+                    .errors
+                    .iter()
+                    .any(|e| e.contains("SMTP_USER is empty"))
+            );
+            assert!(
+                result
+                    .errors
+                    .iter()
+                    .any(|e| e.contains("SMTP_PASSWORD is empty"))
+            );
+
+            // Clean up
+            std::env::remove_var("SMTP_HOST");
+            std::env::remove_var("SMTP_USER");
+            std::env::remove_var("SMTP_PASSWORD");
+        }
+    }
+
+    /// Test SMTP validation warnings for suspicious values.
+    #[test]
+    #[serial]
+    fn test_smtp_validation_warnings() {
+        // SAFETY: Test isolation with cleanup.
+        unsafe {
+            std::env::set_var("SMTP_HOST", "mailserver"); // No domain suffix
+            std::env::set_var("SMTP_USER", "notanemail"); // Not an email
+            std::env::set_var("SMTP_PASSWORD", "short"); // Too short
+
+            let result = validate_smtp_config();
+
+            assert!(result.is_configured);
+            assert!(result.errors.is_empty()); // Warnings, not errors
+            assert!(!result.warnings.is_empty());
+            assert!(result.warnings.iter().any(|w| w.contains("may be invalid")));
+            assert!(
+                result
+                    .warnings
+                    .iter()
+                    .any(|w| w.contains("does not appear to be an email"))
+            );
+            assert!(result.warnings.iter().any(|w| w.contains("short")));
+
+            // Clean up
+            std::env::remove_var("SMTP_HOST");
+            std::env::remove_var("SMTP_USER");
+            std::env::remove_var("SMTP_PASSWORD");
+        }
+    }
+
+    /// Test SMTP validation with localhost (valid edge case).
+    #[test]
+    #[serial]
+    fn test_smtp_validation_localhost() {
+        // SAFETY: Test isolation with cleanup.
+        unsafe {
+            std::env::set_var("SMTP_HOST", "localhost");
+            std::env::set_var("SMTP_USER", "test@localhost");
+            std::env::set_var("SMTP_PASSWORD", "testpassword123");
+
+            let result = validate_smtp_config();
+
+            assert!(result.is_configured);
+            assert!(result.is_valid()); // localhost is valid
+            assert!(result.warnings.is_empty());
+
+            // Clean up
+            std::env::remove_var("SMTP_HOST");
+            std::env::remove_var("SMTP_USER");
+            std::env::remove_var("SMTP_PASSWORD");
+        }
+    }
+
+    /// Test SmtpValidation struct methods.
+    #[test]
+    fn test_smtp_validation_struct() {
+        let valid = SmtpValidation {
+            is_configured: true,
+            errors: Vec::new(),
+            warnings: Vec::new(),
+        };
+        assert!(valid.is_valid());
+
+        let invalid_not_configured = SmtpValidation {
+            is_configured: false,
+            errors: vec!["Missing SMTP_HOST".to_string()],
+            warnings: Vec::new(),
+        };
+        assert!(!invalid_not_configured.is_valid());
+
+        let invalid_with_errors = SmtpValidation {
+            is_configured: true,
+            errors: vec!["SMTP_HOST is empty".to_string()],
+            warnings: Vec::new(),
+        };
+        assert!(!invalid_with_errors.is_valid());
+
+        let valid_with_warnings = SmtpValidation {
+            is_configured: true,
+            errors: Vec::new(),
+            warnings: vec!["Password is short".to_string()],
+        };
+        assert!(valid_with_warnings.is_valid()); // Warnings don't affect validity
     }
 }
