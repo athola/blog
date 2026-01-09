@@ -193,6 +193,10 @@ jobs:
           TEST_SURREAL_DB: test
           TEST_SURREAL_ROOT_USER: root
           TEST_SURREAL_ROOT_PASS: root
+          # SMTP configuration required in production mode
+          TEST_SMTP_HOST: smtp.test.local
+          TEST_SMTP_USER: test@test.local
+          TEST_SMTP_PASSWORD: testpassword123
           # Use extracted run_command - this simulates what DigitalOcean does
           RUN_COMMAND: ${{ steps.extract-cmd.outputs.run_command }}
         run: |
@@ -214,6 +218,9 @@ jobs:
             -e SURREAL_DB="$TEST_SURREAL_DB" \
             -e SURREAL_ROOT_USER="$TEST_SURREAL_ROOT_USER" \
             -e SURREAL_ROOT_PASS="$TEST_SURREAL_ROOT_PASS" \
+            -e SMTP_HOST="$TEST_SMTP_HOST" \
+            -e SMTP_USER="$TEST_SMTP_USER" \
+            -e SMTP_PASSWORD="$TEST_SMTP_PASSWORD" \
             production-test:latest \
             $RUN_COMMAND
 

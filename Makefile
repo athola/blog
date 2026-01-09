@@ -223,6 +223,7 @@ precommit:
 	@$(MAKE) lint
 	@$(MAKE) lint-md
 	@./scripts/validate_migrations.sh
+	@./scripts/validate_ci_env.sh
 
 githooks:
 	$(ECHO_PREFIX) Installing git hooks
