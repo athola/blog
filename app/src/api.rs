@@ -94,12 +94,22 @@ pub async fn select_posts(
 
     let AppState { db, .. } = expect_context::<AppState>();
     let db = db.as_ref();
-    let query_str = if tags.is_empty() {
-        String::from(
-            "SELECT *, author.* from post WHERE is_published = true ORDER BY created_at DESC;",
-        )
+
+    // Use parameterized queries to prevent SQL injection
+    let mut posts: Vec<Post> = if tags.is_empty() {
+        let mut query = retry_async("select_posts", RetryConfig::default(), || async {
+            db.query(
+                "SELECT *, author.* FROM post WHERE is_published = true ORDER BY created_at DESC",
+            )
+            .await
+        })
+        .await
+        .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Database error: {e}")))?;
+        query
+            .take(0)
+            .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {e}")))?
     } else {
-        // Validate all tags before constructing query to prevent injection
+        // Validate all tags as secondary defense layer
         for tag in &tags {
             if !is_valid_tag(tag) {
                 return Err(ServerFnError::<NoCustomError>::ServerError(format!(
@@ -108,24 +118,22 @@ pub async fn select_posts(
                 )));
             }
         }
-        let tags = tags
-            .iter()
-            .map(|tag| format!(r#""{tag}""#))
-            .collect::<Vec<_>>();
-        format!(
-            "SELECT *, author.* from post WHERE tags CONTAINSANY [{0}] ORDER BY created_at DESC;",
-            tags.join(", ")
-        )
+        // Use parameterized query with array binding
+        let tags_param = tags.clone();
+        let mut query = retry_async("select_posts", RetryConfig::default(), || {
+            let t = tags_param.clone();
+            async move {
+                db.query("SELECT *, author.* FROM post WHERE tags CONTAINSANY $tags ORDER BY created_at DESC")
+                    .bind(("tags", t))
+                    .await
+            }
+        })
+        .await
+        .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Database error: {e}")))?;
+        query
+            .take(0)
+            .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {e}")))?
     };
-
-    let mut query = retry_async("select_posts", RetryConfig::default(), || async {
-        db.query(&query_str).await
-    })
-    .await
-    .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Database error: {e}")))?;
-    let mut posts = query
-        .take::<Vec<Post>>(0)
-        .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {e}")))?;
     for post in &mut posts.iter_mut() {
         if let Ok(parsed_date) = DateTime::parse_from_rfc3339(&post.created_at) {
             let date_time = parsed_date.with_timezone(&Utc);
@@ -198,7 +206,7 @@ pub async fn select_post(slug: String) -> Result<Post, ServerFnError> {
     let AppState { db, .. } = expect_context::<AppState>();
     let db = db.as_ref();
 
-    // Validate slug format to prevent injection attacks
+    // Validate slug format as secondary defense layer
     if !is_valid_slug(&slug) {
         return Err(ServerFnError::<NoCustomError>::ServerError(format!(
             "Invalid slug format: '{}'",
@@ -206,14 +214,20 @@ pub async fn select_post(slug: String) -> Result<Post, ServerFnError> {
         )));
     }
 
-    let query_str = format!(r#"SELECT *, author.* from post WHERE slug = "{slug}""#);
-    let mut query = retry_async("select_post", RetryConfig::default(), || async {
-        db.query(&query_str).await
+    // Use parameterized query to prevent SQL injection
+    let slug_param = slug.clone();
+    let mut query = retry_async("select_post", RetryConfig::default(), || {
+        let s = slug_param.clone();
+        async move {
+            db.query("SELECT *, author.* FROM post WHERE slug = $slug")
+                .bind(("slug", s))
+                .await
+        }
     })
     .await
     .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Database error: {e}")))?;
-    let post = query
-        .take::<Vec<Post>>(0)
+    let post: Vec<Post> = query
+        .take(0)
         .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {e}")))?;
     let mut post = match post.first() {
         Some(first_post) => first_post.clone(),
@@ -250,7 +264,7 @@ pub async fn increment_views(id: String) -> Result<(), ServerFnError> {
     let AppState { db, .. } = expect_context::<AppState>();
     let db = db.as_ref();
 
-    // Validate id format to prevent injection attacks (same rules as slug)
+    // Validate id format as secondary defense layer
     if !is_valid_slug(&id) {
         return Err(ServerFnError::<NoCustomError>::ServerError(format!(
             "Invalid post id format: '{}'",
@@ -258,9 +272,16 @@ pub async fn increment_views(id: String) -> Result<(), ServerFnError> {
         )));
     }
 
-    let query_str = format!("UPDATE post:{id} SET total_views = total_views + 1;");
-    retry_async("increment_views", RetryConfig::default(), || async {
-        db.query(&query_str).await
+    // Use parameterized query to prevent SQL injection
+    // SurrealDB record ID syntax: type:id (e.g., post:abc123)
+    let id_param = id.clone();
+    retry_async("increment_views", RetryConfig::default(), || {
+        let i = id_param.clone();
+        async move {
+            db.query("UPDATE type::thing('post', $id) SET total_views = total_views + 1")
+                .bind(("id", i))
+                .await
+        }
     })
     .await
     .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Database error: {e}")))?;
@@ -286,6 +307,43 @@ pub struct ContactRequest {
     pub website: Option<String>,
 }
 
+/// Sanitizes a string by escaping HTML entities to prevent XSS attacks.
+///
+/// This function replaces dangerous HTML characters with their entity equivalents.
+#[cfg(feature = "ssr")]
+fn sanitize_html(input: &str) -> String {
+    let mut result = String::with_capacity(input.len());
+    for c in input.chars() {
+        match c {
+            '&' => result.push_str("&amp;"),
+            '<' => result.push_str("&lt;"),
+            '>' => result.push_str("&gt;"),
+            '"' => result.push_str("&quot;"),
+            '\'' => result.push_str("&#x27;"),
+            '/' => result.push_str("&#x2F;"),
+            '`' => result.push_str("&#x60;"),
+            _ => result.push(c),
+        }
+    }
+    result
+}
+
+/// Validates an email address format (basic validation).
+#[cfg(feature = "ssr")]
+fn validate_contact_email(input: &str) -> Result<String, String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Err("Email cannot be empty".to_string());
+    }
+    if trimmed.len() > 254 {
+        return Err("Email too long".to_string());
+    }
+    if !trimmed.contains('@') || !trimmed.contains('.') {
+        return Err("Invalid email format".to_string());
+    }
+    Ok(trimmed.to_lowercase())
+}
+
 /// Handles contact form submissions by sending an email.
 ///
 /// This function constructs an email from the `ContactRequest` data and attempts
@@ -293,6 +351,12 @@ pub struct ContactRequest {
 /// mechanism to enhance reliability in case of transient email sending failures.
 ///
 /// SMTP configuration (host, user, password) is loaded from environment variables.
+///
+/// # Security
+///
+/// - All user inputs are sanitized to prevent XSS in email clients
+/// - Email format is validated before processing
+/// - Honeypot field is checked for bot detection
 ///
 /// # Arguments
 ///
@@ -310,7 +374,7 @@ pub async fn contact(data: ContactRequest) -> Result<(), ServerFnError> {
     };
     use std::env;
 
-    // CSRF protection: Validate honeypot field.
+    // Anti-bot protection: Validate honeypot field.
     // Legitimate users won't see or fill this field, but bots often auto-fill all fields.
     if let Some(ref website) = data.website
         && !website.is_empty()
@@ -320,6 +384,41 @@ pub async fn contact(data: ContactRequest) -> Result<(), ServerFnError> {
         return Ok(());
     }
 
+    // Validate and sanitize all user inputs to prevent XSS in email clients
+    let validated_email =
+        validate_contact_email(&data.email).map_err(ServerFnError::<NoCustomError>::ServerError)?;
+
+    let sanitized_name = sanitize_html(data.name.trim());
+    if sanitized_name.is_empty() {
+        return Err(ServerFnError::<NoCustomError>::ServerError(
+            "Name cannot be empty".to_string(),
+        ));
+    }
+    if sanitized_name.len() > 100 {
+        return Err(ServerFnError::<NoCustomError>::ServerError(
+            "Name too long (max 100 characters)".to_string(),
+        ));
+    }
+
+    let sanitized_subject = sanitize_html(data.subject.trim());
+    if sanitized_subject.len() > 200 {
+        return Err(ServerFnError::<NoCustomError>::ServerError(
+            "Subject too long (max 200 characters)".to_string(),
+        ));
+    }
+
+    let sanitized_message = sanitize_html(data.message.trim());
+    if sanitized_message.is_empty() {
+        return Err(ServerFnError::<NoCustomError>::ServerError(
+            "Message cannot be empty".to_string(),
+        ));
+    }
+    if sanitized_message.len() > 5000 {
+        return Err(ServerFnError::<NoCustomError>::ServerError(
+            "Message too long (max 5000 characters)".to_string(),
+        ));
+    }
+
     let mailer = AsyncSmtpTransport::<Tokio1Executor>::relay(&env::var("SMTP_HOST")?)?
         .credentials(Credentials::new(
             env::var("SMTP_USER")?,
@@ -327,12 +426,18 @@ pub async fn contact(data: ContactRequest) -> Result<(), ServerFnError> {
         ))
         .build::<Tokio1Executor>();
 
+    // Build email body using sanitized inputs
+    let email_body = format!(
+        "From: {} ({})\n\nMessage:\n{}",
+        sanitized_name, validated_email, sanitized_message
+    );
+
     let email = Message::builder()
         .from(env::var("SMTP_USER")?.parse()?)
         .to(env::var("SMTP_USER")?.parse()?)
-        .subject(format!("{} - {}", data.email, data.subject))
-        .header(ContentType::TEXT_HTML)
-        .body(data.message)?;
+        .subject(format!("{} - {}", validated_email, sanitized_subject))
+        .header(ContentType::TEXT_PLAIN)
+        .body(email_body)?;
 
     // Configure email sending with exponential backoff for resilience.
     let retry_strategy = ExponentialBackoff::from_millis(200)

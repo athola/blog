@@ -8,6 +8,7 @@
 mod redirect;
 mod security;
 mod utils;
+pub mod validation;
 
 use app::{component, shell, types::AppState};
 use axum::{
@@ -23,7 +24,10 @@ use leptos::prelude::*;
 use leptos_axum::{LeptosRoutes as _, generate_route_list};
 use leptos_config::get_configuration;
 use redirect::redirect_www;
-use security::{RateLimiter, security_headers, validate_production_env};
+use security::{
+    RateLimiter, SecurityConfig, security_headers_with_config, validate_production_env,
+    validate_smtp_config,
+};
 use serde_json::json;
 
 use std::convert::Infallible;
@@ -106,14 +110,46 @@ async fn main() {
     // so a missing `.env` should not cause errors.
     let _ = dotenv();
 
-    // Validate essential environment variables for production.
+    // Validate essential environment variables.
+    // In production mode (RUST_ENV=production), validation failures are fatal.
+    // In development mode, we warn but continue to allow easier local testing.
+    let is_production =
+        std::env::var("RUST_ENV").unwrap_or_else(|_| "development".to_string()) == "production";
+
     if let Err(errors) = validate_production_env() {
-        for error in errors {
+        for error in &errors {
             logging::error!("Environment validation error: {}", error);
         }
-        logging::warn!(
-            "Continuing despite environment validation errors, assuming development mode."
-        );
+
+        if is_production {
+            logging::error!(
+                "FATAL: {} environment validation error(s) in production mode. \
+                 Set required environment variables or use RUST_ENV=development for local testing.",
+                errors.len()
+            );
+            std::process::exit(1);
+        } else {
+            logging::warn!(
+                "Continuing despite {} environment validation error(s) in development mode.",
+                errors.len()
+            );
+        }
+    }
+
+    // Log SMTP configuration status for debugging email issues.
+    let smtp_status = validate_smtp_config();
+    if smtp_status.is_valid() {
+        logging::log!("SMTP configuration: Valid");
+    } else if smtp_status.is_configured {
+        logging::warn!("SMTP configuration: Configured with warnings");
+        for warning in &smtp_status.warnings {
+            logging::warn!("  - {}", warning);
+        }
+    } else {
+        logging::warn!("SMTP configuration: Not configured (contact form will fail)");
+        for error in &smtp_status.errors {
+            logging::warn!("  - {}", error);
+        }
     }
 
     // Determine the path to the Leptos configuration file (`Cargo.toml`).
@@ -217,6 +253,10 @@ async fn main() {
                 // Initialize rate limiter: 100 requests per minute per IP.
                 let rate_limiter = RateLimiter::new(100, 60);
 
+                // Configure security headers based on environment.
+                // Uses RUST_ENV to determine production vs development mode.
+                let security_config = SecurityConfig::from_env();
+
                 // Build the Axum router.
                 let app: Router = Router::<AppState>::new()
                     // Integrate Leptos routes and server-side rendering.
@@ -278,7 +318,10 @@ async fn main() {
                     .layer(
                         tower::ServiceBuilder::new()
                             .layer(TraceLayer::new_for_http()) // Request tracing
-                            .layer(axum::middleware::from_fn(security_headers)) // Apply security HTTP headers
+                            .layer(axum::middleware::from_fn_with_state(
+                                security_config,
+                                security_headers_with_config,
+                            )) // Apply environment-aware security HTTP headers
                             .layer(axum::middleware::from_fn(redirect_www)) // Enforce non-www redirect
                             .layer(axum::middleware::from_fn(move |req, next| {
                                 // Per-IP rate limiting
@@ -318,9 +361,13 @@ async fn main() {
                             .into_service::<Body>()
                             .oneshot(req)
                             .await
+                            // SAFETY: Router::oneshot returns Result<_, Infallible> - the error type
+                            // `Infallible` can never be constructed, so this unwrap cannot panic
                             .unwrap();
                         Ok::<Response, Infallible>(res)
                     } else {
+                        // SAFETY: Response::builder only fails with invalid header names/values;
+                        // we use valid constants (SERVICE_UNAVAILABLE) so this cannot panic
                         Ok(Response::builder()
                             .status(StatusCode::SERVICE_UNAVAILABLE)
                             .body(Body::from("starting up"))
