@@ -69,13 +69,31 @@ graph LR
 ### Available Commands
 
 ```bash
-make watch          # Start development server with live reload
-make test            # Run all tests
-make validate         # Run formatting, linting, and tests
-make build           # Build for production
-make lint            # Run code linters
+# Quick Start
+make dev             # Start development server with live reload (alias: watch)
+make all             # Build and run tests
+
+# Build
+make build           # Build workspace artifacts (debug)
+make build-release   # Build for production
+make check           # Fast type-check without codegen
+make clean           # Remove build artifacts
+
+# Quality
 make fmt             # Format code
+make lint            # Run clippy with warnings as errors
+make validate        # Run full validation (format + lint + test + security)
+
+# Testing
+make test            # Run full test suite
+make test-ci         # Lightweight CI tests
+make test-coverage   # Generate coverage report
+
+# CI Pipeline
+make ci              # Full CI: format check, lint, test, build release
 ```
+
+Run `make help` for a complete list of available targets.
 
 ### Testing
 

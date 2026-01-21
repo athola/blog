@@ -45,11 +45,21 @@ services:
       - key: SURREAL_DB
         value: ${SURREAL_DB}
         type: SECRET
-      - key: SURREAL_USERNAME
-        value: ${SURREAL_USERNAME}
+      - key: SURREAL_ROOT_USER
+        value: ${SURREAL_ROOT_USER}
         type: SECRET
-      - key: SURREAL_PASSWORD
-        value: ${SURREAL_PASSWORD}
+      - key: SURREAL_ROOT_PASS
+        value: ${SURREAL_ROOT_PASS}
+        type: SECRET
+      # SMTP configuration (optional - for contact form)
+      - key: SMTP_HOST
+        value: ${SMTP_HOST}
+        type: SECRET
+      - key: SMTP_USER
+        value: ${SMTP_USER}
+        type: SECRET
+      - key: SMTP_PASSWORD
+        value: ${SMTP_PASSWORD}
         type: SECRET
 
     # Health check

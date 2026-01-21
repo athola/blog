@@ -281,21 +281,30 @@ pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
         // Provide specific error messages based on attempted credentials.
         if database_credentials_present {
             tracing::error!(
-                "Database-level credentials were provided but authentication still failed. Verify `SURREAL_USERNAME`/`SURREAL_PASSWORD` and ensure the user has access to namespace `{}` and database `{}`.",
+                "Database-level authentication failed for namespace `{}` and database `{}`.",
                 ns,
                 db_name,
             );
+            tracing::error!(
+                "COMMON FIX: If using root credentials, use SURREAL_ROOT_USER/SURREAL_ROOT_PASS instead of SURREAL_USERNAME/SURREAL_PASSWORD."
+            );
+            tracing::error!(
+                "For database-level auth, the user must be created in SurrealDB: DEFINE USER <name> ON DATABASE PASSWORD '<pass>' ROLES OWNER;"
+            );
         } else if namespace_credentials_present {
             tracing::error!(
-                "Namespace-level credentials were provided but authentication still failed. Double-check `SURREAL_NAMESPACE_USER`/`SURREAL_NAMESPACE_PASS` values."
+                "Namespace-level authentication failed. Verify SURREAL_NAMESPACE_USER/SURREAL_NAMESPACE_PASS."
+            );
+            tracing::error!(
+                "The user must exist in SurrealDB: DEFINE USER <name> ON NAMESPACE PASSWORD '<pass>' ROLES OWNER;"
             );
         } else if root_credentials_present {
             tracing::error!(
-                "Only root-level credentials were attempted. Set `SURREAL_ROOT_USER`/`SURREAL_ROOT_PASS` or provide application credentials via `SURREAL_NAMESPACE_USER`/`SURREAL_NAMESPACE_PASS` or `SURREAL_USERNAME`/`SURREAL_PASSWORD`."
+                "Root-level authentication failed. Verify SURREAL_ROOT_USER/SURREAL_ROOT_PASS match the credentials SurrealDB was started with."
             );
         } else {
             tracing::error!(
-                "No authentication credentials were supplied; set one of the supported credential env vars before starting the server."
+                "No authentication credentials provided. Set one of: SURREAL_ROOT_USER/SURREAL_ROOT_PASS (recommended), SURREAL_USERNAME/SURREAL_PASSWORD, or SURREAL_NAMESPACE_USER/SURREAL_NAMESPACE_PASS."
             );
         }
 
