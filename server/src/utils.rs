@@ -202,23 +202,12 @@ pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
         async move {
             let mut last_err: Option<surrealdb::Error> = None;
 
-            // Attempt database-level authentication first.
-            if let Some((ref username, ref password)) = database_credentials {
-                match db
-                    .signin(Database {
-                        namespace: &ns_clone.clone(),
-                        database: &db_name_clone.clone(),
-                        username: &username.clone(),
-                        password: &password.clone(),
-                    })
-                    .await
-                {
+            // Attempt root-level authentication first (recommended for simple setups).
+            if let Some((ref username, ref password)) = root_credentials {
+                match db.signin(Root { username: &username.clone(), password: &password.clone() }).await {
                     Ok(_) => return Ok(()),
                     Err(e) => {
-                        tracing::debug!(
-                            "Database authentication attempt failed: {:?}",
-                            e
-                        );
+                        tracing::debug!("Root authentication attempt failed: {:?}", e);
                         last_err = Some(e);
                     }
                 }
@@ -245,12 +234,23 @@ pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
                 }
             }
 
-            // Fallback to root-level authentication.
-            if let Some((ref username, ref password)) = root_credentials {
-                match db.signin(Root { username: &username.clone(), password: &password.clone() }).await {
+            // Fallback to database-level authentication.
+            if let Some((ref username, ref password)) = database_credentials {
+                match db
+                    .signin(Database {
+                        namespace: &ns_clone.clone(),
+                        database: &db_name_clone.clone(),
+                        username: &username.clone(),
+                        password: &password.clone(),
+                    })
+                    .await
+                {
                     Ok(_) => return Ok(()),
                     Err(e) => {
-                        tracing::debug!("Root authentication attempt failed: {:?}", e);
+                        tracing::debug!(
+                            "Database authentication attempt failed: {:?}",
+                            e
+                        );
                         last_err = Some(e);
                     }
                 }
@@ -278,24 +278,30 @@ pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
         let namespace_credentials_present = namespace_credentials.is_some();
         let root_credentials_present = root_credentials.is_some();
 
-        // Provide specific error messages based on attempted credentials.
-        if database_credentials_present {
+        // Provide specific error messages based on attempted credentials (in auth priority order).
+        if root_credentials_present {
             tracing::error!(
-                "Database-level credentials were provided but authentication still failed. Verify `SURREAL_USERNAME`/`SURREAL_PASSWORD` and ensure the user has access to namespace `{}` and database `{}`.",
-                ns,
-                db_name,
+                "Root-level authentication failed. Verify SURREAL_ROOT_USER/SURREAL_ROOT_PASS match the credentials SurrealDB was started with. See DEPLOYMENT.md for details."
             );
         } else if namespace_credentials_present {
             tracing::error!(
-                "Namespace-level credentials were provided but authentication still failed. Double-check `SURREAL_NAMESPACE_USER`/`SURREAL_NAMESPACE_PASS` values."
+                "Namespace-level authentication failed. Verify SURREAL_NAMESPACE_USER/SURREAL_NAMESPACE_PASS."
             );
-        } else if root_credentials_present {
             tracing::error!(
-                "Only root-level credentials were attempted. Set `SURREAL_ROOT_USER`/`SURREAL_ROOT_PASS` or provide application credentials via `SURREAL_NAMESPACE_USER`/`SURREAL_NAMESPACE_PASS` or `SURREAL_USERNAME`/`SURREAL_PASSWORD`."
+                "The user must exist in SurrealDB: DEFINE USER <name> ON NAMESPACE PASSWORD '<pass>' ROLES OWNER;"
+            );
+        } else if database_credentials_present {
+            tracing::error!(
+                "Database-level authentication failed for namespace `{}` and database `{}`.",
+                ns,
+                db_name,
+            );
+            tracing::error!(
+                "For database-level auth, the user must be created in SurrealDB: DEFINE USER <name> ON DATABASE PASSWORD '<pass>' ROLES OWNER;"
             );
         } else {
             tracing::error!(
-                "No authentication credentials were supplied; set one of the supported credential env vars before starting the server."
+                "No authentication credentials provided. Set one of: SURREAL_ROOT_USER/SURREAL_ROOT_PASS (recommended), SURREAL_NAMESPACE_USER/SURREAL_NAMESPACE_PASS, or SURREAL_USERNAME/SURREAL_PASSWORD."
             );
         }
 

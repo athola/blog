@@ -173,11 +173,14 @@ LEPTOS_HASH_FILES=true
 SURREAL_ADDRESS=http://YOUR_DROPLET_PRIVATE_IP:8000
 SURREAL_NS=production
 SURREAL_DB=alexthola_blog
-SURREAL_USERNAME=root
-SURREAL_PASSWORD=YOUR_SECURE_PASSWORD
+SURREAL_ROOT_USER=root
+SURREAL_ROOT_PASS=YOUR_SECURE_PASSWORD
 ```
 
-**Note**: Use the Droplet's **private IP** for `SURREAL_ADDRESS` to ensure traffic stays within the VPC. Mark the `SURREAL_PASSWORD` as encrypted.
+**Notes**:
+- Use the Droplet's **private IP** for `SURREAL_ADDRESS` to ensure traffic stays within the VPC.
+- Mark `SURREAL_ROOT_PASS` as encrypted.
+- Use `SURREAL_ROOT_USER`/`SURREAL_ROOT_PASS` for root-level authentication (recommended for simple setups). See `.env.example` for alternative authentication options.
 
 ### 4. Deploy
 
@@ -200,11 +203,11 @@ The final step is to apply the database schema.
 export SURREAL_ADDRESS="http://YOUR_DROPLET_PUBLIC_IP:8000"
 export SURREAL_NS="production"
 export SURREAL_DB="alexthola_blog"
-export SURREAL_USERNAME="root"
-export SURREAL_PASSWORD="YOUR_SECURE_PASSWORD"
+export SURREAL_ROOT_USER="root"
+export SURREAL_ROOT_PASS="YOUR_SECURE_PASSWORD"
 
 # Connect to the database and import the schema
-surreal sql --conn $SURREAL_ADDRESS --user $SURREAL_USERNAME --pass $SURREAL_PASSWORD --ns $SURREAL_NS --db $SURREAL_DB < migrations/schema.surql
+surreal sql --conn $SURREAL_ADDRESS --user $SURREAL_ROOT_USER --pass $SURREAL_ROOT_PASS --ns $SURREAL_NS --db $SURREAL_DB < migrations/schema.surql
 ```
 
 **Note**: For this one-time setup, you can temporarily open the firewall to your local IP or run this command from a trusted server. Remember to close the firewall rule afterward.
@@ -296,7 +299,7 @@ If the issue persists after several hours, double-check the DNS records in your 
 
 **Quarterly Tasks**
 -   Perform a security audit of the application and its dependencies.
--   Rotate the database password and update the `SURREAL_PASSWORD` environment variable.
+-   Rotate the database password and update the `SURREAL_ROOT_PASS` environment variable.
 -   Review monthly costs and adjust resources as needed.
 
 ### Useful Commands
@@ -309,7 +312,7 @@ doctl apps logs <APP_ID> --type=run --follow
 doctl apps restart <APP_ID>
 
 # Create a manual database backup
-surreal export --conn $SURREAL_ADDRESS --user $SURREAL_USERNAME --pass $SURREAL_PASSWORD --ns $SURREAL_NS --db $SURREAL_DB backup.surql
+surreal export --conn $SURREAL_ADDRESS --user $SURREAL_ROOT_USER --pass $SURREAL_ROOT_PASS --ns $SURREAL_NS --db $SURREAL_DB backup.surql
 
 # List droplets by tag
 doctl compute droplet list --tag-name blog

@@ -2,6 +2,7 @@
 
 SHELL := /bin/bash
 .DELETE_ON_ERROR:
+.DEFAULT_GOAL := help
 
 .PHONY: help format fmt build build-release rebuild rebuild-clean \
 	lint lint-fix lint-md test test-ci test-unit test-server-integration \
@@ -10,9 +11,12 @@ SHELL := /bin/bash
 	test-migrations test-server build-assets install-pkgs install-test-tools \
 	install-surrealdb upgrade security outdated sort spellcheck udeps bloat \
 	init-db start-db stop-db reset-db watch teardown clean-test-artifacts \
-	validate server server-release precommit githooks
+	validate server server-release precommit githooks \
+	clean check docs dev ci all
 
 format: fmt
+dev: watch
+all: build test
 
 include .config.mk
 export OPENSSL_NO_VENDOR := 1
@@ -31,12 +35,27 @@ help:
 	@echo "--------------------------------------"
 	@echo "| Makefile commands for: $(PROJECT)"
 	@echo "--------------------------------------"
+	@echo ""
+	@echo "Quick Start:"
+	@echo "  dev / watch         : Start development server with live reload"
+	@echo "  all                 : Build and test (default workflow)"
+	@echo "  ci                  : Full CI pipeline (fmt-check + lint + test + build)"
+	@echo ""
+	@echo "Build:"
 	@echo "  build               : Build workspace artifacts (debug)"
 	@echo "  build-release       : Build workspace artifacts (release)"
+	@echo "  check               : Fast type-check without codegen"
+	@echo "  clean               : Remove build artifacts"
+	@echo ""
+	@echo "Quality:"
 	@echo "  fmt / format        : Format Rust sources"
 	@echo "  lint                : Run clippy with warnings as errors"
 	@echo "  lint-md             : Lint Markdown files with markdownlint-cli2"
 	@echo "  lint-fix            : Apply clippy autofixes where possible"
+	@echo "  precommit           : Run fast checks the pre-commit hook depends on"
+	@echo "  validate            : Run full validation workflow"
+	@echo ""
+	@echo "Testing:"
 	@echo "  test                : Run full cargo test suite (with assets)"
 	@echo "  test-ci             : Lightweight CI integration tests"
 	@echo "  test-unit           : Unit tests only"
@@ -48,13 +67,28 @@ help:
 	@echo "  test-coverage       : Generate lcov coverage report"
 	@echo "  test-coverage-html  : Generate HTML coverage report"
 	@echo "  test-report         : Run nextest CI profile"
-	@echo "  build-assets        : Build frontend assets required by tests"
+	@echo ""
+	@echo "Database:"
+	@echo "  start-db / stop-db  : Manage local SurrealDB instance"
+	@echo "  init-db             : Initialize database users"
+	@echo "  reset-db            : Stop, wipe, and restart database"
+	@echo ""
+	@echo "Documentation:"
+	@echo "  docs                : Generate rustdoc documentation"
+	@echo ""
+	@echo "Server:"
+	@echo "  server              : Run the server binary (debug)"
+	@echo "  server-release      : Run the server binary (release)"
+	@echo "  teardown            : Stop watch/dev processes"
+	@echo ""
+	@echo "Tooling:"
 	@echo "  install-pkgs        : Install required Cargo tooling"
 	@echo "  install-test-tools  : Install cargo-nextest / cargo-llvm-cov"
 	@echo "  install-surrealdb   : Download SurrealDB locally"
-	@echo "  start-db / stop-db  : Manage local SurrealDB instance"
-	@echo "  watch               : Start SurrealDB and cargo-leptos watch"
-	@echo "  teardown            : Stop watch/dev processes"
+	@echo "  build-assets        : Build frontend assets required by tests"
+	@echo "  githooks            : Point git core.hooksPath at ./githooks/"
+	@echo ""
+	@echo "Maintenance:"
 	@echo "  upgrade             : Update workspace dependencies"
 	@echo "  security            : Run cargo audit"
 	@echo "  outdated            : Check dependency versions"
@@ -62,11 +96,6 @@ help:
 	@echo "  spellcheck          : Spellcheck documentation"
 	@echo "  udeps               : Detect unused dependencies (nightly)"
 	@echo "  bloat               : Inspect binary bloat"
-	@echo "  precommit           : Run fast checks the pre-commit hook depends on"
-	@echo "  githooks            : Point git core.hooksPath at ./githooks/"
-	@echo "  validate            : Run full validation workflow"
-	@echo "  server              : Run the server binary (debug)"
-	@echo "  server-release      : Run the server binary (release)"
 
 build:
 	$(ECHO_PREFIX) Building $(PROJECT) {debug}
@@ -83,6 +112,31 @@ rebuild:
 rebuild-clean:
 	$(ECHO_PREFIX) Rebuilding $(PROJECT) from a clean state
 	@$(CARGO_MAKE_CMD) rebuild-clean
+
+clean:
+	$(ECHO_PREFIX) Cleaning build artifacts
+	@cargo clean
+
+check:
+	$(ECHO_PREFIX) Type-checking $(PROJECT)
+	@cargo check --workspace --all-targets
+
+docs:
+	$(ECHO_PREFIX) Generating documentation
+	@cargo doc --workspace --no-deps
+	@echo "Documentation available at: target/doc/server/index.html"
+
+ci:
+	$(ECHO_PREFIX) Running CI pipeline
+	@echo "Checking formatting..."
+	@cargo fmt --all -- --check
+	@echo "Running linter..."
+	@$(CARGO_MAKE_CMD) lint
+	@echo "Running tests..."
+	@$(MAKE) test
+	@echo "Building release..."
+	@cargo build --workspace --release
+	@echo "CI pipeline completed successfully"
 
 fmt:
 	$(ECHO_PREFIX) Formatting $(PROJECT)
