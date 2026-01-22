@@ -106,7 +106,7 @@ make test
 Run integration tests:
 
 ```bash
-make test-integration
+make test-server-integration
 ```
 
 ## Tech Stack
