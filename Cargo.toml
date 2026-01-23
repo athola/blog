@@ -40,17 +40,16 @@ cargo-llvm-cov = "0.6"
 # Test reporting dependencies
 cargo-nextest = "0.9"
 cfg-if = "1"
-chrono = "0.4.42"
-leptos = { version = "0.8.12", features = ["rustls", "nightly"], default-features = false }
-leptos_axum = "0.8.6"
-# leptos_meta/router lag behind the core crate; pin to the newest crates.io releases.
+chrono = "0.4.43"
+leptos = { version = "0.8.15", features = ["rustls", "nightly"], default-features = false }
+leptos_axum = "0.8.7"
 leptos_meta = "0.8.5"
-leptos_router = { version = "0.8.9", features = ["nightly"] }
+leptos_router = { version = "0.8.11", features = ["nightly"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1.0.226", features = ["derive"] }
 serde_json = "1.0"
 shared_utils = { path = "shared_utils" }
-surrealdb = { version = "2.4.0", features = ["protocol-http", "kv-mem"] }
+surrealdb = { version = "2.5.0", features = ["protocol-http", "kv-mem"] }
 tokio-retry = "0.3"
 tracing = "0.1"
 
