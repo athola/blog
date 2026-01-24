@@ -146,8 +146,11 @@ jobs:
       fail-fast: false
     env:
       # Override global RUSTFLAGS to avoid SIGILL errors
-      RUSTFLAGS: "-C opt-level=2"
+      # Use mold linker for faster, more memory-efficient linking
+      RUSTFLAGS: "-C opt-level=2 -C link-arg=-fuse-ld=mold"
       RUSTDOCFLAGS: "-D warnings"
+      # Limit parallel linker jobs to avoid memory pressure
+      CARGO_BUILD_JOBS: 2
     steps:
     - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
     - uses: dtolnay/rust-toolchain@55d80eb3c5a4228eec5390a083c092095115c6f1 # nightly
@@ -179,6 +182,20 @@ jobs:
 
     - name: Version
       run: cargo --version 2>/dev/null || echo "Cargo version check failed"
+
+    - name: Setup swap space
+      run: |
+        sudo fallocate -l 8G /swapfile
+        sudo chmod 600 /swapfile
+        sudo mkswap /swapfile
+        sudo swapon /swapfile
+        echo "Swap enabled: $(swapon --show)"
+
+    - name: Install mold linker
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq mold
+        echo "Mold version: $(mold --version)"
 
     - name: Install SurrealDB
       timeout-minutes: 5
@@ -246,12 +263,14 @@ jobs:
     if: needs.detect-changes.outputs.rust-code == 'true' || github.event_name == 'push'
     env:
       # Override global RUSTFLAGS to avoid SIGILL errors in CI
-      # Use minimal optimizations to ensure compatibility
-      RUSTFLAGS: ""
+      # Use mold linker for faster, more memory-efficient linking
+      RUSTFLAGS: "-C link-arg=-fuse-ld=mold"
       RUSTDOCFLAGS: "-D warnings"
       # Disable incremental compilation which can cause issues with llvm-cov
       CARGO_INCREMENTAL: 0
       LLVM_PROFILE_FILE: "target/llvm-cov-target/%p-%m.profraw"
+      # Limit parallel linker jobs to avoid memory pressure
+      CARGO_BUILD_JOBS: 2
     steps:
     - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
     - uses: dtolnay/rust-toolchain@55d80eb3c5a4228eec5390a083c092095115c6f1 # nightly
@@ -282,6 +301,20 @@ jobs:
       with:
         path: ~/.surrealdb
         key: surrealdb-cli-${{ runner.os }}-v2.4.0
+
+    - name: Setup swap space
+      run: |
+        sudo fallocate -l 8G /swapfile
+        sudo chmod 600 /swapfile
+        sudo mkswap /swapfile
+        sudo swapon /swapfile
+        echo "Swap enabled: $(swapon --show)"
+
+    - name: Install mold linker
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq mold
+        echo "Mold version: $(mold --version)"
 
     - name: Install SurrealDB
       timeout-minutes: 5
