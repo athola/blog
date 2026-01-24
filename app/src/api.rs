@@ -14,9 +14,10 @@ extern crate alloc;
 use alloc::collections::BTreeMap;
 use leptos::prelude::{ServerFnError, server};
 use leptos::server_fn::codec::GetUrl;
-use leptos::server_fn::error::NoCustomError;
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "ssr")]
+use leptos::server_fn::error::NoCustomError;
 #[cfg(feature = "ssr")]
 use shared_utils::{RetryConfig, retry_async};
 #[cfg(feature = "ssr")]
@@ -24,7 +25,10 @@ use std::time::Duration;
 #[cfg(feature = "ssr")]
 use tokio_retry::{Retry, strategy::ExponentialBackoff};
 
-use crate::types::{Activity, Post, Reference};
+use crate::types::{Post, Reference};
+#[cfg(feature = "ssr")]
+use crate::types::Activity;
+#[cfg(feature = "ssr")]
 use surrealdb::RecordId;
 
 #[cfg(any(feature = "ssr", test))]
