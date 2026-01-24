@@ -178,7 +178,7 @@ jobs:
       uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
       with:
         path: ~/.surrealdb
-        key: surrealdb-cli-${{ runner.os }}-v2.4.0
+        key: surrealdb-cli-${{ runner.os }}-v2.5.0
 
     - name: Version
       run: cargo --version 2>/dev/null || echo "Cargo version check failed"
@@ -208,7 +208,7 @@ jobs:
         set -euo pipefail
 
         if [ ! -f "$HOME/.surrealdb/surreal" ]; then
-          SURREAL_VERSION="v2.4.0"
+          SURREAL_VERSION="v2.5.0"
           SURREAL_URL="https://github.com/surrealdb/surrealdb/releases/download/${SURREAL_VERSION}/surreal-${SURREAL_VERSION}.linux-amd64.tgz"
 
           mkdir -p "$HOME/.surrealdb"
@@ -305,7 +305,7 @@ jobs:
       uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
       with:
         path: ~/.surrealdb
-        key: surrealdb-cli-${{ runner.os }}-v2.4.0
+        key: surrealdb-cli-${{ runner.os }}-v2.5.0
 
     - name: Setup swap space
       run: |
@@ -332,7 +332,7 @@ jobs:
         set -euo pipefail
 
         if [ ! -f "$HOME/.surrealdb/surreal" ]; then
-          SURREAL_VERSION="v2.4.0"
+          SURREAL_VERSION="v2.5.0"
           SURREAL_URL="https://github.com/surrealdb/surrealdb/releases/download/${SURREAL_VERSION}/surreal-${SURREAL_VERSION}.linux-amd64.tgz"
 
           mkdir -p "$HOME/.surrealdb"
