@@ -25,9 +25,9 @@ use std::time::Duration;
 #[cfg(feature = "ssr")]
 use tokio_retry::{Retry, strategy::ExponentialBackoff};
 
-use crate::types::{Post, Reference};
 #[cfg(feature = "ssr")]
 use crate::types::Activity;
+use crate::types::{Post, Reference};
 #[cfg(feature = "ssr")]
 use surrealdb::RecordId;
 
