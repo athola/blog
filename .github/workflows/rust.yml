@@ -146,8 +146,7 @@ jobs:
       fail-fast: false
     env:
       # Override global RUSTFLAGS to avoid SIGILL errors
-      # Use mold linker for faster, more memory-efficient linking
-      RUSTFLAGS: "-C opt-level=2 -C link-arg=-fuse-ld=mold"
+      RUSTFLAGS: "-C opt-level=2"
       RUSTDOCFLAGS: "-D warnings"
       # Limit parallel linker jobs to avoid memory pressure
       CARGO_BUILD_JOBS: 2
@@ -167,7 +166,7 @@ jobs:
 
     - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
       with:
-        shared-key: "test-safe-${{ matrix.profile }}"
+        shared-key: "test-mold-${{ matrix.profile }}"
         cache-targets: "true"
         cache-on-failure: "true"
         save-if: ${{ github.ref == 'refs/heads/master' }}
@@ -199,8 +198,19 @@ jobs:
     - name: Install mold linker
       run: |
         sudo apt-get update -qq
-        sudo apt-get install -y -qq mold
+        sudo apt-get install -y -qq mold clang
         echo "Mold version: $(mold --version)"
+        which mold
+
+    - name: Configure cargo to use mold
+      run: |
+        mkdir -p .cargo
+        cat >> .cargo/config.toml << 'EOF'
+        [target.x86_64-unknown-linux-gnu]
+        linker = "clang"
+        rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+        EOF
+        cat .cargo/config.toml
 
     - name: Install SurrealDB
       timeout-minutes: 5
@@ -268,8 +278,7 @@ jobs:
     if: needs.detect-changes.outputs.rust-code == 'true' || github.event_name == 'push'
     env:
       # Override global RUSTFLAGS to avoid SIGILL errors in CI
-      # Use mold linker for faster, more memory-efficient linking
-      RUSTFLAGS: "-C link-arg=-fuse-ld=mold"
+      RUSTFLAGS: ""
       RUSTDOCFLAGS: "-D warnings"
       # Disable incremental compilation which can cause issues with llvm-cov
       CARGO_INCREMENTAL: 0
@@ -294,7 +303,7 @@ jobs:
 
     - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
       with:
-        shared-key: "coverage-safe"
+        shared-key: "coverage-mold"
         cache-targets: "true"
         cache-on-failure: "true"
         save-if: ${{ github.ref == 'refs/heads/master' }}
@@ -323,8 +332,19 @@ jobs:
     - name: Install mold linker
       run: |
         sudo apt-get update -qq
-        sudo apt-get install -y -qq mold
+        sudo apt-get install -y -qq mold clang
         echo "Mold version: $(mold --version)"
+        which mold
+
+    - name: Configure cargo to use mold
+      run: |
+        mkdir -p .cargo
+        cat >> .cargo/config.toml << 'EOF'
+        [target.x86_64-unknown-linux-gnu]
+        linker = "clang"
+        rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+        EOF
+        cat .cargo/config.toml
 
     - name: Install SurrealDB
       timeout-minutes: 5
