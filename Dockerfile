@@ -14,8 +14,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install cargo-leptos and wasm-bindgen-cli (pinned versions for reproducible builds)
-RUN cargo install cargo-leptos --version 0.3.1 && \
-    cargo install wasm-bindgen-cli --version 0.2.106 && \
+RUN cargo install cargo-leptos --version 0.3.2 && \
+    cargo install wasm-bindgen-cli --version 0.2.108 && \
     rustup target add wasm32-unknown-unknown
 
 # Configure WASM-specific environment for ring crate

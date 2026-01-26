@@ -148,10 +148,24 @@ jobs:
       # Override global RUSTFLAGS to avoid SIGILL errors
       RUSTFLAGS: "-C opt-level=2"
       RUSTDOCFLAGS: "-D warnings"
+      # Limit parallel linker jobs to avoid memory pressure
+      CARGO_BUILD_JOBS: 2
     steps:
+    - name: Free disk space
+      run: |
+        echo "Disk space before cleanup:"
+        df -h /
+        # Remove unnecessary tools to free space
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf /opt/ghc
+        sudo rm -rf /opt/hostedtoolcache/CodeQL
+        echo "Disk space after cleanup:"
+        df -h /
+
     - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
     - uses: dtolnay/rust-toolchain@55d80eb3c5a4228eec5390a083c092095115c6f1 # nightly
-    
+
     # More aggressive dependency caching
     - name: Cache cargo registry
       uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
@@ -164,7 +178,7 @@ jobs:
 
     - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
       with:
-        shared-key: "test-safe-${{ matrix.profile }}"
+        shared-key: "test-mold-${{ matrix.profile }}"
         cache-targets: "true"
         cache-on-failure: "true"
         save-if: ${{ github.ref == 'refs/heads/master' }}
@@ -175,10 +189,40 @@ jobs:
       uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
       with:
         path: ~/.surrealdb
-        key: surrealdb-cli-${{ runner.os }}-v2.4.0
+        key: surrealdb-cli-${{ runner.os }}-v2.5.0
 
     - name: Version
       run: cargo --version 2>/dev/null || echo "Cargo version check failed"
+
+    - name: Setup swap space
+      run: |
+        if [ -f /swapfile ]; then
+          echo "Swapfile already exists, skipping creation"
+        else
+          sudo fallocate -l 8G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+        fi
+        sudo swapon /swapfile 2>/dev/null || echo "Swap already enabled"
+        echo "Swap status: $(swapon --show)"
+        free -h
+
+    - name: Install mold linker
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq mold clang
+        echo "Mold version: $(mold --version)"
+        which mold
+
+    - name: Configure cargo to use mold
+      run: |
+        mkdir -p .cargo
+        cat >> .cargo/config.toml << 'EOF'
+        [target.x86_64-unknown-linux-gnu]
+        linker = "clang"
+        rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+        EOF
+        cat .cargo/config.toml
 
     - name: Install SurrealDB
       timeout-minutes: 5
@@ -186,7 +230,7 @@ jobs:
         set -euo pipefail
 
         if [ ! -f "$HOME/.surrealdb/surreal" ]; then
-          SURREAL_VERSION="v2.4.0"
+          SURREAL_VERSION="v2.5.0"
           SURREAL_URL="https://github.com/surrealdb/surrealdb/releases/download/${SURREAL_VERSION}/surreal-${SURREAL_VERSION}.linux-amd64.tgz"
 
           mkdir -p "$HOME/.surrealdb"
@@ -246,18 +290,31 @@ jobs:
     if: needs.detect-changes.outputs.rust-code == 'true' || github.event_name == 'push'
     env:
       # Override global RUSTFLAGS to avoid SIGILL errors in CI
-      # Use minimal optimizations to ensure compatibility
       RUSTFLAGS: ""
       RUSTDOCFLAGS: "-D warnings"
       # Disable incremental compilation which can cause issues with llvm-cov
       CARGO_INCREMENTAL: 0
       LLVM_PROFILE_FILE: "target/llvm-cov-target/%p-%m.profraw"
+      # Limit parallel linker jobs to avoid memory pressure
+      CARGO_BUILD_JOBS: 2
     steps:
+    - name: Free disk space
+      run: |
+        echo "Disk space before cleanup:"
+        df -h /
+        # Remove unnecessary tools to free space
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf /opt/ghc
+        sudo rm -rf /opt/hostedtoolcache/CodeQL
+        echo "Disk space after cleanup:"
+        df -h /
+
     - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
     - uses: dtolnay/rust-toolchain@55d80eb3c5a4228eec5390a083c092095115c6f1 # nightly
       with:
         components: llvm-tools-preview
-    
+
     # Reuse registry cache from test job
     - name: Cache cargo registry
       uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
@@ -270,7 +327,7 @@ jobs:
 
     - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
       with:
-        shared-key: "coverage-safe"
+        shared-key: "coverage-mold"
         cache-targets: "true"
         cache-on-failure: "true"
         save-if: ${{ github.ref == 'refs/heads/master' }}
@@ -281,7 +338,37 @@ jobs:
       uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
       with:
         path: ~/.surrealdb
-        key: surrealdb-cli-${{ runner.os }}-v2.4.0
+        key: surrealdb-cli-${{ runner.os }}-v2.5.0
+
+    - name: Setup swap space
+      run: |
+        if [ -f /swapfile ]; then
+          echo "Swapfile already exists, skipping creation"
+        else
+          sudo fallocate -l 8G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+        fi
+        sudo swapon /swapfile 2>/dev/null || echo "Swap already enabled"
+        echo "Swap status: $(swapon --show)"
+        free -h
+
+    - name: Install mold linker
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq mold clang
+        echo "Mold version: $(mold --version)"
+        which mold
+
+    - name: Configure cargo to use mold
+      run: |
+        mkdir -p .cargo
+        cat >> .cargo/config.toml << 'EOF'
+        [target.x86_64-unknown-linux-gnu]
+        linker = "clang"
+        rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+        EOF
+        cat .cargo/config.toml
 
     - name: Install SurrealDB
       timeout-minutes: 5
@@ -289,7 +376,7 @@ jobs:
         set -euo pipefail
 
         if [ ! -f "$HOME/.surrealdb/surreal" ]; then
-          SURREAL_VERSION="v2.4.0"
+          SURREAL_VERSION="v2.5.0"
           SURREAL_URL="https://github.com/surrealdb/surrealdb/releases/download/${SURREAL_VERSION}/surreal-${SURREAL_VERSION}.linux-amd64.tgz"
 
           mkdir -p "$HOME/.surrealdb"
