@@ -1,6 +1,6 @@
 [package]
 name = "frontend"
-version = "0.1.0"
+version = "0.1.4"
 authors = ["Alex Thola <alexthola@gmail.com>"]
 license = "0BSD"
 description = "A public webblog frontend"
@@ -30,8 +30,8 @@ console_log = "1"
 
 # workspace dependencies
 leptos = { workspace = true, features = ["hydrate"] }
-log = "0.4.28"
-wasm-bindgen = "0.2.108"
+log = "0.4.29"
+wasm-bindgen = "0.2.114"
 
 # WASM-specific dependencies with proper backend configuration
 [target.wasm32-unknown-unknown.dependencies]

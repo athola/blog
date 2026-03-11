@@ -13,7 +13,7 @@ This document describes the architecture of the Rust-based blog engine.
                                            │ SurrealDB
                                            ▼
                                  ┌──────────────────┐
-                                 │  SurrealDB 3.0   │
+                                 │  SurrealDB 2.x   │
                                  │    (Database)    │
                                  └──────────────────┘
 ```
@@ -48,10 +48,10 @@ A monolithic, full-stack Rust application was chosen over a separate frontend an
 
 ### SurrealDB for Data Persistence
 
-SurrealDB was selected over traditional databases like PostgreSQL due to its modern feature set, despite its pre-release status.
+SurrealDB was selected over traditional databases like PostgreSQL due to its modern feature set.
 -   **Integrated Real-Time Queries**: Live queries are a built-in feature, eliminating the need for a separate WebSocket or messaging system for features like real-time notifications.
 -   **Embedded Row-Level Security**: The database's native permission system simplifies authorization logic in the application layer.
--   **Calculated Risk**: Using an alpha version (`3.0.0-alpha.16`) is a deliberate trade-off. The benefits of its feature set were judged to outweigh the risk of potential instability.
+-   **Matured Platform**: SurrealDB has moved from pre-release alphas to stable `2.x` releases, reducing the operational risk that existed when this project first adopted it.
 
 ### Deterministic IDs for Activity Feeds
 
