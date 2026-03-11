@@ -1,15 +1,13 @@
 [package]
 name = "frontend"
-version = "0.1.0"
-authors = ["Alex Thola <alexthola@gmail.com>"]
-license = "0BSD"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
 description = "A public webblog frontend"
-homepage = "https://github.com/athola/blog"
-repository = "https://github.com/athola/blog"
-readme = "https://github.com/athola/blog/README.md"
-documentation = "https://github.com/athola/blog/docs"
-keywords = ["axum", "blog", "leptos", "web", "website"]
-categories = ["website"]
+homepage.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
 edition = "2024"
 
 [package.metadata.wasm-pack.profile.release]
@@ -30,8 +28,8 @@ console_log = "1"
 
 # workspace dependencies
 leptos = { workspace = true, features = ["hydrate"] }
-log = "0.4.28"
-wasm-bindgen = "0.2.108"
+log = "0.4.29"
+wasm-bindgen = "0.2.114"
 
 # WASM-specific dependencies with proper backend configuration
 [target.wasm32-unknown-unknown.dependencies]

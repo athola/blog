@@ -20,9 +20,9 @@ resolver = "2"
 members = ["app", "frontend", "markdown", "server", "shared_utils"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.4"
 authors = ["Alex Thola <alexthola@gmail.com>"]
-license = "0BSD"
+license = "AGPL-3.0-or-later"
 description = "A public webblog"
 homepage = "https://github.com/athola/blog"
 repository = "https://github.com/athola/blog"
@@ -40,7 +40,7 @@ cargo-llvm-cov = "0.6"
 # Test reporting dependencies
 cargo-nextest = "0.9"
 cfg-if = "1"
-chrono = "0.4.43"
+chrono = "0.4.44"
 leptos = { version = "0.8.15", features = ["rustls", "nightly"], default-features = false }
 leptos_axum = "0.8.7"
 leptos_meta = "0.8.5"
@@ -49,12 +49,12 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 serde = { version = "1.0.226", features = ["derive"] }
 serde_json = "1.0"
 shared_utils = { path = "shared_utils" }
-surrealdb = { version = "2.6.1", features = ["protocol-http", "kv-mem"] }
+surrealdb = { version = "2.6.3", features = ["protocol-http", "kv-mem"] }
 tokio-retry = "0.3"
 tracing = "0.1"
 
 # Integration test dependencies
-uuid = { version = "1.18", features = ["v4"] }
+uuid = { version = "1.22", features = ["v4"] }
 
 # The name used by wasm-bindgen/cargo-leptos for the JS wrapper file. It should
 # be the same as the `name` field in the manifest of the `frontend` package. This
@@ -143,17 +143,17 @@ ci = []
 app = { path = "app" }
 chrono = { workspace = true }
 leptos = { workspace = true, features = ["ssr"] }
-lettre = { version = "0.11.18", default-features = false, features = ["builder", "smtp-transport", "rustls-tls", "tokio1", "tokio1-rustls-tls"] }
+lettre = { version = "0.11.19", default-features = false, features = ["builder", "smtp-transport", "rustls-tls", "tokio1", "tokio1-rustls-tls"] }
 markdown = { path = "markdown", default-features = false, features = ["ssr"] }
-once_cell = "1.21"
+once_cell = "1.21.3"
 reqwest.workspace = true
 serde = { version = "1.0.226", features = ["derive"] }
 serde_json = "1.0"
-surrealdb = { version = "2.4.0", features = ["protocol-http", "kv-mem"] }
+surrealdb = { workspace = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "signal"] }
 tokio-retry = { workspace = true }
 tracing = { workspace = true }
-uuid = { version = "1.18", features = ["v4"] }
+uuid = { workspace = true }
 
 # Defines a size-optimized profile for the WASM bundle in release mode
 [profile.wasm-release]
