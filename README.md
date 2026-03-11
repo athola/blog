@@ -15,7 +15,7 @@ Get your development environment running in 2 minutes:
 # Clone and setup
 git clone https://github.com/athola/blog.git
 cd blog
-make install-all
+make install-pkgs
 
 # Start development server
 make watch
@@ -63,7 +63,7 @@ graph LR
 ### Prerequisites
 
 - Rust nightly with WASM target: `rustup target add wasm32-unknown-unknown`
-- SurrealDB 2.x (2.5.0+)
+- SurrealDB 2.6+
 
 ### Available Commands
 

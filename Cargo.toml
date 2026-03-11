@@ -22,7 +22,7 @@ members = ["app", "frontend", "markdown", "server", "shared_utils"]
 [workspace.package]
 version = "0.1.4"
 authors = ["Alex Thola <alexthola@gmail.com>"]
-license = "0BSD"
+license = "AGPL-3.0-or-later"
 description = "A public webblog"
 homepage = "https://github.com/athola/blog"
 repository = "https://github.com/athola/blog"

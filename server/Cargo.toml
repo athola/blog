@@ -1,15 +1,13 @@
 [package]
 name = "server"
-version = "0.1.4"
-authors = ["Alex Thola <alexthola@gmail.com>"]
-license = "0BSD"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
 description = "A public webblog server"
-homepage = "https://github.com/athola/blog"
-repository = "https://github.com/athola/blog"
-readme = "https://github.com/athola/blog/README.md"
-documentation = "https://github.com/athola/blog/docs"
-keywords = ["axum", "blog", "leptos", "web", "website"]
-categories = ["website"]
+homepage.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
 edition = "2024"
 
 [dependencies]
