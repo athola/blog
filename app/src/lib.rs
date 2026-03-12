@@ -29,10 +29,6 @@ mod post; // Post display logic and components
 mod references; // References page logic and components
 pub mod types; // Shared type definitions
 
-/// Renders the HTML shell for the application, including `<head>` and `<body>` content.
-///
-/// This function sets up the basic HTML structure, integrates meta tags, stylesheets,
-/// and hydration scripts, and then renders the main application component within the `<body>`.
 /// Builds the CSS href from hash file content, appending the content hash when present.
 ///
 /// Parses cargo-leptos hash file format (`css: <hash>`) and constructs a URL like
@@ -63,11 +59,7 @@ fn resolve_css_href(options: &LeptosOptions) -> String {
         .get_or_init(|| {
             let hash_content = if options.hash_files {
                 let hash_path = std::env::current_exe()
-                    .map(|path| {
-                        path.parent()
-                            .map(|p| p.to_path_buf())
-                            .unwrap_or_default()
-                    })
+                    .map(|path| path.parent().map(|p| p.to_path_buf()).unwrap_or_default())
                     .unwrap_or_default()
                     .join(options.hash_file.as_ref());
                 std::fs::read_to_string(&hash_path).ok()
@@ -83,6 +75,10 @@ fn resolve_css_href(options: &LeptosOptions) -> String {
         .clone()
 }
 
+/// Renders the HTML shell for the application, including `<head>` and `<body>` content.
+///
+/// This function sets up the basic HTML structure, integrates meta tags, stylesheets,
+/// and hydration scripts, and then renders the main application component within the `<body>`.
 pub fn shell(options: Arc<LeptosOptions>) -> impl IntoView {
     let css_href = resolve_css_href(&options);
 
