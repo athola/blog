@@ -35,15 +35,22 @@ pub mod types; // Shared type definitions
 /// `/pkg/{output_name}.{hash}.css`. Returns the unhashed URL if hashing is disabled
 /// or the CSS hash is not found.
 fn build_css_href(output_name: &str, hash_files: bool, hash_content: Option<&str>) -> String {
-    if hash_files
-        && let Some(css_hash) = hash_content
+    if hash_files {
+        if let Some(css_hash) = hash_content
             .into_iter()
             .flat_map(|content| content.lines())
             .filter_map(|line| line.split_once(':'))
             .find(|(key, _)| key.trim() == "css")
             .map(|(_, hash)| hash.trim().to_string())
-    {
-        return format!("/pkg/{output_name}.{css_hash}.css");
+        {
+            return format!("/pkg/{output_name}.{css_hash}.css");
+        }
+        #[cfg(feature = "ssr")]
+        if hash_content.is_some() {
+            tracing::warn!(
+                "Hash file was read but contains no 'css:' entry — falling back to unhashed CSS"
+            );
+        }
     }
     format!("/pkg/{output_name}.css")
 }
@@ -58,11 +65,28 @@ fn resolve_css_href(options: &LeptosOptions) -> String {
     CSS_HREF
         .get_or_init(|| {
             let hash_content = if options.hash_files {
-                let hash_path = std::env::current_exe()
-                    .map(|path| path.parent().map(|p| p.to_path_buf()).unwrap_or_default())
-                    .unwrap_or_default()
-                    .join(options.hash_file.as_ref());
-                std::fs::read_to_string(&hash_path).ok()
+                let exe_dir = match std::env::current_exe() {
+                    Ok(path) => path.parent().map(|p| p.to_path_buf()).unwrap_or_default(),
+                    Err(e) => {
+                        tracing::warn!(
+                            "Could not determine executable path: {e}. \
+                             Hash file lookup will use current working directory."
+                        );
+                        std::path::PathBuf::new()
+                    }
+                };
+                let hash_path = exe_dir.join(options.hash_file.as_ref());
+                match std::fs::read_to_string(&hash_path) {
+                    Ok(content) => Some(content),
+                    Err(e) => {
+                        tracing::error!(
+                            "CSS hash file could not be read at {}: {e}. \
+                             Falling back to unhashed CSS URL.",
+                            hash_path.display()
+                        );
+                        None
+                    }
+                }
             } else {
                 None
             };
@@ -244,6 +268,26 @@ mod tests {
         let content = "css: myhash\n";
         let href = build_css_href("my-app", true, Some(content));
         assert_eq!(href, "/pkg/my-app.myhash.css");
+    }
+
+    #[test]
+    fn build_css_href_returns_unhashed_when_content_is_empty_string() {
+        let href = build_css_href("blog", true, Some(""));
+        assert_eq!(href, "/pkg/blog.css");
+    }
+
+    #[test]
+    fn build_css_href_uses_first_css_key_when_duplicated() {
+        let content = "css: first_hash\ncss: second_hash\n";
+        let href = build_css_href("blog", true, Some(content));
+        assert_eq!(href, "/pkg/blog.first_hash.css");
+    }
+
+    #[test]
+    fn build_css_href_ignores_content_when_hashing_disabled() {
+        let content = "css: some_hash\n";
+        let href = build_css_href("blog", false, Some(content));
+        assert_eq!(href, "/pkg/blog.css");
     }
 
     #[cfg(feature = "ssr")]
