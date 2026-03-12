@@ -56,12 +56,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run Hadolint Dockerfile linter
-        uses: hadolint/hadolint-action@v3.1.0
-        with:
-          dockerfile: Dockerfile
-          failure-threshold: error
-          # Ignore specific rules that don't apply to our setup
-          ignore: DL3008, DL3009, DL3013
+        run: |
+          wget -qO hadolint https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64
+          chmod +x hadolint
+          ./hadolint --failure-threshold error --ignore DL3008 --ignore DL3009 --ignore DL3013 Dockerfile
 
   # Security scan for Dockerfile
   dockerfile-security:
