@@ -83,6 +83,7 @@ Performance is a key consideration. The following optimizations have been implem
 
 -   **Code Splitting**: Route-specific components are loaded on demand. For example, the logic for the contact form is only fetched when a user navigates to the `/contact` page.
 -   **CSS Purging**: Unused CSS rules are removed from the final bundle by TailwindCSS, reducing its size.
+-   **CSS Content Hashing**: When `LEPTOS_HASH_FILES` is enabled, the CSS filename includes a content hash (e.g., `blog.<hash>.css`), allowing aggressive browser caching while ensuring updates are served immediately.
 -   **Asset Optimization**: Images are converted to modern formats like WebP and served with efficient cache policies.
 
 ### Backend
