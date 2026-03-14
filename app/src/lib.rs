@@ -9,12 +9,12 @@
 
 use crate::components::{error_template, header, icons};
 use chrono::{Datelike as _, Utc};
+#[cfg(feature = "ssr")]
+use leptos::html::{body, head, html, meta};
 use leptos::{
     html::{a, div, footer, p},
     prelude::*,
 };
-#[cfg(feature = "ssr")]
-use leptos::html::{body, head, html, meta};
 use leptos_meta::provide_meta_context;
 #[cfg(feature = "ssr")]
 use leptos_meta::{MetaTags, Stylesheet, StylesheetProps, Title, TitleProps};
