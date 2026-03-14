@@ -10,14 +10,19 @@
 use crate::components::{error_template, header, icons};
 use chrono::{Datelike as _, Utc};
 use leptos::{
-    html::{a, body, div, footer, head, html, meta, p},
+    html::{a, div, footer, p},
     prelude::*,
 };
-use leptos_meta::{MetaTags, Stylesheet, StylesheetProps, Title, TitleProps, provide_meta_context};
+#[cfg(feature = "ssr")]
+use leptos::html::{body, head, html, meta};
+use leptos_meta::provide_meta_context;
+#[cfg(feature = "ssr")]
+use leptos_meta::{MetaTags, Stylesheet, StylesheetProps, Title, TitleProps};
 use leptos_router::{
     ParamSegment, SsrMode, StaticSegment,
     components::{FlatRoutes, Route, Router},
 };
+#[cfg(feature = "ssr")]
 use std::sync::{Arc, OnceLock};
 
 mod activity;
@@ -29,6 +34,7 @@ mod post; // Post display logic and components
 mod references; // References page logic and components
 pub mod types; // Shared type definitions
 
+#[cfg(feature = "ssr")]
 /// Builds the CSS href from hash file content, appending the content hash when present.
 ///
 /// Parses cargo-leptos hash file format (`css: <hash>`) and constructs a URL like
@@ -55,6 +61,7 @@ fn build_css_href(output_name: &str, hash_files: bool, hash_content: Option<&str
     format!("/pkg/{output_name}.css")
 }
 
+#[cfg(feature = "ssr")]
 /// Resolves the CSS filename, appending the content hash when `hash_files` is enabled.
 ///
 /// Mirrors the approach used by Leptos' `HydrationScripts` for JS/WASM, but for CSS
@@ -99,6 +106,7 @@ fn resolve_css_href(options: &LeptosOptions) -> String {
         .clone()
 }
 
+#[cfg(feature = "ssr")]
 /// Renders the HTML shell for the application, including `<head>` and `<body>` content.
 ///
 /// This function sets up the basic HTML structure, integrates meta tags, stylesheets,
