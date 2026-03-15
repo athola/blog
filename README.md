@@ -54,6 +54,7 @@ graph LR
 ## Documentation
 
 - **[Architecture Guide](wiki/Architecture.md)** - Detailed system architecture
+- **[API Reference](wiki/API-Reference.md)** - Endpoint and data model reference
 - **[Development Workflow](wiki/Development-Workflow.md)** - Local setup and testing
 - **[Deployment Guide](DEPLOYMENT.md)** - Production deployment instructions
 - **[Security Policy](SECURITY.md)** - Security reporting and policies
@@ -127,9 +128,15 @@ Run security scan manually:
 
 Planned features are tracked in [PLAN.md](PLAN.md). Highlights:
 
-- **Q1 2026** - Dark/light theme toggle, syntax highlighting, post search
+- **Q1 2026** - Dark/light theme toggle, syntax highlighting, post search, related articles
 - **Q2 2026** - Comments, social sharing, newsletter signup
 - **Backlog** - Admin interface, offline reading (PWA), AI-powered suggestions
+
+## Contributing
+
+Contributions are welcome. Please open an issue to discuss proposed changes
+before submitting a pull request. Run `make validate` to verify formatting,
+linting, tests, and security scans pass before pushing.
 
 ## License
 
