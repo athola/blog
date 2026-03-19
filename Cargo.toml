@@ -20,7 +20,7 @@ resolver = "2"
 members = ["app", "frontend", "markdown", "server", "shared_utils"]
 
 [workspace.package]
-version = "0.1.5"
+version = "0.1.6"
 authors = ["Alex Thola <alexthola@gmail.com>"]
 license = "AGPL-3.0-or-later"
 description = "A public webblog"
@@ -102,6 +102,10 @@ end2end-dir = "end2end"
 
 #  The browserlist query used for optimizing the CSS.
 browserquery = "defaults"
+
+# Enable content hashing for static assets (JS, WASM, CSS) for cache busting.
+# This must match the LEPTOS_HASH_FILES=true flag used during Docker builds.
+hash-files = true
 
 # Set by cargo-leptos watch when building with that tool. Controls whether autoreload JS will be included in the head
 watch = false
