@@ -9,8 +9,8 @@ description: Use when diagnosing DigitalOcean App Platform deployment failures, 
 
 - **App Platform**: Runs the Leptos/Axum server from a Dockerfile
 - **SurrealDB**: Runs on a separate droplet (private IP in `10.116.0.0/20` VPC, check `doctl compute droplet list` for current IPs)
-- **Static assets**: CSS/JS/WASM in `target/site/pkg/`, served via `ServeDir` at `/pkg`
-- **CSS hashing**: `hash-files = true` in Cargo.toml; `resolve_css_href()` in `app/src/lib.rs` reads `hash.txt`
+- **Static assets**: CSS/JS/WASM in `target/site/pkg/` locally, `/app/site/pkg/` in Docker; served via `ServeDir` at `/pkg`
+- **CSS hashing**: `hash-files = true` in Cargo.toml; `resolve_css_href()` in `app/src/lib.rs` reads the hash file from the executable's directory (e.g., `/app/hash.txt` in Docker)
 
 ## Common Issues
 
@@ -23,7 +23,7 @@ The browser error "MIME type ('') is not a supported stylesheet MIME type" means
 ### Build OOM on DO App Platform
 - **Symptom**: `BuildJobTerminated` / "resource exhaustion" in deployment details
 - **Check**: `doctl apps get-deployment APP_ID DEPLOY_ID --output json | python3 -c "import json,sys; print(json.load(sys.stdin)[0]['progress']['summary_steps'])"`
-- **Fix**: `CARGO_BUILD_JOBS=2` in the Dockerfile limits parallel rustc instances
+- **Fix**: `CARGO_BUILD_JOBS=2` in the Dockerfile limits parallel rustc instances. The Dockerfile also extracts artifacts to `/artifacts/` and purges `target/` before Kaniko's filesystem snapshot to avoid snapshotting the multi-GB build cache.
 
 ### SurrealDB connection failure
 - **Symptom**: App health returns 200 but main page returns 503 "starting up"

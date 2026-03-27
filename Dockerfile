@@ -78,8 +78,7 @@ RUN mkdir -p /artifacts && \
 FROM ubuntu:24.04 as runner
 
 # Cache-busting argument - increment to force rebuild of runner stage
-# Last updated: 2026-03-11 (bump wasm-bindgen 0.2.114, deps update)
-ARG CACHEBUST=2
+ARG CACHEBUST=3
 
 # Set shell options for proper pipe error handling
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]

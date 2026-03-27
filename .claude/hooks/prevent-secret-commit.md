@@ -14,11 +14,11 @@ git diff --cached --name-only
 ```
 
 If any staged file contains patterns like:
-- `GqQt6` or base64 password strings
+- Long base64 strings that look like passwords (32+ chars ending in `=`)
 - `SURREAL_ROOT_PASS` with an actual value (not `${...}` or empty)
 - `DIGITALOCEAN_ACCESS_TOKEN` with a hex value
 - `doctl auth` tokens
-- Private IP addresses like `10.116.0.2` in committed code (ok in .do/ config, not ok in source)
+- Droplet public IP addresses in source code (ok in .do/ config, not ok in .rs/.md files)
 
 Then BLOCK the commit and warn:
 > **Potential secret detected in staged files.** Review the diff carefully before committing. Use `git diff --cached` to inspect.

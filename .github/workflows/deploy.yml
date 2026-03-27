@@ -157,9 +157,10 @@ jobs:
       run: |
         set -euo pipefail
 
-        APP_ID=$(doctl apps list --format ID,Spec.Name --no-header | grep "$DO_APP_NAME" | awk '{print $1}')
-        if [ -z "$APP_ID" ]; then
-          echo "Could not find DO app named '$DO_APP_NAME'"
+        APP_ID=$(doctl apps list --format ID,Spec.Name --no-header | awk -v name="$DO_APP_NAME" '$2 == name {print $1}')
+        MATCH_COUNT=$(echo "$APP_ID" | grep -c . || true)
+        if [ "$MATCH_COUNT" -ne 1 ]; then
+          echo "Expected exactly 1 app named '$DO_APP_NAME', found $MATCH_COUNT"
           exit 1
         fi
 
@@ -222,61 +223,51 @@ jobs:
       run: |
         set -euo pipefail
         echo "Validating core application functionality..."
+        FAILURES=0
 
         if timeout 20 curl -f -s --max-time 15 "https://alexthola.com/" > /dev/null; then
           echo "Main page is accessible"
         else
-          echo "Main page is not accessible"
+          echo "CRITICAL: Main page is not accessible"
+          FAILURES=$((FAILURES + 1))
         fi
 
         if timeout 15 curl -f -s --max-time 10 "https://alexthola.com/rss.xml" > /dev/null; then
           echo "RSS feed is accessible"
         else
-          echo "RSS feed is not accessible"
+          echo "WARNING: RSS feed is not accessible"
         fi
 
         if timeout 15 curl -f -s --max-time 10 "https://alexthola.com/sitemap.xml" > /dev/null; then
           echo "Sitemap is accessible"
         else
-          echo "Sitemap is not accessible"
+          echo "WARNING: Sitemap is not accessible"
         fi
 
-    - name: Performance and security validation
+        if [ "$FAILURES" -gt 0 ]; then
+          echo "Core validation failed with $FAILURES critical failures"
+          exit 1
+        fi
+
+    - name: Performance and security report (informational)
       timeout-minutes: 3
+      if: always()
       run: |
         set -euo pipefail
-        echo "Running performance and security checks..."
+        echo "Running performance and security checks (informational)..."
 
         RESPONSE_TIME=$(timeout 30 curl -w "%{time_total}" -s -o /dev/null "https://alexthola.com/" || echo "timeout")
         if [ "$RESPONSE_TIME" = "timeout" ]; then
           echo "Response time test timed out"
         else
           echo "Response time: ${RESPONSE_TIME}s"
-          if awk "BEGIN {exit !($RESPONSE_TIME > 3.0)}"; then
-            echo "Response time is slow (>${RESPONSE_TIME}s)"
-          else
-            echo "Response time is acceptable (${RESPONSE_TIME}s)"
-          fi
         fi
 
         HEADERS=$(timeout 20 curl -I -s "https://alexthola.com/" || echo "")
-        if echo "$HEADERS" | grep -i "strict-transport-security" > /dev/null; then
-          echo "HSTS header present"
-        else
-          echo "HSTS header missing"
-        fi
+        echo "$HEADERS" | grep -i "strict-transport-security" > /dev/null && echo "HSTS: present" || echo "HSTS: missing"
+        echo "$HEADERS" | grep -i "x-content-type-options" > /dev/null && echo "X-Content-Type-Options: present" || echo "X-Content-Type-Options: missing"
 
-        if echo "$HEADERS" | grep -i "x-content-type-options" > /dev/null; then
-          echo "X-Content-Type-Options header present"
-        else
-          echo "X-Content-Type-Options header missing"
-        fi
-
-        if timeout 15 bash -c "openssl s_client -connect alexthola.com:443 -servername alexthola.com < /dev/null 2>/dev/null | openssl x509 -noout -dates"; then
-          echo "SSL certificate is valid"
-        else
-          echo "SSL certificate issue detected or check timed out"
-        fi
+        timeout 15 bash -c "openssl s_client -connect alexthola.com:443 -servername alexthola.com < /dev/null 2>/dev/null | openssl x509 -noout -dates" && echo "SSL: valid" || echo "SSL: check failed or timed out"
 
   # Deployment status notification
   notify:

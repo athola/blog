@@ -143,7 +143,7 @@ chmod 700 /var/lib/surrealdb
 
 **3. Configure and Start the Service**
 
-Create the systemd service file `/etc/systemd/system/surrealdb.service` with the same content as in the `cloud-init` script, then enable and start the service. Remember to replace `YOUR_SECURE_PASSWORD`.
+Create the systemd service file `/etc/systemd/system/surrealdb.service` with the same content as in the `cloud-init` script, then create the `/etc/surrealdb/env` credentials file as described in the Post-Provisioning section above.
 
 ```bash
 sudo systemctl daemon-reload

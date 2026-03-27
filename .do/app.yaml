@@ -1,12 +1,9 @@
 # DigitalOcean App Platform configuration for alexthola.com
 name: alexthola-blog
 region: nyc
-features:
-  - buildpack-stack=ubuntu-22
 
 # Main application service — built from Dockerfile on DO App Platform.
-# CARGO_BUILD_JOBS=2 in the Dockerfile prevents OOM during Rust compilation.
-# Source builds get VPC networking for SurrealDB private-IP access.
+# Source builds on Professional tier get VPC networking for SurrealDB access.
 services:
   - name: blog-web
     source_dir: .
@@ -28,8 +25,9 @@ services:
     # Port configuration
     http_port: 8080
 
-    # Internal port enables VPC networking so the app can reach the
-    # SurrealDB droplet via its private IP (10.116.0.0/20 VPC).
+    # Expose port 8000 for inter-service communication.
+    # VPC access to the SurrealDB droplet is provided by the Professional
+    # tier + Dockerfile source build, not by this setting.
     internal_ports:
       - 8000
 
@@ -90,6 +88,11 @@ services:
         operator: GREATER_THAN
         value: 3
         window: FIVE_MINUTES
+      - rule: DEPLOYMENT_FAILED
+        disabled: false
+        operator: UNSPECIFIED
+        value: 0
+        window: TEN_MINUTES
 
 # Domain configuration
 domains:
