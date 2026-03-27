@@ -91,6 +91,10 @@ make test-coverage   # Generate coverage report
 
 # CI Pipeline
 make ci              # Full CI: format check, lint, test, build release
+
+# Docker (production image)
+docker build -t blog .                    # Build locally
+docker run -p 8080:8080 blog /app/blog    # Run locally
 ```
 
 Run `make help` for a complete list of available targets.

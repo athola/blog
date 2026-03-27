@@ -56,11 +56,23 @@ COPY style/ ./style/
 COPY Cargo.toml Cargo.lock ./
 COPY build.rs ./
 
-# Build the application with optimizations
-RUN LEPTOS_HASH_FILES=true cargo leptos build --release && \
+# Build the application with optimizations.
+# CARGO_BUILD_JOBS=2 limits parallel rustc instances to avoid OOM on
+# resource-constrained build runners (e.g. DigitalOcean App Platform).
+RUN CARGO_BUILD_JOBS=2 LEPTOS_HASH_FILES=true cargo leptos build --release && \
     echo "Build complete. Verifying binary exists:" && \
     ls -la /work/target/release/server && \
     ls -la /work/target/site/
+
+# Extract build artifacts and purge the multi-GB target/ directory so Kaniko's
+# filesystem snapshot fits within DO App Platform's memory budget.
+RUN mkdir -p /artifacts && \
+    cp /work/target/release/server /artifacts/server && \
+    cp /work/target/release/hash.txt /artifacts/hash.txt && \
+    cp -r /work/target/site /artifacts/site && \
+    cp /work/Cargo.toml /artifacts/Cargo.toml && \
+    rm -rf /work/target && \
+    echo "Artifacts extracted, target/ purged"
 
 # Stage 2: Runtime Environment - using Ubuntu 24.04 LTS for latest stable support
 FROM ubuntu:24.04 as runner
@@ -85,11 +97,12 @@ WORKDIR /app
 # Invalidate cache for COPY operations (depends on CACHEBUST arg)
 RUN echo "Cache bust: $CACHEBUST"
 
-# Copy the binary, hash file, site content, and config files from the builder stage
-COPY --from=builder --chown=appuser:appuser /work/target/release/server /app/blog
-COPY --from=builder --chown=appuser:appuser /work/target/release/hash.txt /app/hash.txt
-COPY --from=builder --chown=appuser:appuser /work/target/site /app/site
-COPY --from=builder --chown=appuser:appuser /work/Cargo.toml /app/Cargo.toml
+# Copy the binary, hash file, site content, and config files from the builder stage.
+# Artifacts were extracted to /artifacts/ to avoid Kaniko snapshotting the full target/ dir.
+COPY --from=builder --chown=appuser:appuser /artifacts/server /app/blog
+COPY --from=builder --chown=appuser:appuser /artifacts/hash.txt /app/hash.txt
+COPY --from=builder --chown=appuser:appuser /artifacts/site /app/site
+COPY --from=builder --chown=appuser:appuser /artifacts/Cargo.toml /app/Cargo.toml
 
 # Ensure the binary is executable and verify it exists
 RUN chmod +x /app/blog && \

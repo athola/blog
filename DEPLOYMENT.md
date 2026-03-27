@@ -7,7 +7,7 @@ This document describes deploying the blog to a DigitalOcean production environm
 -   **Application**: Rust and Leptos application on DigitalOcean App Platform.
 -   **Database**: A self-hosted SurrealDB instance on a dedicated DigitalOcean Droplet.
 -   **Domain**: `alexthola.com`, managed via NameCheap.
--   **Estimated Monthly Cost**: ~$19 ($5 app, $12 Droplet, $2.40 backups).
+-   **Estimated Monthly Cost**: ~$26 ($12 app, $12 Droplet, $2.40 backups).
 
 ## Prerequisites
 
@@ -56,10 +56,9 @@ write_files:
       Type=simple
       User=surrealdb
       Group=surrealdb
+      EnvironmentFile=/etc/surrealdb/env
       ExecStart=/root/.surrealdb/surreal start \
         --bind 0.0.0.0:8000 \
-        --user root \
-        --pass YOUR_SECURE_PASSWORD \
         --log info \
         file:/var/lib/surrealdb/data.db
       Restart=always
@@ -78,18 +77,27 @@ After Droplet creation, SSH in to complete setup.
 
 **1. Set the Database Password**
 
-Generate a secure password and update the service configuration.
+Generate a secure password and store it in a restricted environment file. Never put credentials directly in `ExecStart` — they appear in `ps aux` output.
 
 ```bash
 # Generate a password
-openssl rand -base64 32
+PASSWORD=$(openssl rand -base64 32)
 
-# Edit the service file and replace YOUR_SECURE_PASSWORD
-sudo nano /etc/systemd/system/surrealdb.service
+# Create env file with restricted permissions
+sudo mkdir -p /etc/surrealdb
+sudo tee /etc/surrealdb/env > /dev/null <<EOF
+SURREAL_PASS=$PASSWORD
+SURREAL_USER=root
+EOF
+sudo chmod 600 /etc/surrealdb/env
+sudo chown root:surrealdb /etc/surrealdb/env
 
 # Reload the service to apply changes
 sudo systemctl daemon-reload
 sudo systemctl restart surrealdb
+
+# Verify password is NOT visible in process args
+ps aux | grep surreal | grep -v grep
 ```
 
 **2. Configure the Firewall**
@@ -158,7 +166,7 @@ Once the database is running, deploy the application on the DigitalOcean App Pla
 
 -   **Name**: A descriptive name, e.g., `blog-web`.
 -   **Region**: New York (NYC3) or the same region as your database Droplet.
--   **Instance Size**: Basic, $5/month.
+-   **Instance Size**: Professional XS (~$12/month). The Professional tier is required for VPC networking to reach the SurrealDB droplet via private IP.
 -   **HTTP Port**: Set to `8080`.
 
 ### 3. Set Environment Variables
@@ -326,17 +334,19 @@ curl http://169.254.169.254/metadata/v1/id
 ### Key Learnings
 
 -   **Droplet Sizing**: The $12/month Droplet (2GB RAM) is recommended; the 1GB option can cause out-of-memory errors.
--   **Build Optimization**: The `Dockerfile` has been optimized to reduce build times on the App Platform.
+-   **Build Optimization**: The `Dockerfile` uses `CARGO_BUILD_JOBS=2` to limit parallel rustc instances and purges the `target/` directory before Kaniko's filesystem snapshot. Without this, the multi-GB build cache causes DO's builder to run out of memory.
+-   **VPC Networking**: Only source-built apps (Dockerfile on DO) get VPC access. Deploying from a pre-built DOCR image does **not** provide VPC networking, even on Professional tier.
+-   **CSS Hashing**: `hash-files = true` must be set in both Cargo.toml (runtime) and the Dockerfile build env (`LEPTOS_HASH_FILES=true`). A mismatch causes CSS 404 errors because filenames are hashed on disk but the HTML references unhashed URLs.
 -   **DNS Propagation**: DNS changes can take up to two hours to fully propagate.
 
 ### Cost and Scaling
 
-| Service                | Monthly Cost |
-| ---------------------- | ------------ |
-| App Platform (Basic)   | $5.00        |
-| SurrealDB Droplet      | $12.00       |
-| Droplet Backups        | $2.40        |
-| **Total**              | **$19.40**   |
+| Service                      | Monthly Cost |
+| ---------------------------- | ------------ |
+| App Platform (Professional)  | $12.00       |
+| SurrealDB Droplet            | $12.00       |
+| Droplet Backups              | $2.40        |
+| **Total**                    | **$26.40**   |
 
 Consider upgrading resources when:
 -   Sustained CPU usage above 70% on the app.
@@ -344,4 +354,4 @@ Consider upgrading resources when:
 -   Consistently slow database queries.
 
 ---
-*Last updated: 2025-11-06*
+*Last updated: 2026-03-27*

@@ -1,8 +1,12 @@
 # DigitalOcean App Platform configuration for alexthola.com
-name: blog
+name: alexthola-blog
 region: nyc
+features:
+  - buildpack-stack=ubuntu-22
 
-# Main application service
+# Main application service — built from Dockerfile on DO App Platform.
+# CARGO_BUILD_JOBS=2 in the Dockerfile prevents OOM during Rust compilation.
+# Source builds get VPC networking for SurrealDB private-IP access.
 services:
   - name: blog-web
     source_dir: .
@@ -19,10 +23,15 @@ services:
 
     # Runtime configuration
     instance_count: 1
-    instance_size_slug: basic-xxs
+    instance_size_slug: professional-xs
 
     # Port configuration
     http_port: 8080
+
+    # Internal port enables VPC networking so the app can reach the
+    # SurrealDB droplet via its private IP (10.116.0.0/20 VPC).
+    internal_ports:
+      - 8000
 
     # Environment variables for SurrealDB connection
     envs:
@@ -36,30 +45,23 @@ services:
         value: site
       - key: LEPTOS_HASH_FILES
         value: "true"
+      # Secrets are managed via the DO dashboard or doctl.
+      # Omitting `value` preserves existing secret values on spec updates.
       - key: SURREAL_ADDRESS
-        value: ${SURREAL_ADDRESS}
         type: SECRET
       - key: SURREAL_NS
-        value: ${SURREAL_NS}
         type: SECRET
       - key: SURREAL_DB
-        value: ${SURREAL_DB}
         type: SECRET
       - key: SURREAL_ROOT_USER
-        value: ${SURREAL_ROOT_USER}
         type: SECRET
       - key: SURREAL_ROOT_PASS
-        value: ${SURREAL_ROOT_PASS}
         type: SECRET
-      # SMTP configuration (optional - for contact form)
       - key: SMTP_HOST
-        value: ${SMTP_HOST}
         type: SECRET
       - key: SMTP_USER
-        value: ${SMTP_USER}
         type: SECRET
       - key: SMTP_PASSWORD
-        value: ${SMTP_PASSWORD}
         type: SECRET
 
     # Health check
@@ -70,6 +72,24 @@ services:
       timeout_seconds: 10
       failure_threshold: 3
       success_threshold: 1
+
+    # Per-service monitoring alerts
+    alerts:
+      - rule: CPU_UTILIZATION
+        disabled: false
+        operator: GREATER_THAN
+        value: 80
+        window: FIVE_MINUTES
+      - rule: MEM_UTILIZATION
+        disabled: false
+        operator: GREATER_THAN
+        value: 80
+        window: FIVE_MINUTES
+      - rule: RESTART_COUNT
+        disabled: false
+        operator: GREATER_THAN
+        value: 3
+        window: FIVE_MINUTES
 
 # Domain configuration
 domains:
@@ -88,24 +108,6 @@ workers: []
 
 # Jobs (migrations handled by GitHub Actions)
 jobs: []
-
-# Monitoring alerts
-alerts:
-  - rule: CPU_UTILIZATION
-    disabled: false
-    operator: GREATER_THAN
-    value: 80
-    window: FIVE_MINUTES
-  - rule: MEM_UTILIZATION
-    disabled: false
-    operator: GREATER_THAN
-    value: 80
-    window: FIVE_MINUTES
-  - rule: RESTART_COUNT
-    disabled: false
-    operator: GREATER_THAN
-    value: 3
-    window: FIVE_MINUTES
 
 # Ingress rules
 ingress:
