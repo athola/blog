@@ -7,7 +7,7 @@
 
 use axum::{
     body::Body,
-    extract::State,
+    extract::{ConnectInfo, State},
     http::{
         Request, Response, StatusCode,
         header::{HeaderName, HeaderValue},
@@ -17,7 +17,7 @@ use axum::{
 };
 use serde::Serialize;
 use std::collections::HashMap;
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -255,7 +255,7 @@ pub async fn security_headers_with_config(
     // Production: 1 year with includeSubDomains for maximum security.
     // Development: 1 day without includeSubDomains to avoid HSTS issues during testing.
     let hsts = if config.is_production {
-        "max-age=31536000; includeSubDomains"
+        "max-age=31536000; includeSubDomains; preload"
     } else {
         "max-age=86400"
     };
@@ -271,7 +271,8 @@ pub async fn security_headers_with_config(
         // Production CSP: No unsafe-eval, strict sources.
         [
             "default-src 'self'",
-            "script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline'", // unsafe-inline for Leptos hydration
+            // TODO: remove 'unsafe-inline' once CSP nonces are added to the Leptos shell script tags
+            "script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline'",
             "style-src 'self' 'unsafe-inline'", // Required for Leptos inline styles
             "img-src 'self' data: https:",
             "font-src 'self' data:",
@@ -402,6 +403,9 @@ impl RateLimiter {
     ///
     /// # Returns
     /// `true` if the request is allowed, `false` if it exceeds the rate limit.
+    /// Maximum number of tracked IP entries before eviction.
+    const MAX_TRACKED_IPS: usize = 10_000;
+
     async fn check_rate_limit(&self, ip: &str) -> bool {
         let mut requests = self.requests.lock().await;
         let now = Instant::now();
@@ -423,16 +427,30 @@ impl RateLimiter {
                 .entry(ip.to_string())
                 .or_insert_with(Vec::new)
                 .push(now);
-            return true;
+        } else if ip_requests.len() < self.max_requests {
+            // If the number of requests is within the limit, record the current request.
+            ip_requests.push(now);
+        } else {
+            return false;
         }
 
-        // If the number of requests is within the limit, record the current request.
-        if ip_requests.len() < self.max_requests {
-            ip_requests.push(now);
-            true
-        } else {
-            false
+        // Evict oldest entries when the map exceeds the maximum size.
+        if requests.len() > Self::MAX_TRACKED_IPS {
+            let mut entries: Vec<(String, Instant)> = requests
+                .iter()
+                .map(|(k, v)| {
+                    let oldest = v.iter().copied().min().unwrap_or(now);
+                    (k.clone(), oldest)
+                })
+                .collect();
+            entries.sort_by_key(|(_k, t)| *t);
+            let to_remove = requests.len() - Self::MAX_TRACKED_IPS;
+            for (key, _) in entries.into_iter().take(to_remove) {
+                requests.remove(&key);
+            }
         }
+
+        true
     }
 
     /// Axum middleware function that applies the rate limiting logic.
@@ -450,23 +468,51 @@ impl RateLimiter {
         req: Request<Body>,
         next: Next,
     ) -> Result<Response<Body>, StatusCode> {
-        // Extract and validate client IP address, preferring `X-Forwarded-For` for proxy compatibility.
-        let ip = req
-            .headers()
-            .get("x-forwarded-for")
-            .and_then(|h| h.to_str().ok())
-            .and_then(|s| s.split(',').next())
-            .map(|s| s.trim())
-            .and_then(|s| {
-                // Validate that the header value is actually an IP address.
-                // This prevents header injection and log pollution.
-                if IpAddr::from_str(s).is_ok() {
-                    Some(s.to_string())
-                } else {
-                    None
-                }
-            })
-            .unwrap_or_else(|| "unknown".to_string());
+        // Use the peer address from ConnectInfo when available, only trusting
+        // X-Forwarded-For if the direct peer is a known proxy (loopback or
+        // DigitalOcean App Platform internal 10.x range).
+        let peer_ip = req
+            .extensions()
+            .get::<ConnectInfo<SocketAddr>>()
+            .map(|ci| ci.0.ip());
+
+        let ip = if let Some(peer) = peer_ip {
+            let is_trusted_proxy = peer.is_loopback()
+                || matches!(peer, IpAddr::V4(v4) if v4.octets()[0] == 10);
+
+            if is_trusted_proxy {
+                req.headers()
+                    .get("x-forwarded-for")
+                    .and_then(|h| h.to_str().ok())
+                    .and_then(|s| s.split(',').next())
+                    .map(|s| s.trim())
+                    .and_then(|s| {
+                        if IpAddr::from_str(s).is_ok() {
+                            Some(s.to_string())
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or_else(|| peer.to_string())
+            } else {
+                peer.to_string()
+            }
+        } else {
+            // Fallback when ConnectInfo is not available (e.g., in tests).
+            req.headers()
+                .get("x-forwarded-for")
+                .and_then(|h| h.to_str().ok())
+                .and_then(|s| s.split(',').next())
+                .map(|s| s.trim())
+                .and_then(|s| {
+                    if IpAddr::from_str(s).is_ok() {
+                        Some(s.to_string())
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or_else(|| "unknown".to_string())
+        };
 
         // Check the rate limit for the extracted IP.
         if !self.check_rate_limit(&ip).await {

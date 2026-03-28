@@ -133,6 +133,10 @@ pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
 
     let username = env::var("SURREAL_ROOT_USER").unwrap_or_default();
     let password = env::var("SURREAL_ROOT_PASS").unwrap_or_default();
+
+    if username.is_empty() && password.is_empty() {
+        warn!("SURREAL_ROOT_USER and SURREAL_ROOT_PASS are both unset; using unauthenticated root access");
+    }
     let namespace_username = env::var("SURREAL_NAMESPACE_USER")
         .ok()
         .filter(|s| !s.is_empty());
@@ -464,6 +468,22 @@ pub async fn generate_rss(db: &Surreal<Client>) -> Result<String, ServerFnError>
 /// # Returns
 ///
 /// An `Axum` `Response<String>` with the sitemap XML content or an error message.
+/// Escapes special XML characters in a string to prevent XML injection.
+fn escape_xml(input: &str) -> String {
+    let mut output = String::with_capacity(input.len());
+    for ch in input.chars() {
+        match ch {
+            '&' => output.push_str("&amp;"),
+            '<' => output.push_str("&lt;"),
+            '>' => output.push_str("&gt;"),
+            '"' => output.push_str("&quot;"),
+            '\'' => output.push_str("&apos;"),
+            _ => output.push(ch),
+        }
+    }
+    output
+}
+
 pub async fn sitemap_handler(State(state): State<AppState>) -> Response<String> {
     /// Internal struct for deserializing post data relevant to the sitemap.
     #[derive(Serialize, Deserialize)]
@@ -564,8 +584,11 @@ pub async fn sitemap_handler(State(state): State<AppState>) -> Response<String> 
             continue;
         };
 
+        let escaped_slug = escape_xml(slug);
+        let escaped_date = escape_xml(&post.created_at);
         sitemap.push_str("<url>\n");
-        if let Err(err) = writeln!(sitemap, "<loc>https://alexthola.com/post/{slug}</loc>") {
+        if let Err(err) = writeln!(sitemap, "<loc>https://alexthola.com/post/{escaped_slug}</loc>")
+        {
             error!(?err, slug, "Failed to write sitemap dynamic URL");
             return build_response(
                 "Failed to build sitemap".to_string(),
@@ -575,7 +598,7 @@ pub async fn sitemap_handler(State(state): State<AppState>) -> Response<String> 
         }
         sitemap.push_str("<changefreq>monthly</changefreq>\n");
         sitemap.push_str("<priority>1.0</priority>\n");
-        if let Err(err) = writeln!(sitemap, "<lastmod>{}</lastmod>", post.created_at) {
+        if let Err(err) = writeln!(sitemap, "<lastmod>{escaped_date}</lastmod>") {
             error!(?err, slug, "Failed to write sitemap last modified date");
             return build_response(
                 "Failed to build sitemap".to_string(),

@@ -405,6 +405,11 @@ pub async fn contact(data: ContactRequest) -> Result<(), ServerFnError> {
     }
 
     let sanitized_subject = sanitize_html(data.subject.trim());
+    if sanitized_subject.is_empty() {
+        return Err(ServerFnError::<NoCustomError>::ServerError(
+            "Subject cannot be empty".to_string(),
+        ));
+    }
     if sanitized_subject.len() > 200 {
         return Err(ServerFnError::<NoCustomError>::ServerError(
             "Subject too long (max 200 characters)".to_string(),
@@ -520,9 +525,20 @@ pub struct Pagination {
 /// A `Result` indicating success (`()`) or a `ServerFnError` on failure
 /// (e.g., database error, serialization failure).
 #[server(prefix = "/api/activities", endpoint = "create")]
-pub async fn create_activity(activity: crate::types::Activity) -> Result<(), ServerFnError> {
+pub async fn create_activity(
+    api_key: String,
+    activity: crate::types::Activity,
+) -> Result<(), ServerFnError> {
     use crate::types::AppState;
     use leptos::prelude::expect_context;
+
+    // Verify the caller-supplied API key against the server-side secret.
+    let expected_key = std::env::var("ACTIVITY_API_KEY").unwrap_or_default();
+    if expected_key.is_empty() || api_key != expected_key {
+        return Err(ServerFnError::<NoCustomError>::ServerError(
+            "Forbidden: invalid or missing API key".to_string(),
+        ));
+    }
 
     let AppState { db, .. } = expect_context::<AppState>();
     let db = db.as_ref();
@@ -726,7 +742,7 @@ mod tests {
         let _: fn(String) -> _ = increment_views;
         let _: fn(ContactRequest) -> _ = contact;
         let _: fn() -> _ = select_references;
-        let _: fn(Activity) -> _ = create_activity;
+        let _: fn(String, Activity) -> _ = create_activity;
         let _: fn(usize) -> _ = select_activities;
     }
     #[test]
@@ -768,7 +784,7 @@ mod tests {
     /// Tests the `create_activity` function's existence and serialization capabilities.
     fn test_create_activity_basics() {
         block_on(async {
-            let _: fn(Activity) -> _ = create_activity; // Check signature
+            let _: fn(String, Activity) -> _ = create_activity; // Check signature
 
             let activity = Activity {
                 content: "Test activity content".to_string(),
@@ -857,7 +873,7 @@ mod tests {
     #[test]
     /// Verifies the integrity of activity server function signatures.
     fn test_activity_endpoint_signatures() {
-        let _: fn(Activity) -> _ = create_activity;
+        let _: fn(String, Activity) -> _ = create_activity;
         let _: fn(usize) -> _ = select_activities;
     }
     #[test]
@@ -879,7 +895,7 @@ mod tests {
     /// Confirms activity server functions are registered and have expected signatures.
     fn test_activity_server_fn_registration() {
         block_on(async {
-            let _: fn(Activity) -> _ = create_activity;
+            let _: fn(String, Activity) -> _ = create_activity;
         });
     }
     #[test]

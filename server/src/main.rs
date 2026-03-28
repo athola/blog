@@ -77,8 +77,7 @@ async fn health_handler() -> Result<Json<serde_json::Value>, StatusCode> {
     Ok(Json(json!({
         "status": "healthy",
         "timestamp": chrono::Utc::now().to_rfc3339(),
-        "service": "blog-api",
-        "version": env!("CARGO_PKG_VERSION")
+        "service": "blog-api"
     })))
 }
 
@@ -379,7 +378,9 @@ async fn main() {
 
     logging::log!("Listening on http://{}", &addr);
 
-    let serve_result = axum::serve(listener, bootstrap_app.into_make_service()).await;
+    let serve_result =
+        axum::serve(listener, bootstrap_app.into_make_service_with_connect_info::<SocketAddr>())
+            .await;
     match serve_result {
         Ok(_) => {
             logging::log!("Server shutdown gracefully");
