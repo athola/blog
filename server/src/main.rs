@@ -378,9 +378,11 @@ async fn main() {
 
     logging::log!("Listening on http://{}", &addr);
 
-    let serve_result =
-        axum::serve(listener, bootstrap_app.into_make_service_with_connect_info::<SocketAddr>())
-            .await;
+    let serve_result = axum::serve(
+        listener,
+        bootstrap_app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await;
     match serve_result {
         Ok(_) => {
             logging::log!("Server shutdown gracefully");

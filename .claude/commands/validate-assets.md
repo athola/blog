@@ -5,15 +5,20 @@ description: Verify CSS/JS/WASM asset hashing and serving on the deployed site
 
 Validate that static assets are correctly hashed and served on the deployed blog.
 
+First, resolve the app URL:
+```bash
+APP_URL=$(doctl apps list --format DefaultIngress,Spec.Name --no-header | grep alexthola-blog | awk '{print $1}')
+```
+
 1. Fetch the homepage HTML and extract CSS/JS/WASM links:
 ```bash
-curl -s "https://alexthola-blog-4hz6l.ondigitalocean.app/" 2>&1 | grep -oP 'href="[^"]*\.(css|js|wasm)[^"]*"'
+curl -s "$APP_URL/" 2>&1 | grep -oP 'href="[^"]*\.(css|js|wasm)[^"]*"'
 ```
 
 2. For each asset URL found, check the HTTP status and Content-Type:
 ```bash
 # Example for CSS
-curl -sI "https://alexthola-blog-4hz6l.ondigitalocean.app/pkg/blog.HASH.css" | head -5
+curl -sI "$APP_URL/pkg/blog.HASH.css" | head -5
 ```
 
 3. Check the local hash.txt to compare:

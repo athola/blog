@@ -477,8 +477,8 @@ impl RateLimiter {
             .map(|ci| ci.0.ip());
 
         let ip = if let Some(peer) = peer_ip {
-            let is_trusted_proxy = peer.is_loopback()
-                || matches!(peer, IpAddr::V4(v4) if v4.octets()[0] == 10);
+            let is_trusted_proxy =
+                peer.is_loopback() || matches!(peer, IpAddr::V4(v4) if v4.octets()[0] == 10);
 
             if is_trusted_proxy {
                 req.headers()

@@ -39,7 +39,8 @@ If SSH access is available, check:
 
 ### 5. Security headers on the live site
 ```bash
-curl -sI "https://alexthola-blog-4hz6l.ondigitalocean.app/" | grep -iE "strict-transport|x-content-type|x-frame|content-security|referrer-policy"
+APP_URL=$(doctl apps list --format DefaultIngress,Spec.Name --no-header | grep alexthola-blog | awk '{print $1}')
+curl -sI "$APP_URL/" | grep -iE "strict-transport|x-content-type|x-frame|content-security|referrer-policy"
 ```
 
 Report findings with severity levels: CRITICAL, HIGH, MEDIUM, LOW.

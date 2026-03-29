@@ -191,13 +191,19 @@ jobs:
         set -euo pipefail
         echo "Starting health checks..."
 
+        APP_URL=$(doctl apps list --format DefaultIngress,Spec.Name --no-header | awk -v name="$DO_APP_NAME" '$2 == name {print $1}')
+        if [ -z "$APP_URL" ]; then
+          echo "Could not resolve app URL for '$DO_APP_NAME'"
+          exit 1
+        fi
+
         max_attempts=10
         attempt=1
 
         while (( attempt <= max_attempts )); do
           echo "Health check attempt $attempt of $max_attempts"
 
-          for endpoint in "https://alexthola.com/health" "https://alexthola-blog-4hz6l.ondigitalocean.app/health"; do
+          for endpoint in "https://alexthola.com/health" "${APP_URL}/health"; do
             if timeout 15 curl -f -s --max-time 10 "$endpoint" > /dev/null 2>&1; then
               echo "Application is healthy at $endpoint"
               timeout 10 curl -s "$endpoint" | jq '.' 2>/dev/null || timeout 10 curl -s "$endpoint"

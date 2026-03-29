@@ -135,7 +135,26 @@ pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
     let password = env::var("SURREAL_ROOT_PASS").unwrap_or_default();
 
     if username.is_empty() && password.is_empty() {
-        warn!("SURREAL_ROOT_USER and SURREAL_ROOT_PASS are both unset; using unauthenticated root access");
+        let allow_anonymous = env::var("SURREAL_ALLOW_ANONYMOUS")
+            .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+            .unwrap_or(false);
+        let is_production = env::var("LEPTOS_SITE_ADDR")
+            .map(|addr| addr.starts_with("0.0.0.0"))
+            .unwrap_or(false);
+
+        if allow_anonymous {
+            warn!(
+                "SURREAL_ROOT_USER and SURREAL_ROOT_PASS are both unset; SURREAL_ALLOW_ANONYMOUS is set, proceeding without authentication"
+            );
+        } else if is_production {
+            return Err(surrealdb::Error::Api(surrealdb::error::Api::InvalidParams(
+                "SURREAL_ROOT_USER and SURREAL_ROOT_PASS are required in production. Set SURREAL_ALLOW_ANONYMOUS=true to override.".into(),
+            )));
+        } else {
+            warn!(
+                "SURREAL_ROOT_USER and SURREAL_ROOT_PASS are both unset; using unauthenticated access (set credentials for production)"
+            );
+        }
     }
     let namespace_username = env::var("SURREAL_NAMESPACE_USER")
         .ok()
@@ -587,8 +606,10 @@ pub async fn sitemap_handler(State(state): State<AppState>) -> Response<String> 
         let escaped_slug = escape_xml(slug);
         let escaped_date = escape_xml(&post.created_at);
         sitemap.push_str("<url>\n");
-        if let Err(err) = writeln!(sitemap, "<loc>https://alexthola.com/post/{escaped_slug}</loc>")
-        {
+        if let Err(err) = writeln!(
+            sitemap,
+            "<loc>https://alexthola.com/post/{escaped_slug}</loc>"
+        ) {
             error!(?err, slug, "Failed to write sitemap dynamic URL");
             return build_response(
                 "Failed to build sitemap".to_string(),
