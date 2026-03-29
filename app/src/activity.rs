@@ -74,9 +74,10 @@ pub fn component() -> impl IntoView {
     };
 
     // Register the server action so it is available in the Leptos runtime, even if unused here.
-    let _create_activity_action = Action::new(move |activity: &Activity| {
+    let _create_activity_action = Action::new(move |(api_key, activity): &(String, Activity)| {
+        let api_key = api_key.clone();
         let activity = activity.clone();
-        async move { create_activity(activity).await }
+        async move { create_activity(api_key, activity).await }
     });
 
     view! {

@@ -143,7 +143,7 @@ checksum = "a23eb6b1614318a8071c9b2521f36b424b2c83db5eb3a0fead4a6c0809af6e61"
 
 [[package]]
 name = "app"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "assert_matches",
  "axum",
@@ -674,7 +674,7 @@ dependencies = [
 
 [[package]]
 name = "blog-workspace"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "app",
  "chrono",
@@ -1768,7 +1768,7 @@ checksum = "28dd6caf6059519a65843af8fe2a3ae298b14b80179855aeb4adc2c1934ee619"
 
 [[package]]
 name = "frontend"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "app",
  "console_error_panic_hook",
@@ -3273,7 +3273,7 @@ checksum = "3e2e65a1a2e43cfcb47a895c4c8b10d1f4a61097f9f254f183aee60cad9c651d"
 
 [[package]]
 name = "markdown"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "katex",
  "leptos",
@@ -5115,7 +5115,7 @@ dependencies = [
 
 [[package]]
 name = "server"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "app",
  "assert_matches",
@@ -5242,7 +5242,7 @@ dependencies = [
 
 [[package]]
 name = "shared_utils"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "tokio-retry",
  "tokio-test",
