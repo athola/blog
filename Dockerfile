@@ -85,8 +85,11 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Install runtime dependencies and create app user
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    autossh \
     ca-certificates \
+    curl \
     file \
+    openssh-client \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd -r appuser && useradd -r -g appuser appuser
 
@@ -108,6 +111,12 @@ RUN chmod +x /app/blog && \
     echo "Verifying /app/blog exists in runner stage:" && \
     ls -la /app/blog && \
     file /app/blog
+
+# Copy tunnel wrapper script
+COPY --chmod=755 scripts/tunnel.sh /app/tunnel.sh
+
+# Create secrets directory for SSH tunnel key (mounted by App Platform)
+RUN mkdir -p /app/secrets && chown appuser:appuser /app/secrets
 
 # Create an empty .env to avoid noisy "No .env file found" logs in hosted deployments.
 RUN touch /app/.env && chown appuser:appuser /app/.env
@@ -132,5 +141,5 @@ ENV PORT="8080"
 # Expose port (DigitalOcean App Platform uses 8080)
 EXPOSE 8080
 
-# Run the application (absolute path for DigitalOcean compatibility)
-CMD ["/app/blog"]
+# Run the tunnel wrapper which starts SSH tunnel then the application
+CMD ["/app/tunnel.sh"]
