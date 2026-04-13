@@ -113,7 +113,8 @@ RUN chmod +x /app/blog && \
     file /app/blog
 
 # Copy tunnel wrapper script
-COPY --chmod=755 scripts/tunnel.sh /app/tunnel.sh
+COPY scripts/tunnel.sh /app/tunnel.sh
+RUN chmod 755 /app/tunnel.sh
 
 # Create secrets directory for SSH tunnel key (mounted by App Platform)
 RUN mkdir -p /app/secrets && chown appuser:appuser /app/secrets
