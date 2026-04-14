@@ -78,7 +78,7 @@ RUN mkdir -p /artifacts && \
 FROM ubuntu:24.04 as runner
 
 # Cache-busting argument - increment to force rebuild of runner stage
-ARG CACHEBUST=3
+ARG CACHEBUST=4
 
 # Set shell options for proper pipe error handling
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]

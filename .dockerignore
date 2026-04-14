@@ -8,5 +8,6 @@ README.md
 .env*
 .github/
 scripts/
+!scripts/tunnel.sh
 .DS_Store
 Thumbs.db
