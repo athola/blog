@@ -19,17 +19,30 @@ if [ -z "$TUNNEL_HOST" ]; then
 fi
 
 # Write SSH key from environment to file
-if [ -n "${TUNNEL_KEY_SECRET:-}" ]; then
+# Supports both base64-encoded (TUNNEL_KEY_B64) and raw (TUNNEL_KEY_SECRET) formats.
+# DO App Platform may strip newlines from env vars, so base64 is preferred.
+if [ -n "${TUNNEL_KEY_B64:-}" ]; then
     mkdir -p /app/secrets
-    # Use printf to avoid shell interpretation of key content
+    echo "$TUNNEL_KEY_B64" | base64 -d > "$TUNNEL_KEY"
+    chmod 600 "$TUNNEL_KEY"
+    unset TUNNEL_KEY_B64
+    echo "SSH key decoded from base64 to $TUNNEL_KEY"
+elif [ -n "${TUNNEL_KEY_SECRET:-}" ]; then
+    mkdir -p /app/secrets
+    # Use printf to write key content; trailing newline added explicitly
     printf '%s\n' "$TUNNEL_KEY_SECRET" > "$TUNNEL_KEY"
     chmod 600 "$TUNNEL_KEY"
     unset TUNNEL_KEY_SECRET
     echo "SSH key written to $TUNNEL_KEY"
 else
-    echo "ERROR: TUNNEL_KEY_SECRET not set"
+    echo "ERROR: No TUNNEL_KEY_B64 or TUNNEL_KEY_SECRET set"
     exec /app/blog
 fi
+
+# Debug: verify key is valid
+key_lines=$(wc -l < "$TUNNEL_KEY")
+echo "Key file has $key_lines lines"
+head -1 "$TUNNEL_KEY"
 
 # Create SSH directory for appuser
 mkdir -p ~/.ssh 2>/dev/null || true
@@ -40,6 +53,7 @@ echo "Starting SSH tunnel: localhost:${LOCAL_PORT} -> ${TUNNEL_HOST}:${REMOTE_PO
 # AUTOSSH_GATETIME=0: don't wait before first connection (required for non-interactive)
 export AUTOSSH_GATETIME=0
 autossh -f -N \
+    -v \
     -i "$TUNNEL_KEY" \
     -L "${LOCAL_PORT}:localhost:${REMOTE_PORT}" \
     -p "$TUNNEL_PORT" \
