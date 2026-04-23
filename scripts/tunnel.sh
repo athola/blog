@@ -49,8 +49,29 @@ mkdir -p ~/.ssh 2>/dev/null || true
 
 echo "Starting SSH tunnel: localhost:${LOCAL_PORT} -> ${TUNNEL_HOST}:${REMOTE_PORT}"
 
-# Start autossh with persistent SSH tunnel
-# AUTOSSH_GATETIME=0: don't wait before first connection (required for non-interactive)
+# --- Preflight: synchronous ssh with verbose output so we can see WHY if it fails.
+# autossh -f would background before any verbose SSH output reaches stdout,
+# hiding the actual failure reason in DO logs.
+echo "=== SSH PREFLIGHT BEGIN ==="
+ssh -vv -n -T \
+    -i "$TUNNEL_KEY" \
+    -p "$TUNNEL_PORT" \
+    -o StrictHostKeyChecking=no \
+    -o UserKnownHostsFile=/dev/null \
+    -o BatchMode=yes \
+    -o ConnectTimeout=10 \
+    "${TUNNEL_USER}@${TUNNEL_HOST}" \
+    "echo PREFLIGHT_OK; hostname; ss -ltn | grep ':${REMOTE_PORT} ' || echo 'no_listener_on_${REMOTE_PORT}'" 2>&1 \
+    | sed 's/^/[preflight] /'
+preflight_exit=${PIPESTATUS[0]}
+echo "=== SSH PREFLIGHT END (exit=${preflight_exit}) ==="
+
+if [ "$preflight_exit" -ne 0 ]; then
+    echo "ERROR: SSH preflight failed. Starting app without tunnel (will retry connect to SurrealDB, expect HTTP 504)."
+    exec /app/blog
+fi
+
+# Preflight succeeded -> real tunnel via autossh.
 export AUTOSSH_GATETIME=0
 autossh -f -N \
     -v \
