@@ -14,8 +14,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install cargo-leptos and wasm-bindgen-cli (pinned versions for reproducible builds)
-RUN cargo install cargo-leptos --version 0.3.2 && \
-    cargo install wasm-bindgen-cli --version 0.2.114 && \
+# --locked uses each crate's bundled Cargo.lock so yanked transitive deps (e.g. core2 0.4.0) don't break the install.
+RUN cargo install --locked cargo-leptos --version 0.3.2 && \
+    cargo install --locked wasm-bindgen-cli --version 0.2.114 && \
     rustup target add wasm32-unknown-unknown
 
 # Create app user for security
@@ -78,15 +79,18 @@ RUN mkdir -p /artifacts && \
 FROM ubuntu:24.04 as runner
 
 # Cache-busting argument - increment to force rebuild of runner stage
-ARG CACHEBUST=3
+ARG CACHEBUST=4
 
 # Set shell options for proper pipe error handling
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Install runtime dependencies and create app user
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    autossh \
     ca-certificates \
+    curl \
     file \
+    openssh-client \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd -r appuser && useradd -r -g appuser appuser
 
@@ -108,6 +112,13 @@ RUN chmod +x /app/blog && \
     echo "Verifying /app/blog exists in runner stage:" && \
     ls -la /app/blog && \
     file /app/blog
+
+# Copy tunnel wrapper script
+COPY scripts/tunnel.sh /app/tunnel.sh
+RUN chmod 755 /app/tunnel.sh
+
+# Create secrets directory for SSH tunnel key (mounted by App Platform)
+RUN mkdir -p /app/secrets && chown appuser:appuser /app/secrets
 
 # Create an empty .env to avoid noisy "No .env file found" logs in hosted deployments.
 RUN touch /app/.env && chown appuser:appuser /app/.env
@@ -132,5 +143,5 @@ ENV PORT="8080"
 # Expose port (DigitalOcean App Platform uses 8080)
 EXPOSE 8080
 
-# Run the application (absolute path for DigitalOcean compatibility)
-CMD ["/app/blog"]
+# Run the tunnel wrapper which starts SSH tunnel then the application
+CMD ["/app/tunnel.sh"]

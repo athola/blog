@@ -113,3 +113,6 @@ COMMIT_EDITMSG
 
 # Doc review skill
 writing-clearly-and-concisely/
+
+# Claude Code session state (local scratch, may contain secrets)
+.claude/
