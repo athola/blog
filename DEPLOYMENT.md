@@ -102,24 +102,72 @@ ps aux | grep surreal | grep -v grep
 
 **2. Configure the Firewall**
 
-To secure the database, restrict access to the App Platform's private VPC network.
-
-First, get your app's VPC IP range from the DigitalOcean dashboard under **Your App -> Settings -> VPC Network**.
-
-Then, configure the firewall on the Droplet:
+Restrict SurrealDB (port 8000) to the local VPC only. App Platform reaches the database through Caddy (see "Part 1b"), so port 8000 stays private.
 
 ```bash
-# Allow SSH access
-sudo ufw allow ssh
+# Allow SSH from your trusted source IPs only (not Anywhere)
+sudo ufw allow from YOUR_ADMIN_IP to any port 22
 
-# Allow database access ONLY from your app's VPC
-sudo ufw allow from <YOUR_APP_VPC_RANGE> to any port 8000
+# Allow SurrealDB on port 8000 from the droplet's VPC CIDR only
+# Get the VPC CIDR: doctl vpcs get <vpc-uuid>
+sudo ufw allow from 10.X.X.0/20 to any port 8000
+
+# Allow Caddy's ACME HTTP-01 challenge and HTTPS listener (configured in Part 1b)
+sudo ufw allow 80/tcp comment 'Caddy ACME'
+sudo ufw allow 8443/tcp comment 'Caddy HTTPS for SurrealDB proxy'
 
 # Enable the firewall
 sudo ufw enable
 ```
 
 The database setup is now complete.
+
+## Part 1b: TLS Reverse Proxy (Caddy)
+
+DigitalOcean App Platform containers block outbound connections on port 22, and App Platform instances don't join custom VPCs. The blog reaches SurrealDB through a Caddy reverse proxy terminating TLS on the droplet.
+
+### 1. Add DNS record
+
+Point a subdomain (e.g. `db.alexthola.com`) at the droplet's public IP:
+
+```bash
+doctl compute domain records create alexthola.com \
+  --record-type A --record-name db \
+  --record-data YOUR_DROPLET_PUBLIC_IP --record-ttl 300
+```
+
+### 2. Install Caddy
+
+```bash
+apt-get install -y debian-keyring debian-archive-keyring apt-transport-https
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+  | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+  > /etc/apt/sources.list.d/caddy-stable.list
+apt-get update && apt-get install -y caddy
+```
+
+### 3. Write `/etc/caddy/Caddyfile`
+
+```caddy
+{
+  email YOUR_EMAIL_FOR_ACME
+}
+
+db.YOUR_DOMAIN:8443 {
+  reverse_proxy http://127.0.0.1:8000
+}
+```
+
+### 4. Start and verify
+
+```bash
+systemctl enable --now caddy
+# From outside:
+curl https://db.YOUR_DOMAIN:8443/health   # expect HTTP 200
+```
+
+Let's Encrypt issues the certificate via HTTP-01 on port 80 (opened in step 2 of Part 1). Caddy renews automatically.
 
 ### Manual Database Setup (Alternative)
 
@@ -165,8 +213,8 @@ Once the database is running, deploy the application on the DigitalOcean App Pla
 ### 2. Configure the App
 
 -   **Name**: A descriptive name, e.g., `blog-web`.
--   **Region**: New York (NYC3) or the same region as your database Droplet.
--   **Instance Size**: Professional XS (~$12/month). The Professional tier is required for VPC networking to reach the SurrealDB droplet via private IP.
+-   **Region**: Match the database droplet's region.
+-   **Instance Size**: Basic is sufficient. No Professional-tier upgrade is needed since the app reaches SurrealDB over public HTTPS (via Caddy), not VPC private networking.
 -   **HTTP Port**: Set to `8080`.
 
 ### 3. Set Environment Variables
@@ -178,7 +226,7 @@ RUST_LOG=info
 LEPTOS_SITE_ADDR=0.0.0.0:8080
 LEPTOS_SITE_ROOT=site
 LEPTOS_HASH_FILES=true
-SURREAL_ADDRESS=http://YOUR_DROPLET_PRIVATE_IP:8000
+SURREAL_ADDRESS=https://db.YOUR_DOMAIN:8443
 SURREAL_NS=production
 SURREAL_DB=alexthola_blog
 SURREAL_ROOT_USER=root
@@ -186,9 +234,9 @@ SURREAL_ROOT_PASS=YOUR_SECURE_PASSWORD
 ```
 
 **Notes**:
-- Use the Droplet's **private IP** for `SURREAL_ADDRESS` to ensure traffic stays within the VPC.
-- Mark `SURREAL_ROOT_PASS` as encrypted.
-- Use `SURREAL_ROOT_USER`/`SURREAL_ROOT_PASS` for root-level authentication (recommended for simple setups). See `.env.example` for alternative authentication options.
+- `SURREAL_ADDRESS` points at the Caddy reverse proxy set up in Part 1b. TLS is terminated on the droplet; SurrealDB auth (`SURREAL_ROOT_USER`/`SURREAL_ROOT_PASS`) gates access.
+- Mark `SURREAL_ROOT_PASS`, `SURREAL_NS`, `SURREAL_DB`, and `SURREAL_ROOT_USER` as encrypted (`type: SECRET`) in the App spec.
+- Prior versions of this guide used an SSH tunnel or a private-IP direct connection; both have been retired. The tunnel scripts (`scripts/tunnel.sh`) remain in the repo as a no-op fallback when `TUNNEL_HOST` is unset.
 
 ### 4. Deploy
 
@@ -208,17 +256,17 @@ The final step is to apply the database schema.
 
 ```bash
 # Set environment variables locally
-export SURREAL_ADDRESS="http://YOUR_DROPLET_PUBLIC_IP:8000"
+export SURREAL_ADDRESS="https://db.YOUR_DOMAIN:8443"
 export SURREAL_NS="production"
 export SURREAL_DB="alexthola_blog"
 export SURREAL_ROOT_USER="root"
 export SURREAL_ROOT_PASS="YOUR_SECURE_PASSWORD"
 
-# Connect to the database and import the schema
+# Connect through the Caddy proxy and import the schema
 surreal sql --conn $SURREAL_ADDRESS --user $SURREAL_ROOT_USER --pass $SURREAL_ROOT_PASS --ns $SURREAL_NS --db $SURREAL_DB < migrations/schema.surql
 ```
 
-**Note**: For this one-time setup, you can temporarily open the firewall to your local IP or run this command from a trusted server. Remember to close the firewall rule afterward.
+**Note**: Port 8000 on the droplet is VPC-only, so direct `http://PUBLIC_IP:8000` connections are blocked by UFW. Route all admin traffic through the public Caddy endpoint (`db.YOUR_DOMAIN:8443`) or SSH into the droplet and run `surreal sql` locally against `http://localhost:8000`.
 
 ## Troubleshooting Guide
 
