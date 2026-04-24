@@ -49,25 +49,49 @@ mkdir -p ~/.ssh 2>/dev/null || true
 
 echo "Starting SSH tunnel: localhost:${LOCAL_PORT} -> ${TUNNEL_HOST}:${REMOTE_PORT}"
 
-# --- Preflight: synchronous ssh with verbose output so we can see WHY if it fails.
-# autossh -f would background before any verbose SSH output reaches stdout,
-# hiding the actual failure reason in DO logs.
+# --- Preflight: test the port-forward directly (no remote command exec).
+# This is compatible with keys restricted by `command="/usr/sbin/nologin"` +
+# `permitopen="localhost:${REMOTE_PORT}"` (i.e. port-forward-only keys),
+# which is the hardened posture we want. We open a short-lived forward on
+# a scratch local port and probe SurrealDB /health through it.
+PREFLIGHT_LOCAL=9001
+PREFLIGHT_LOG=/tmp/preflight-ssh.log
 echo "=== SSH PREFLIGHT BEGIN ==="
-ssh -vv -n -T \
+ssh -v -N -n \
     -i "$TUNNEL_KEY" \
     -p "$TUNNEL_PORT" \
+    -L "${PREFLIGHT_LOCAL}:localhost:${REMOTE_PORT}" \
     -o StrictHostKeyChecking=no \
     -o UserKnownHostsFile=/dev/null \
     -o BatchMode=yes \
     -o ConnectTimeout=10 \
-    "${TUNNEL_USER}@${TUNNEL_HOST}" \
-    "echo PREFLIGHT_OK; hostname; ss -ltn | grep ':${REMOTE_PORT} ' || echo 'no_listener_on_${REMOTE_PORT}'" 2>&1 \
-    | sed 's/^/[preflight] /'
-preflight_exit=${PIPESTATUS[0]}
-echo "=== SSH PREFLIGHT END (exit=${preflight_exit}) ==="
+    -o ExitOnForwardFailure=yes \
+    "${TUNNEL_USER}@${TUNNEL_HOST}" > "$PREFLIGHT_LOG" 2>&1 &
+preflight_pid=$!
 
-if [ "$preflight_exit" -ne 0 ]; then
-    echo "ERROR: SSH preflight failed. Starting app without tunnel (will retry connect to SurrealDB, expect HTTP 504)."
+preflight_ok=0
+for i in 1 2 3 4 5 6 7 8 9 10; do
+    sleep 1
+    if curl -sf --max-time 2 "http://localhost:${PREFLIGHT_LOCAL}/health" > /dev/null 2>&1; then
+        preflight_ok=1
+        echo "[preflight] port-forward to SurrealDB verified after ${i}s"
+        break
+    fi
+    if ! kill -0 "$preflight_pid" 2>/dev/null; then
+        echo "[preflight] ssh process exited early after ${i}s"
+        break
+    fi
+done
+
+# Tear down preflight ssh; the real tunnel runs via autossh below.
+kill "$preflight_pid" 2>/dev/null || true
+wait "$preflight_pid" 2>/dev/null || true
+
+sed 's/^/[preflight] /' "$PREFLIGHT_LOG" 2>/dev/null | tail -20
+echo "=== SSH PREFLIGHT END (ok=${preflight_ok}) ==="
+
+if [ "$preflight_ok" -ne 1 ]; then
+    echo "ERROR: SSH preflight port-forward failed. Starting app without tunnel (expect HTTP 504 until next deploy)."
     exec /app/blog
 fi
 
