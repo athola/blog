@@ -3,7 +3,6 @@
 [![Build](https://github.com/athola/blog/actions/workflows/rust.yml/badge.svg)](https://github.com/athola/blog/actions/workflows/rust.yml)
 [![Secrets Scan](https://github.com/athola/blog/actions/workflows/secrets-scan.yml/badge.svg)](https://github.com/athola/blog/actions/workflows/secrets-scan.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
-[![Rust edition](https://img.shields.io/badge/edition-2021-orange.svg)](Cargo.toml)
 
 **A full-stack Rust blog engine built with Leptos and Axum.** This
 project powers [alexthola.com](https://alexthola.com) with server-side
@@ -174,13 +173,16 @@ operational runbooks, and troubleshooting.
 Defense-in-depth is applied at commit, CI, and deployment layers:
 
 - **Secret scanning**: Gitleaks, Semgrep, and TruffleHog run on every
-  push (see `.github/workflows/secrets-scan.yml`).
-- **CI gates**: security failures block deployment.
-- **Dependency audits**: weekly `cargo audit` in
-  `.github/workflows/ci-cd.yml`.
-- **Hardened defaults**: UFW restricts SurrealDB to localhost; Caddy
-  handles TLS; secrets live in App Platform env vars, never in the
-  repo.
+  push and weekly via cron (see
+  `.github/workflows/secrets-scan.yml`); a positive scan fails the
+  job and blocks deployment.
+- **Dependency audits**: `cargo audit` runs on every push and PR in
+  `.github/workflows/rust.yml` (gated on `Cargo.lock` changes); the
+  weekly cron job lives in `secrets-scan.yml`.
+- **Hardened defaults**: UFW pins SurrealDB to localhost on the
+  database droplet; Caddy terminates TLS on `:8443` and forwards to
+  `127.0.0.1:8000`; secrets live in App Platform env vars, never in
+  the repo.
 
 Run the local secret scan with:
 
@@ -197,7 +199,9 @@ security reports.**
 Measured targets for production (`alexthola.com`):
 
 - **First Contentful Paint**: ~200 ms
-- **WASM bundle size**: ~150 KB gzipped
+- **WASM bundle size**: ~1.6 MB gzipped (8.3 MB raw); `wasm-opt` is
+  currently disabled in `frontend/Cargo.toml`, so the artifact is the
+  unminified `wasm-release` profile output.
 - **Database query latency**: <50 ms for typical operations
 - **Memory footprint**: <50 MB resident
 

@@ -102,19 +102,24 @@ ps aux | grep surreal | grep -v grep
 
 **2. Configure the Firewall**
 
-Restrict SurrealDB (port 8000) to the local VPC only. App Platform reaches the database through Caddy (see "Part 1b"), so port 8000 stays private.
+Caddy (set up in Part 1b) runs on the same droplet and reaches SurrealDB at `127.0.0.1:8000`, so port 8000 stays bound to loopback and is never exposed on any external interface. Public ingress is limited to SSH for admins and Caddy's ACME + HTTPS listener.
+
+> **Lockout safeguard**: before running `ufw enable`, open a second SSH session in a separate terminal and confirm it stays connected. If you typo `YOUR_ADMIN_IP`, the existing session keeps you in until you fix the rule; without that, recovery requires the DigitalOcean web console.
 
 ```bash
 # Allow SSH from your trusted source IPs only (not Anywhere)
 sudo ufw allow from YOUR_ADMIN_IP to any port 22
 
-# Allow SurrealDB on port 8000 from the droplet's VPC CIDR only
-# Get the VPC CIDR: doctl vpcs get <vpc-uuid>
-sudo ufw allow from 10.X.X.0/20 to any port 8000
-
 # Allow Caddy's ACME HTTP-01 challenge and HTTPS listener (configured in Part 1b)
 sudo ufw allow 80/tcp comment 'Caddy ACME'
 sudo ufw allow 8443/tcp comment 'Caddy HTTPS for SurrealDB proxy'
+
+# SurrealDB on port 8000 stays loopback-only (no UFW rule needed; the
+# systemd unit binds to 0.0.0.0 but UFW's default-deny policy keeps it
+# reachable only via 127.0.0.1, which is what Caddy uses).
+# To be explicit and survive future bind changes, you can additionally
+# pin SurrealDB to localhost in the unit:
+#   ExecStart=... --bind 127.0.0.1:8000 ...
 
 # Enable the firewall
 sudo ufw enable
@@ -122,56 +127,9 @@ sudo ufw enable
 
 The database setup is now complete.
 
-## Part 1b: TLS Reverse Proxy (Caddy)
+## Part 1 (Alternative): Manual Database Setup
 
-DigitalOcean App Platform containers block outbound connections on port 22, and App Platform instances don't join custom VPCs. The blog reaches SurrealDB through a Caddy reverse proxy terminating TLS on the droplet.
-
-### 1. Add DNS record
-
-Point a subdomain (e.g. `db.alexthola.com`) at the droplet's public IP:
-
-```bash
-doctl compute domain records create alexthola.com \
-  --record-type A --record-name db \
-  --record-data YOUR_DROPLET_PUBLIC_IP --record-ttl 300
-```
-
-### 2. Install Caddy
-
-```bash
-apt-get install -y debian-keyring debian-archive-keyring apt-transport-https
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
-  | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
-  > /etc/apt/sources.list.d/caddy-stable.list
-apt-get update && apt-get install -y caddy
-```
-
-### 3. Write `/etc/caddy/Caddyfile`
-
-```caddy
-{
-  email YOUR_EMAIL_FOR_ACME
-}
-
-db.YOUR_DOMAIN:8443 {
-  reverse_proxy http://127.0.0.1:8000
-}
-```
-
-### 4. Start and verify
-
-```bash
-systemctl enable --now caddy
-# From outside:
-curl https://db.YOUR_DOMAIN:8443/health   # expect HTTP 200
-```
-
-Let's Encrypt issues the certificate via HTTP-01 on port 80 (opened in step 2 of Part 1). Caddy renews automatically.
-
-### Manual Database Setup (Alternative)
-
-If you prefer manual Droplet configuration, create a Droplet with the listed specifications (without user data) and follow these steps.
+If you prefer manual Droplet configuration over the cloud-init script, create a Droplet with the specifications above (without user data) and run these steps. The manual path replaces only the **service install + systemd unit**; you still need Part 1, Post-Provisioning Steps 1-2 (password + firewall) and all of Part 1b (Caddy + TLS) before any client can reach the database.
 
 **1. Install SurrealDB**
 
@@ -191,12 +149,69 @@ chmod 700 /var/lib/surrealdb
 
 **3. Configure and Start the Service**
 
-Create the systemd service file `/etc/systemd/system/surrealdb.service` with the same content as in the `cloud-init` script, then create the `/etc/surrealdb/env` credentials file as described in the Post-Provisioning section above.
+Create the systemd service file `/etc/systemd/system/surrealdb.service` with the same content as in the `cloud-init` script, then create the `/etc/surrealdb/env` credentials file as described in **Post-Provisioning Steps 1** above.
 
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable --now surrealdb
 ```
+
+**4. Finish provisioning**
+
+Before continuing to Part 1b, run **Post-Provisioning Steps 1-2** (password + firewall) from the cloud-init flow above. Without them, SurrealDB stays reachable on `0.0.0.0:8000` with no auth password set and no firewall.
+
+## Part 1b: TLS Reverse Proxy (Caddy)
+
+DigitalOcean App Platform containers block outbound connections on port 22, and App Platform instances don't join custom VPCs. The blog reaches SurrealDB through a Caddy reverse proxy terminating TLS on the droplet.
+
+### 1. Add DNS record
+
+Point a subdomain (e.g. `db.alexthola.com`) at the droplet's public IP:
+
+```bash
+doctl compute domain records create alexthola.com \
+  --record-type A --record-name db \
+  --record-data YOUR_DROPLET_PUBLIC_IP --record-ttl 300
+```
+
+### 2. Install Caddy
+
+These commands require root. Run them as `root` (e.g. `sudo -i`) or prefix each with `sudo`:
+
+```bash
+sudo apt-get install -y debian-keyring debian-archive-keyring apt-transport-https
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+  | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+  | sudo tee /etc/apt/sources.list.d/caddy-stable.list > /dev/null
+sudo apt-get update && sudo apt-get install -y caddy
+```
+
+The HTTP-01 ACME challenge requires port 80 reachable from the public internet — that's the rule added in **Part 1, Post-Provisioning Step 2**. Without it, Caddy will fail to issue the certificate on first start.
+
+### 3. Write `/etc/caddy/Caddyfile`
+
+```caddy
+{
+  email YOUR_EMAIL_FOR_ACME
+}
+
+db.YOUR_DOMAIN:8443 {
+  reverse_proxy http://127.0.0.1:8000
+}
+```
+
+### 4. Start and verify
+
+```bash
+sudo systemctl enable --now caddy
+
+# Confirm cert issuance and reverse proxy reachability
+sudo journalctl -u caddy -n 50 | grep -i 'certificate obtained'
+curl -v https://db.YOUR_DOMAIN:8443/health   # expect HTTP/2 200
+```
+
+Let's Encrypt issues the certificate via HTTP-01 on port 80 (opened in step 2 of Part 1). Renewal happens automatically; if port 80 is ever blocked or DNS changes, the cert will silently expire after ~30 days, so revisit this verification step whenever droplet networking changes.
 
 ## Part 2: Application Deployment
 
@@ -236,7 +251,9 @@ SURREAL_ROOT_PASS=YOUR_SECURE_PASSWORD
 **Notes**:
 - `SURREAL_ADDRESS` points at the Caddy reverse proxy set up in Part 1b. TLS is terminated on the droplet; SurrealDB auth (`SURREAL_ROOT_USER`/`SURREAL_ROOT_PASS`) gates access.
 - Mark `SURREAL_ROOT_PASS`, `SURREAL_NS`, `SURREAL_DB`, and `SURREAL_ROOT_USER` as encrypted (`type: SECRET`) in the App spec.
-- Prior versions of this guide used an SSH tunnel or a private-IP direct connection; both have been retired. The tunnel scripts (`scripts/tunnel.sh`) remain in the repo as a no-op fallback when `TUNNEL_HOST` is unset.
+- Prior versions of this guide used an SSH tunnel or a private-IP direct connection; both have been retired. The tunnel scripts (`scripts/tunnel.sh`) remain in the repo and are still wired into the Dockerfile entrypoint, but only as a no-op shim:
+  - **Leave `TUNNEL_HOST` unset** in App Platform. With `TUNNEL_HOST` empty, `tunnel.sh` logs `No TUNNEL_HOST set, starting app without tunnel` and `exec`s `/app/blog` directly.
+  - Verify on first deploy: `doctl apps logs <APP_ID> --type=run | grep 'No TUNNEL_HOST set'`. If you see autossh log lines instead, the env var is being inherited from somewhere — clear it before re-deploying, since with `TUNNEL_HOST` set but tunnel keys missing or autossh failing, `tunnel.sh` currently falls through to `exec /app/blog` anyway and the deploy will look healthy while routing is wrong.
 
 ### 4. Deploy
 
@@ -262,11 +279,21 @@ export SURREAL_DB="alexthola_blog"
 export SURREAL_ROOT_USER="root"
 export SURREAL_ROOT_PASS="YOUR_SECURE_PASSWORD"
 
-# Connect through the Caddy proxy and import the schema
-surreal sql --conn $SURREAL_ADDRESS --user $SURREAL_ROOT_USER --pass $SURREAL_ROOT_PASS --ns $SURREAL_NS --db $SURREAL_DB < migrations/schema.surql
+# Apply migrations through the Caddy proxy in numeric order.
+# `surreal sql` does not abort on per-statement errors, so loop file-by-file
+# and stop on the first non-zero exit so a partial schema can't go unnoticed.
+set -e
+for migration in migrations/00*.surql; do
+  echo "Applying ${migration}..."
+  surreal sql \
+    --conn "$SURREAL_ADDRESS" \
+    --user "$SURREAL_ROOT_USER" --pass "$SURREAL_ROOT_PASS" \
+    --ns "$SURREAL_NS" --db "$SURREAL_DB" \
+    < "$migration"
+done
 ```
 
-**Note**: Port 8000 on the droplet is VPC-only, so direct `http://PUBLIC_IP:8000` connections are blocked by UFW. Route all admin traffic through the public Caddy endpoint (`db.YOUR_DOMAIN:8443`) or SSH into the droplet and run `surreal sql` locally against `http://localhost:8000`.
+**Note**: SurrealDB on port 8000 is bound to `127.0.0.1` and not opened in UFW, so direct `http://PUBLIC_IP:8000` connections are unreachable from off-droplet. Run all admin traffic through the public Caddy endpoint (`db.YOUR_DOMAIN:8443`) or SSH into the droplet and run `surreal sql` locally against `http://localhost:8000`.
 
 ## Troubleshooting Guide
 
@@ -342,7 +369,7 @@ If the issue persists after several hours, double-check the DNS records in your 
 
 ### Security
 
--   **Database**: Access restricted by firewall to app's private VPC. Use strong, generated password, rotated quarterly.
+-   **Database**: SurrealDB binds to `127.0.0.1:8000` on the droplet and is reachable only via the Caddy reverse proxy on `:8443`, gated by `SURREAL_ROOT_USER`/`SURREAL_ROOT_PASS`. Use a strong generated password, rotated quarterly.
 -   **Application**: App Platform provides automatic HTTPS, DDoS mitigation, and a managed runtime.
 -   **Secrets**: Credentials not stored in repository; managed as encrypted environment variables in App Platform.
 
