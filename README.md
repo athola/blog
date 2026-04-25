@@ -1,148 +1,229 @@
 # Blog Engine
 
 [![Build](https://github.com/athola/blog/actions/workflows/rust.yml/badge.svg)](https://github.com/athola/blog/actions/workflows/rust.yml)
+[![Secrets Scan](https://github.com/athola/blog/actions/workflows/secrets-scan.yml/badge.svg)](https://github.com/athola/blog/actions/workflows/secrets-scan.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+[![Rust edition](https://img.shields.io/badge/edition-2021-orange.svg)](Cargo.toml)
 
-**A full-stack Rust blog engine built with Leptos and Axum.** This project
-powers [alexthola.com](https://alexthola.com) with server-side rendering,
-real-time data via SurrealDB, and automated security scanning.
+**A full-stack Rust blog engine built with Leptos and Axum.** This
+project powers [alexthola.com](https://alexthola.com) with server-side
+rendering, real-time data via SurrealDB, and automated security scanning
+on every commit.
+
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [Features](#features)
+- [Architecture](#architecture)
+- [Development](#development)
+- [Deployment](#deployment)
+- [Documentation](#documentation)
+- [Tech Stack](#tech-stack)
+- [Security](#security)
+- [Performance](#performance)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Quick Start
 
-Get your development environment running in 2 minutes:
+Get a local development environment running in a couple of minutes:
 
 ```bash
-# Clone and setup
 git clone https://github.com/athola/blog.git
 cd blog
-make install-pkgs
-
-# Start development server
-make watch
+make install-pkgs        # installs cargo-leptos, cargo-make, cargo-audit
+make install-surrealdb   # downloads SurrealDB into ~/.surrealdb
+make watch               # starts SurrealDB, backend, and live-reload frontend
 ```
 
-Visit `http://127.0.0.1:3007` to see your blog running locally.
+Visit `http://127.0.0.1:3007` to see the blog running locally. Run
+`make help` to list every available target.
 
 ## Features
 
-- **Fast Performance** - Server-side rendering achieves ~200ms initial load times
-- **Automated Security** - Every commit scanned by Gitleaks, Semgrep, and TruffleHog
-- **Markdown Support** - KaTeX integration for mathematical content rendering
-- **Real-time Updates** - Live data synchronization via SurrealDB
-- **Responsive Design** - Mobile-first approach with TailwindCSS
-- **WASM Frontend** - WebAssembly compilation, ~150KB gzipped
+- **Server-side rendering** via Leptos + Axum for fast first paint and
+  progressive hydration.
+- **Real-time data** backed by SurrealDB 2.x with automatic connection
+  retry and migrations under `migrations/`.
+- **Markdown with math**: KaTeX rendering for technical posts.
+- **Responsive styling** through TailwindCSS v4 (`@tailwindcss/cli`)
+  with a typography plugin for long-form content.
+- **WebAssembly frontend** compiled by `cargo-leptos`; the client bundle
+  ships as gzipped WASM.
+- **Automated security scanning**: Gitleaks, Semgrep, and TruffleHog
+  run on every commit via GitHub Actions.
+- **Reproducible deployments**: containerized via `Dockerfile` and
+  shipped to DigitalOcean App Platform with Caddy fronting SurrealDB
+  (see [Deployment](#deployment)).
 
-## Architecture Overview
+## Architecture
 
 ```mermaid
 graph LR
-    A[Frontend<br/>Leptos<br/>WASM ~150KB] --> B[Backend<br/>Axum<br/>SSR + API]
-    B --> C[Database<br/>SurrealDB<br/>Real-time]
+    U[Browser] --> APP[Axum app<br/>SSR + API<br/>DO App Platform]
+    APP --> WASM[Leptos WASM<br/>hydrated client]
+    APP -->|TLS :8443| CADDY[Caddy reverse proxy<br/>droplet]
+    CADDY -->|localhost :8000| DB[SurrealDB 2.x<br/>droplet]
 
-    style A fill:#e3f2fd,stroke:#1e40af
-    style B fill:#10b981,stroke:#047857
-    style C fill:#f59e0b,stroke:#d97706
+    style APP fill:#10b981,stroke:#047857,color:#0b1f17
+    style WASM fill:#e3f2fd,stroke:#1e40af,color:#0b1f42
+    style CADDY fill:#a78bfa,stroke:#5b21b6,color:#1e1b4b
+    style DB fill:#f59e0b,stroke:#b45309,color:#3b1d03
 ```
 
-### Core Components
+### Core components
 
-- **Frontend** - Leptos compiled to WASM (~150KB gzipped) with TailwindCSS
-- **Backend** - Axum web server handling both SSR and API requests
-- **Database** - SurrealDB 2.x with automatic connection retry
-- **Build System** - cargo-leptos for development, cargo-make for automation
-
-## Documentation
-
-- **[Architecture Guide](wiki/Architecture.md)** - Detailed system architecture
-- **[API Reference](wiki/API-Reference.md)** - Endpoint and data model reference
-- **[Development Workflow](wiki/Development-Workflow.md)** - Local setup and testing
-- **[Deployment Guide](DEPLOYMENT.md)** - Production deployment instructions
-- **[Security Policy](SECURITY.md)** - Security reporting and policies
+- **`frontend/`**: Leptos client compiled to WASM.
+- **`app/`**: shared component library and routing.
+- **`server/`**: Axum application handling SSR, API routes, and
+  database access.
+- **`markdown/`**: Markdown pipeline with KaTeX math support.
+- **`shared_utils/`**: cross-crate helpers and types.
+- **Build system**: `cargo-leptos` for dev/hot-reload and
+  `cargo-make` (`Makefile.toml`) for CI and release orchestration.
 
 ## Development
 
 ### Prerequisites
 
-- Rust nightly with WASM target: `rustup target add wasm32-unknown-unknown`
-- SurrealDB 2.6+
+- **Rust** toolchain with the WASM target:
+  `rustup target add wasm32-unknown-unknown`.
+- **`cargo-leptos`**, **`cargo-make`**, **`cargo-audit`**: installed
+  automatically by `make install-pkgs`.
+- **SurrealDB 2.6+**: installed via `make install-surrealdb` or from
+  [surrealdb.com](https://surrealdb.com/).
+- **Node.js**: required only for the TailwindCSS v4 CLI used during
+  asset builds; `npm install --silent` pulls `@tailwindcss/cli` and
+  `katex` from [`package.json`](package.json).
 
-### Available Commands
+### Available commands
 
 ```bash
-# Quick Start
-make dev             # Start development server with live reload (alias: watch)
-make all             # Build and run tests
+# Daily development
+make dev             # live-reload frontend + backend (alias: watch)
+make all             # build workspace and run tests
 
 # Build
-make build           # Build workspace artifacts (debug)
-make build-release   # Build for production
-make check           # Fast type-check without codegen
-make clean           # Remove build artifacts
+make build           # debug build
+make build-release   # production build
+make check           # fast type-check without codegen
+make clean           # remove build artifacts
 
-# Quality
-make fmt             # Format code
-make lint            # Run clippy with warnings as errors
-make validate        # Run full validation (format + lint + test + security)
+# Quality gates
+make fmt             # format code
+make lint            # clippy with warnings as errors
+make validate        # fmt + lint + test + security scan
+make test            # run full test suite
+make test-ci         # lightweight CI subset
+make test-coverage   # cargo-llvm-cov HTML report
 
-# Testing
-make test            # Run full test suite
-make test-ci         # Lightweight CI tests
-make test-coverage   # Generate coverage report
-
-# CI Pipeline
-make ci              # Full CI: format check, lint, test, build release
+# CI pipeline
+make ci              # fmt check + lint + test + release build
 
 # Docker (production image)
-docker build -t blog .                    # Build locally
-docker run -p 8080:8080 blog /app/blog    # Run locally
+docker build -t blog .
+docker run -p 8080:8080 blog /app/blog
 ```
 
-Run `make help` for a complete list of available targets.
+Run `make help` for the full list of targets.
+
+## Deployment
+
+Production is deployed to DigitalOcean App Platform with SurrealDB
+hosted on a dedicated Droplet. Because App Platform containers cannot
+join custom VPCs or reach the SurrealDB port directly, a **Caddy
+reverse proxy** on the database droplet terminates TLS on `:8443` and
+forwards to SurrealDB at `localhost:8000`. Firewall rules (UFW)
+restrict the SurrealDB port to the loopback interface only.
+
+Estimated monthly cost: ~$26 ($12 app, $12 Droplet, $2.40 backups).
+
+See the [Deployment Guide](DEPLOYMENT.md) for the full walkthrough:
+cloud-init provisioning, Caddy configuration, App Platform spec,
+operational runbooks, and troubleshooting.
+
+## Documentation
+
+- [Architecture](wiki/Architecture.md): component breakdown and data
+  flow.
+- [API Reference](wiki/API-Reference.md): HTTP endpoints and data
+  models.
+- [Development Workflow](wiki/Development-Workflow.md): local setup,
+  testing, and common `make` targets.
+- [Deployment Guide](DEPLOYMENT.md): DigitalOcean + Caddy production
+  setup.
+- [Security Guide](wiki/Security-Guide.md): hardening practices and
+  scanning pipeline.
+- [Security Policy](SECURITY.md): vulnerability reporting.
+- [Roadmap](PLAN.md): planned features and ordering rationale.
 
 ## Tech Stack
 
-- **Framework**: [Leptos](https://leptos.dev/) - Full-stack Rust web framework
-- **Database**: [SurrealDB](https://surrealdb.com/) - Modern real-time database
-- **Web Server**: [Axum](https://github.com/tokio-rs/axum) - Async web framework
-- **CSS**: [TailwindCSS](https://tailwindcss.com/) - Utility-first CSS framework
+- **[Leptos](https://leptos.dev/)**: full-stack Rust framework with
+  fine-grained reactivity.
+- **[Axum](https://github.com/tokio-rs/axum)**: async web framework
+  built on Tokio and Tower.
+- **[SurrealDB](https://surrealdb.com/)**: multi-model real-time
+  database.
+- **[TailwindCSS](https://tailwindcss.com/)**: utility-first styling.
+- **[KaTeX](https://katex.org/)**: fast math typesetting for posts.
 
 ## Security
 
-This project implements defense-in-depth security:
+Defense-in-depth is applied at commit, CI, and deployment layers:
 
-- **Automated Scanning** - Every commit scanned by Gitleaks, Semgrep and TruffleHog
-- **CI Security Gates** - Security failures block deployment
-- **Dependency Audits** - Weekly `cargo audit` for CVE detection
-- **Secure Defaults** - Secure-by-default configuration
+- **Secret scanning**: Gitleaks, Semgrep, and TruffleHog run on every
+  push (see `.github/workflows/secrets-scan.yml`).
+- **CI gates**: security failures block deployment.
+- **Dependency audits**: weekly `cargo audit` in
+  `.github/workflows/ci-cd.yml`.
+- **Hardened defaults**: UFW restricts SurrealDB to localhost; Caddy
+  handles TLS; secrets live in App Platform env vars, never in the
+  repo.
 
-Run security scan manually:
+Run the local secret scan with:
 
 ```bash
 ./scripts/run_secret_scan.sh
 ```
 
+To report a vulnerability, follow the disclosure process in
+[SECURITY.md](SECURITY.md). **Do not open a public GitHub issue for
+security reports.**
+
 ## Performance
 
-- **First Contentful Paint**: ~200ms
-- **WASM Bundle Size**: ~150KB gzipped
-- **Database Query Time**: <50ms for typical operations
-- **Memory Usage**: <50MB in production
+Measured targets for production (`alexthola.com`):
+
+- **First Contentful Paint**: ~200 ms
+- **WASM bundle size**: ~150 KB gzipped
+- **Database query latency**: <50 ms for typical operations
+- **Memory footprint**: <50 MB resident
+
+These are operational targets rather than guaranteed SLAs; regressions
+are flagged by CI integration tests before deploy.
 
 ## Roadmap
 
-Planned features are tracked in [PLAN.md](PLAN.md). Highlights:
+Planned features and rationale live in [PLAN.md](PLAN.md). Highlights:
 
-- **Q1 2026** - Dark/light theme toggle, syntax highlighting, post search, related articles
-- **Q2 2026** - Comments, social sharing, newsletter signup
-- **Backlog** - Admin interface, offline reading (PWA), AI-powered suggestions
+- **Q1 2026**: dark/light theme toggle, server-side syntax
+  highlighting (likely `syntect`), full-text post search via SurrealDB,
+  and related-article suggestions.
+- **Q2 2026**: self-hosted comments, lightweight social sharing, and
+  a privacy-first newsletter signup.
+- **Backlog**: admin interface, PWA offline reading, and experimental
+  local AI-assisted tagging.
 
 ## Contributing
 
-Contributions are welcome. Please open an issue to discuss proposed changes
-before submitting a pull request. Run `make validate` to verify formatting,
-linting, tests, and security scans pass before pushing.
+Contributions are welcome. Please open an issue to discuss proposed
+changes before submitting a pull request. Run `make validate` to
+verify that formatting, linting, tests, and security scans pass before
+pushing.
 
 ## License
 
-This project is licensed under the GNU Affero General Public License v3.0.
-See the [LICENSE](LICENSE) file for details.
+Licensed under the GNU Affero General Public License v3.0. See
+[LICENSE](LICENSE) for the full text.
