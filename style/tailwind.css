@@ -1,231 +1,163 @@
 @import "tailwindcss";
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/*
+ * ============================================================================
+ * alexthola.com — Locked design palette (Direction D — Dual-Mode Editorial Engineer)
+ *
+ *   --paper / --paper-2  Page background and surface tier
+ *   --ink / --ink-2/3/4  Text tiers (primary, secondary, muted, subtle)
+ *   --accent             Burgundy. Reused for hover, current-state, link
+ *                         underline, and blockquote rail. NEVER stand-alone fill.
+ *   --rule / --rule-soft Hard ink rule and hairline rule between list items
+ *
+ * Direction: docs/project-brief.md  · Tokens spec: docs/specification.md §2
+ * Discipline: components reference tokens. Lint rule blocks bg-[#hex] /
+ *   text-[#hex] arbitrary values in component code.
+ * ============================================================================
+ */
 
-@layer base {
-    @font-face {
-        font-family: "Poppins";
-        font-style: normal;
-        font-weight: 100;
-        font-display: swap;
-        src: url(/public/fonts/Poppins-Thin.ttf) format("truetype");
-    }
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,400..700,30..100;1,9..144,400..700,30..100&family=Inter:ital,wght@0,400..700;1,400..700&family=JetBrains+Mono:ital,wght@0,400..700;1,400..700&display=swap");
 
-    @font-face {
-        font-family: "Poppins";
-        font-style: italic;
-        font-weight: 100;
-        font-display: swap;
-        src: url(/fonts/Poppins-ThinItalic.ttf) format("truetype");
-    }
+@theme {
+    /* ---- Color tokens (light) ---- */
+    --color-paper: #ecedef;
+    --color-paper-2: #dfe1e4;
+    --color-ink: #0a0a0a;
+    --color-ink-2: #2a2a2a;
+    --color-ink-3: #5a5e62;
+    --color-ink-4: #8a8e92;
+    --color-accent: #7a2942;
+    --color-accent-soft: #c47c80;
+    --color-rule: #0a0a0a;
+    --color-rule-soft: #bfc1c5;
 
-    @font-face {
-        font-family: "Poppins";
-        font-style: normal;
-        font-weight: 200;
-        font-display: swap;
-        src: url(/fonts/Poppins-ExtraLight.ttf) format("truetype");
-    }
+    /* ---- Typography ---- */
+    --font-display: "Fraunces", "DM Serif Display", Georgia, serif;
+    --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-    @font-face {
-        font-family: "Poppins";
-        font-style: italic;
-        font-weight: 200;
-        font-display: swap;
-        src: url(/fonts/Poppins-ExtraLightItalic.ttf) format("truetype");
-    }
+    /* ---- Spacing (semantic, named) ---- */
+    --spacing-prose-y: 1.4em;
+    --spacing-section: 4rem;
+    --spacing-section-tight: 2.5rem;
+    --spacing-reading-pad: 3.5rem;
+    --spacing-list-gap: 2rem;
 
-    @font-face {
-        font-family: "Poppins";
-        font-style: normal;
-        font-weight: 300;
-        font-display: swap;
-        src: url(/fonts/Poppins-Light.ttf) format("truetype");
-    }
+    /* ---- Reading column max width (used as max-w-reading) ---- */
+    --container-reading: 45rem;
 
-    @font-face {
-        font-family: "Poppins";
-        font-style: italic;
-        font-weight: 300;
-        font-display: swap;
-        src: url(/fonts/Poppins-LightItalic.ttf) format("truetype");
-    }
-
-    @font-face {
-        font-family: "Poppins";
-        font-style: normal;
-        font-weight: 400;
-        font-display: swap;
-        src: url(/fonts/Poppins-Regular.ttf) format("truetype");
-    }
-
-    @font-face {
-        font-family: "Poppins";
-        font-style: italic;
-        font-weight: 400;
-        font-display: swap;
-        src: url(/fonts/Poppins-RegularItalic.ttf) format("truetype");
-    }
-
-    @font-face {
-        font-family: "Poppins";
-        font-style: normal;
-        font-weight: 500;
-        font-display: swap;
-        src: url(/fonts/Poppins-Medium.ttf) format("truetype");
-    }
-
-    @font-face {
-        font-family: "Poppins";
-        font-style: italic;
-        font-weight: 500;
-        font-display: swap;
-        src: url(/fonts/Poppins-MediumItalic.ttf) format("truetype");
-    }
-
-    @font-face {
-        font-family: "Poppins";
-        font-style: normal;
-        font-weight: 600;
-        font-display: swap;
-        src: url(/fonts/Poppins-SemiBold.ttf) format("truetype");
-    }
-
-    @font-face {
-        font-family: "Poppins";
-        font-style: italic;
-        font-weight: 600;
-        font-display: swap;
-        src: url(/fonts/Poppins-SemiBoldItalic.ttf) format("truetype");
-    }
-
-    @font-face {
-        font-family: "Poppins";
-        font-style: normal;
-        font-weight: 700;
-        font-display: swap;
-        src: url(/fonts/Poppins-Bold.ttf) format("truetype");
-    }
-
-    @font-face {
-        font-family: "Poppins";
-        font-style: italic;
-        font-weight: 700;
-        font-display: swap;
-        src: url(/fonts/Poppins-BoldItalic.ttf) format("truetype");
-    }
-
-    @font-face {
-        font-family: "Poppins";
-        font-style: normal;
-        font-weight: 800;
-        font-display: swap;
-        src: url(/fonts/Poppins-ExtraBold.ttf) format("truetype");
-    }
-
-    @font-face {
-        font-family: "Poppins";
-        font-style: italic;
-        font-weight: 800;
-        font-display: swap;
-        src: url(/fonts/Poppins-ExtraBoldItalic.ttf) format("truetype");
-    }
-
-    @font-face {
-        font-family: "Poppins";
-        font-style: normal;
-        font-weight: 900;
-        font-display: swap;
-        src: url(/fonts/Poppins-Black.ttf) format("truetype");
-    }
-
-    @font-face {
-        font-family: "Poppins";
-        font-style: italic;
-        font-weight: 900;
-        font-display: swap;
-        src: url(/fonts/Poppins-BlackItalic.ttf) format("truetype");
-    }
+    /* ---- Border radius ---- */
+    --radius-sm: 0.125rem;
+    --radius-md: 0.25rem;
+    --radius-pill: 999px;
 }
 
-@layer utilities {
-    .icon-white {
-        fill: white !important;
-        stroke: white !important;
-        color: white !important;
+/* Dark mode variants — activated by [data-theme="dark"] on <html>.
+ * Initial value set by inline pre-paint <script> in app/src/lib.rs to
+ * read localStorage then prefers-color-scheme without FOUC.
+ */
+[data-theme="dark"] {
+    --color-paper: #151515;
+    --color-paper-2: #2a2a2a;
+    --color-ink: #ecedef;
+    --color-ink-2: #bfc1c5;
+    --color-ink-3: #8a8e92;
+    --color-ink-4: #5a5e62;
+    --color-accent: #c47c80;
+    --color-accent-soft: #7a2942;
+    --color-rule: #ecedef;
+    --color-rule-soft: #3a3a3a;
+}
+
+@layer base {
+    body {
+        background-color: var(--color-paper);
+        color: var(--color-ink);
+        font-family: var(--font-sans);
+        font-size: 1.0625rem;
+        line-height: 1.65;
+        font-variation-settings: "wght" 470;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
     }
-    
-    .icon-white svg {
-        fill: white !important;
-        stroke: white !important;
-        color: white !important;
+
+    /* Editorial display headings */
+    h1, h2 {
+        font-family: var(--font-display);
+        font-weight: 600;
+        letter-spacing: -0.02em;
     }
-    
-    .icon-white svg path {
-        fill: white !important;
-        stroke: white !important;
-        color: white !important;
+    h2 {
+        font-style: italic;
+        font-weight: 500;
+        letter-spacing: -0.015em;
     }
-    
-    .icon-white svg circle {
-        fill: white !important;
-        stroke: white !important;
-        color: white !important;
+
+    /* Body link pattern — ink color, accent underline, accent on hover.
+     * Scoped to article/.prose so navigation links are not affected.
+     */
+    article a,
+    .prose a {
+        color: var(--color-ink);
+        text-decoration: none;
+        border-bottom: 1px solid var(--color-accent);
+        transition: color 0.2s ease;
     }
-    
-    .icon-white svg rect {
-        fill: white !important;
-        stroke: white !important;
-        color: white !important;
+    article a:hover,
+    .prose a:hover {
+        color: var(--color-accent);
     }
-    
-    .icon-white svg * {
-        fill: white !important;
-        stroke: white !important;
-        color: white !important;
+
+    /* Outbound link glyph — appended via CSS pseudo-element so any external
+     * link gets the indicator with no per-call site change. Skips internal
+     * links to alexthola.com and relative links.
+     */
+    a[href^="http"]:not([href*="alexthola.com"])::after,
+    a[href^="//"]:not([href*="alexthola.com"])::after {
+        content: " \2197";
+        font-family: var(--font-mono);
+        font-size: 0.85em;
+        opacity: 0.7;
     }
-    
-    svg.icon-white,
-    svg.icon-white *,
-    .icon-white svg,
-    .icon-white svg *,
-    svg[class*="icon-white"] *,
-    svg[class*="icon-white"] {
-        fill: white !important;
-        stroke: white !important;
-        color: white !important;
+
+    /* Blockquote — accent left rail, italic */
+    blockquote {
+        border-left: 3px solid var(--color-accent);
+        padding-left: 1.5rem;
+        font-style: italic;
+        color: var(--color-ink-2);
     }
-    
-    /* Force all SVG elements to be white */
-    svg {
-        fill: white !important;
-        stroke: white !important;
-        color: white !important;
+
+    /* Skip-to-content link for keyboard users (a11y §6.2) */
+    .skip-link {
+        position: absolute;
+        top: -40px;
+        left: 0;
+        background: var(--color-accent);
+        color: var(--color-paper);
+        padding: 8px 12px;
+        z-index: 100;
+        text-decoration: none;
+        font-family: var(--font-mono);
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
     }
-    
-    svg path {
-        fill: white !important;
-        stroke: white !important;
-        color: white !important;
+    .skip-link:focus {
+        top: 0;
     }
-    
-    svg circle {
-        fill: white !important;
-        stroke: white !important;
-        color: white !important;
+
+    /* Reduced motion — respect user preference */
+    @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+            transition-duration: 0.01ms !important;
+            animation-duration: 0.01ms !important;
+        }
     }
-    
-    svg rect {
-        fill: white !important;
-        stroke: white !important;
-        color: white !important;
-    }
-    
-    svg * {
-        fill: white !important;
-        stroke: white !important;
-        color: white !important;
+
+    /* Focus state — token-driven, replaces browser default */
+    :focus-visible {
+        outline: 2px solid var(--color-accent);
+        outline-offset: 2px;
     }
 }
