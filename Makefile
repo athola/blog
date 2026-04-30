@@ -5,7 +5,7 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
 .PHONY: help format fmt build build-release rebuild rebuild-clean \
-	lint lint-fix lint-md test test-ci test-unit test-server-integration \
+	lint lint-fix lint-md lint-tokens test test-ci test-unit test-server-integration \
 	test-server-integration-embedded test-integration-pattern test-report \
 	test-coverage test-coverage-html test-retry test-db test-email \
 	test-migrations test-server build-assets install-pkgs install-test-tools \
@@ -52,6 +52,7 @@ help:
 	@echo "  lint                : Run clippy with warnings as errors"
 	@echo "  lint-md             : Lint Markdown files with markdownlint-cli2"
 	@echo "  lint-fix            : Apply clippy autofixes where possible"
+	@echo "  lint-tokens         : Block bg-[#hex] / text-[#hex] in component code"
 	@echo "  precommit           : Run fast checks the pre-commit hook depends on"
 	@echo "  validate            : Run full validation workflow"
 	@echo ""
@@ -149,6 +150,10 @@ lint:
 lint-fix:
 	$(ECHO_PREFIX) Applying clippy fixes
 	@$(CARGO_MAKE_CMD) lint-fix
+
+lint-tokens:
+	$(ECHO_PREFIX) Checking token discipline
+	@$(SCRIPTS_DIR)/lint_tokens.sh
 
 ## --- Testing workflow ----------------------------------------------------
 
