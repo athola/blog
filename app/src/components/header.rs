@@ -12,18 +12,20 @@ use leptos_router::components::A;
 ///
 /// Uses `leptos_router::components::A` for client-side navigation to prevent full page reloads.
 pub fn component() -> impl IntoView {
+    // NOTE: This is the transitional Sprint 0 header. Sprint 1 T07/T08 replace
+    // it with Nameplate + PipeNav components per spec §3.2.
     view! {
-        <header class="fixed top-0 right-0 left-0 z-10 py-6 px-4 md:px-6 bg-[#1e1e1e]/80 backdrop-blur-md">
+        <header class="relative py-6 px-4 md:px-6 border-b-2 border-rule">
             <div class="container mx-auto max-w-5xl">
-                <div class="flex flex-row justify-between items-center text-white">
+                <div class="flex flex-row justify-between items-center text-ink">
                     <div class="flex flex-row gap-4">
-                        <div class="text-lg font-bold transition-all duration-500 sm:text-3xl hover:text-[#ffef5c]">
+                        <div class="text-lg font-bold transition-colors sm:text-3xl hover:text-accent">
                             <A href="/">"blog"</A>
                         </div>
-                        <div class="text-lg font-bold transition-all duration-500 sm:text-3xl hover:text-[#ffef5c]">
+                        <div class="text-lg font-bold transition-colors sm:text-3xl hover:text-accent">
                             <A href="/references">"references"</A>
                         </div>
-                        <div class="text-lg font-bold transition-all duration-500 sm:text-3xl hover:text-[#ffef5c]">
+                        <div class="text-lg font-bold transition-colors sm:text-3xl hover:text-accent">
                             <A href="/contact">"contact"</A>
                         </div>
                     </div>

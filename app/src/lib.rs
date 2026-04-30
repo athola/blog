@@ -10,9 +10,9 @@
 use crate::components::{error_template, header, icons};
 use chrono::{Datelike as _, Utc};
 #[cfg(feature = "ssr")]
-use leptos::html::{body, head, html, meta};
+use leptos::html::{body, head, html, link, meta};
 use leptos::{
-    html::{a, div, footer, p},
+    html::{a, div, footer, p, script},
     prelude::*,
 };
 use leptos_meta::provide_meta_context;
@@ -121,12 +121,22 @@ pub fn shell(options: Arc<LeptosOptions>) -> impl IntoView {
     // Provides context for managing stylesheets, titles, meta tags, etc., throughout the app.
     provide_meta_context();
 
-    let html_comp = html().lang("en").child((
+    // Theme pre-paint script: must run synchronously in <head> BEFORE first
+    // paint to set [data-theme] on <html> without FOUC. Reads localStorage
+    // first (user toggle), falls back to prefers-color-scheme.
+    // Spec: docs/specification.md §6.5
+    let theme_prepaint = "(function(){try{var s=localStorage.getItem('alexthola-theme');\
+        var t=s||(window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');\
+        document.documentElement.setAttribute('data-theme',t);}catch(e){}})();";
+
+    let html_comp = html().lang("en").attr("data-theme", "light").child((
         head().child((
             meta().charset("utf-8"),
             meta()
                 .name("viewport")
                 .content("width=device-width, initial-scale=1"),
+            // Pre-paint theme attribute setter — runs before stylesheet loads
+            script().inner_html(theme_prepaint),
             // AutoReload(AutoReloadProps::builder().options(options.clone()).build()),
             HydrationScripts(HydrationScriptsProps::builder().options(options).build()),
             MetaTags(),
@@ -142,13 +152,26 @@ pub fn shell(options: Arc<LeptosOptions>) -> impl IntoView {
                     .href("/public/katex.min.css")
                     .build(),
             ),
+            // Feed advertisements — Atom + RSS per spec §4.10. JSON Feed
+            // deferred per implementation-plan.md §1 additive-bias scan.
+            // Markdown alternate per-post is added in app/src/post.rs (T16/T25).
+            link()
+                .rel("alternate")
+                .r#type("application/atom+xml")
+                .href("/feed/feed.xml")
+                .attr("title", "alexthola.com — Atom"),
+            link()
+                .rel("alternate")
+                .r#type("application/rss+xml")
+                .href("/feed/rss.xml")
+                .attr("title", "alexthola.com — RSS"),
             Title(
                 TitleProps::builder()
                     .text("Alex Thola's Blog \u{2013} Tech Insights & Consulting")
                     .build(),
             ),
         )),
-        body().class("bg-[#1e1e1e]").child(self::component),
+        body().class("bg-paper text-ink").child(self::component),
     ));
 
     view! {
@@ -167,9 +190,10 @@ pub fn component() -> impl IntoView {
 
     view! {
         <Router>
-            <div class="overflow-auto text-white font-poppins">
+            <a href="#main-content" class="skip-link">"Skip to content"</a>
+            <div class="text-ink font-sans">
                 {move || header::component}
-                <main class="container flex flex-col gap-8 px-4 pt-10 pb-14 mx-auto mt-16 max-w-4xl md:px-0">
+                <main id="main-content" class="container flex flex-col gap-8 px-4 pt-8 pb-16 mx-auto max-w-4xl md:px-0">
                     <FlatRoutes fallback=|| {
                         // Handle 404 (Not Found) errors by rendering a specific error template.
                         let mut outside_errors = Errors::default();
@@ -191,23 +215,24 @@ pub fn component() -> impl IntoView {
 
 /// Renders the application's footer component.
 ///
-/// This includes copyright information, a link to the author's GitHub, and dynamically
-/// displays the current year. It also conditionally shows icons on smaller screens.
+/// Sprint 0 transitional footer — token-driven, no longer fixed. Sprint 1 T12
+/// replaces this with the sitemap-style three-column footer per spec §3.2.
 fn footer_component() -> impl IntoView {
     footer()
-        .class("fixed right-0 bottom-0 left-0 z-10 py-2 text-center md:py-4 bg-[#1e1e1e]/80 backdrop-blur-md")
+        .class("relative mt-16 py-8 text-center border-t-2 border-rule")
         .child(
-            div().class("flex flex-col gap-1 justify-center items-center").child((
-                p().class("text-gray-400").child((
-                    "Powered by",
-                    a()
-                        .href("https://github.com/athola")
-                        .class("hover:underline text-[#ffef5c]")
-                        .child(" athola"),
-                    format!(" \u{a9} {}", Utc::now().year()),
+            div()
+                .class("flex flex-col gap-2 justify-center items-center")
+                .child((
+                    p().class("text-ink-3 text-sm").child((
+                        "Powered by",
+                        a().href("https://github.com/athola")
+                            .class("hover:underline text-accent")
+                            .child(" athola"),
+                        format!(" \u{a9} {}", Utc::now().year()),
+                    )),
+                    div().class("block md:hidden").child(icons::component),
                 )),
-                div().class("block md:hidden").child(icons::component),
-            )),
         )
 }
 

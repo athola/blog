@@ -26,8 +26,6 @@ ALLOWED_FILES=(
     "app/src/references.rs"                  # T17
     "app/src/contact.rs"                     # T18
     "app/src/activity.rs"                    # T19 (renamed to notes.rs)
-    "app/src/lib.rs"                         # T06 (Sprint 0, in flight this commit)
-    "app/src/components/header.rs"           # T07/T08 (replaced)
     "app/src/components/error_template.rs"   # T18-adjacent
 )
 
