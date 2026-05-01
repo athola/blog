@@ -309,8 +309,11 @@ async fn main() {
                     .route("/feed/feed.xml", get(atom_handler))
                     // Sprint 3: /random stumble redirect (T24).
                     .route("/random", get(random_handler))
-                    // Sprint 3: /post/{slug}.md raw markdown alternate (T25).
-                    .route("/post/{slug}.md", get(raw_markdown_handler))
+                    // Sprint 3: raw markdown alternate (T25). Axum 0.8 disallows
+                    // mixing a literal extension with a path parameter in the
+                    // same segment, so the .md slug source lives at
+                    // /post/{slug}/raw.md instead of /post/{slug}.md.
+                    .route("/post/{slug}/raw.md", get(raw_markdown_handler))
                     .route("/sitemap.xml", get(sitemap_handler))
                     // Serve static assets.
                     .nest_service(

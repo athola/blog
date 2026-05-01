@@ -328,6 +328,7 @@ watch:
 	@set -e; \
 	$(MAKE) start-db; \
 	trap 'echo "Stopping..."; $(MAKE) teardown; exit 0' INT TERM; \
+	if [ -f .env ]; then set -a; . ./.env; set +a; fi; \
 	cargo leptos watch; \
 	$(MAKE) teardown
 

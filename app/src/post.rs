@@ -192,7 +192,7 @@ pub fn component() -> impl IntoView {
                     // Tools: raw markdown link (copy/share deferred — would add web-sys feature flags)
                     div().class("flex flex-wrap gap-4 items-center font-mono text-[11px] uppercase tracking-[0.08em] text-ink-3").child((
                         a()
-                            .href(format!("/post/{}.md", slug_for_links))
+                            .href(format!("/post/{}/raw.md", slug_for_links))
                             .class("hover:text-accent transition-colors")
                             .child("raw markdown"),
                     )),
@@ -204,7 +204,7 @@ pub fn component() -> impl IntoView {
                 LinkProps::builder()
                     .rel("alternate")
                     .type_("text/markdown")
-                    .href(format!("/post/{}.md", slug_for_links))
+                    .href(format!("/post/{}/raw.md", slug_for_links))
                     .build(),
             ),
             // Canonical URL helps search engines disambiguate.

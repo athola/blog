@@ -815,14 +815,13 @@ pub async fn random_handler(State(state): State<AppState>) -> Response<String> {
     response
 }
 
-/// Handles GET /post/:slug.md — returns the raw markdown source for a post
-/// (spec §4.11, hacker-culture handshake).
+/// Handles GET /post/{slug}/raw.md — returns the raw markdown source for a post
+/// (spec §4.11, hacker-culture handshake). Axum 0.8 requires a path param to
+/// occupy a whole segment, so the .md suffix lives in its own segment.
 pub async fn raw_markdown_handler(
-    Path(slug_with_ext): Path<String>,
+    Path(slug): Path<String>,
     State(state): State<AppState>,
 ) -> Response<String> {
-    // Strip the .md suffix; route pattern catches /post/:slug.md
-    let slug = slug_with_ext.strip_suffix(".md").unwrap_or(&slug_with_ext);
     if slug.is_empty() {
         return build_response(
             "missing slug".to_string(),
