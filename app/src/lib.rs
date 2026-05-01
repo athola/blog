@@ -9,8 +9,8 @@
 
 use crate::components::{error_template, footer, nameplate, pipe_nav};
 #[cfg(feature = "ssr")]
-use leptos::html::{body, head, html, link, meta};
-use leptos::{html::script, prelude::*};
+use leptos::html::{body, head, html, link, meta, script};
+use leptos::prelude::*;
 use leptos_meta::provide_meta_context;
 #[cfg(feature = "ssr")]
 use leptos_meta::{MetaTags, Stylesheet, StylesheetProps, Title, TitleProps};
