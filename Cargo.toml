@@ -107,11 +107,10 @@ browserquery = "defaults"
 # This must match the LEPTOS_HASH_FILES=true flag used during Docker builds.
 hash-files = true
 
-# Set by cargo-leptos watch when building with that tool. Controls whether autoreload JS will be included in the head
-watch = false
-
-# The environment Leptos will run in, usually either "DEV" or "PROD"
-env = "DEV"
+# Note: `watch` and `env` keys were removed (cargo-leptos 0.3+ no longer
+# recognises them at the workspace metadata level — they are inferred from
+# the invocation: `cargo leptos watch` sets autoreload internally, and
+# the runtime LEPTOS_OUTPUT_NAME / RUST_ENV env vars drive build mode).
 
 # The features to use when compiling the bin target
 #
