@@ -25,11 +25,11 @@ use leptos_router::{
 #[cfg(feature = "ssr")]
 use std::sync::{Arc, OnceLock};
 
-mod activity;
 pub mod api; // API endpoints and types
 mod components; // Reusable UI components
 mod contact; // Contact page logic and components
 mod home; // Homepage logic and components
+mod notes; // Notes (microblog) page; replaces /activity
 mod post; // Post display logic and components
 mod references; // References page logic and components
 pub mod types; // Shared type definitions
@@ -204,7 +204,10 @@ pub fn component() -> impl IntoView {
                         <Route path=StaticSegment("references") view=references::component/>
                         <Route path=StaticSegment("contact") view=contact::component/>
                         <Route path=(StaticSegment("post"), ParamSegment("slug")) view=post::component ssr=SsrMode::Async/>
-                        <Route path=StaticSegment("activity") view=activity::component/>
+                        // /notes is the canonical microblog route (renamed from /activity)
+                        <Route path=StaticSegment("notes") view=notes::component/>
+                        // /activity kept as a transitional alias until T26 wires a server-side 301.
+                        <Route path=StaticSegment("activity") view=notes::component/>
                     </FlatRoutes>
                 </main>
                 {footer_component()}
