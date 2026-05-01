@@ -84,10 +84,10 @@ pub fn component(
                     let error_code = error.1.status_code();
 
                     div().class("flex flex-col gap-1 justify-center items-center").child((
-                        h1().class("text-xl tracking-widest text-gray-400 uppercase").child(
-                            format!("{error_code}| {error_string}")
+                        h1().class("font-mono text-base tracking-[0.08em] text-ink-3 uppercase").child(
+                            format!("{error_code} | {error_string}")
                         ),
-                        div().class("flex gap-1 justify-center items-center mt-6 text-center duration-200 hover:text-[#68b5fc]").child(
+                        div().class("flex gap-2 justify-center items-center mt-6 text-center transition-colors hover:text-accent text-ink-2").child(
                             A(AProps::builder()
                                 .href("/")
                                 .children(ToChildren::to_children(move || {
