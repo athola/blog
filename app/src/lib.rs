@@ -210,10 +210,9 @@ pub fn component() -> impl IntoView {
                         <Route path=StaticSegment("colophon") view=colophon::component/>
                         <Route path=StaticSegment("contact") view=contact::component/>
                         <Route path=(StaticSegment("post"), ParamSegment("slug")) view=post::component ssr=SsrMode::Async/>
-                        // /notes is the canonical microblog route (renamed from /activity)
+                        // /notes is the canonical microblog route (renamed from /activity).
+                        // /activity is 301-redirected at the Axum level — see server/src/main.rs (T26).
                         <Route path=StaticSegment("notes") view=notes::component/>
-                        // /activity kept as a transitional alias until T26 wires a server-side 301.
-                        <Route path=StaticSegment("activity") view=notes::component/>
                     </FlatRoutes>
                 </main>
                 {footer_component()}

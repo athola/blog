@@ -8,7 +8,7 @@
 #![allow(deprecated)]
 
 use app::types::{AppState, Author, Post};
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::Response;
 use chrono::DateTime;
@@ -631,6 +631,255 @@ pub async fn sitemap_handler(State(state): State<AppState>) -> Response<String> 
     }
     sitemap.push_str("</urlset>");
     build_response(sitemap, "application/xml", StatusCode::OK)
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Sprint 3 (T24-T27): Atom feed, /random, /post/:slug.md, redirects.
+// ─────────────────────────────────────────────────────────────────────
+
+/// Handles GET /feed/feed.xml — Atom 1.0 feed.
+///
+/// Per spec §4.10. The Atom feed mirrors the RSS content but with the
+/// Atom envelope. Hand-rolled XML to avoid adding the `atom_syndication`
+/// crate dependency.
+pub async fn atom_handler(State(state): State<AppState>) -> Response<String> {
+    let AppState { db, .. } = state;
+    let db = db.as_ref();
+    match generate_atom(db).await {
+        Ok(atom) => build_response(atom, "application/atom+xml; charset=utf-8", StatusCode::OK),
+        Err(err) => {
+            error!(?err, "Failed to generate Atom feed");
+            build_response(
+                "Failed to generate Atom feed".to_string(),
+                "text/plain; charset=utf-8",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
+    }
+}
+
+/// Generates the Atom feed XML from published posts.
+pub async fn generate_atom(db: &Surreal<Client>) -> Result<String, ServerFnError> {
+    let query_str =
+        "SELECT *, author.* from post WHERE is_published = true ORDER BY created_at DESC LIMIT 50;";
+    let query_result = retry_async("generate_atom_query", RetryConfig::default(), || async {
+        db.query(query_str).await
+    })
+    .await;
+
+    let mut query = match query_result {
+        Ok(q) => q,
+        Err(e) => return Err(ServerFnError::<NoCustomError>::ServerError(e.to_string())),
+    };
+
+    let posts = query
+        .take::<Vec<Post>>(0)
+        .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {e}")))?;
+
+    let updated = posts
+        .first()
+        .map(|p| p.created_at.clone())
+        .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
+
+    let mut feed = String::new();
+    feed.push_str("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n");
+    feed.push_str("<feed xmlns=\"http://www.w3.org/2005/Atom\">\n");
+    let _ = writeln!(feed, "  <title>alexthola</title>");
+    let _ = writeln!(
+        feed,
+        "  <subtitle>Tech Insights &amp; Consulting from Alex Thola</subtitle>"
+    );
+    let _ = writeln!(feed, "  <id>https://alexthola.com/</id>");
+    let _ = writeln!(
+        feed,
+        "  <link href=\"https://alexthola.com/\" rel=\"alternate\"/>"
+    );
+    let _ = writeln!(
+        feed,
+        "  <link href=\"https://alexthola.com/feed/feed.xml\" rel=\"self\" type=\"application/atom+xml\"/>"
+    );
+    let _ = writeln!(feed, "  <updated>{}</updated>", escape_xml(&updated));
+    feed.push_str("  <author><name>Alex Thola</name></author>\n");
+
+    for post in posts {
+        let slug = post.slug.clone().unwrap_or_default();
+        if slug.is_empty() {
+            continue;
+        }
+        let post_url = format!("https://alexthola.com/post/{slug}");
+        let processed_body = process_markdown(&post.body).unwrap_or_else(|_| post.body.clone());
+        feed.push_str("  <entry>\n");
+        let _ = writeln!(feed, "    <title>{}</title>", escape_xml(&post.title));
+        let _ = writeln!(feed, "    <id>{}</id>", escape_xml(&post_url));
+        let _ = writeln!(
+            feed,
+            "    <link href=\"{}\" rel=\"alternate\"/>",
+            escape_xml(&post_url)
+        );
+        let _ = writeln!(
+            feed,
+            "    <updated>{}</updated>",
+            escape_xml(&post.created_at)
+        );
+        let _ = writeln!(
+            feed,
+            "    <published>{}</published>",
+            escape_xml(&post.created_at)
+        );
+        let _ = writeln!(
+            feed,
+            "    <author><name>{}</name></author>",
+            escape_xml(&post.author.name)
+        );
+        let _ = writeln!(
+            feed,
+            "    <summary type=\"html\">{}</summary>",
+            escape_xml(&post.summary)
+        );
+        let _ = writeln!(
+            feed,
+            "    <content type=\"html\">{}</content>",
+            escape_xml(&processed_body)
+        );
+        feed.push_str("  </entry>\n");
+    }
+
+    feed.push_str("</feed>\n");
+    Ok(feed)
+}
+
+/// Handles GET /random — picks a random published post and 302 redirects
+/// to its detail page (spec §4.9, "Stumble" mechanic).
+pub async fn random_handler(State(state): State<AppState>) -> Response<String> {
+    #[derive(Deserialize)]
+    struct SlugOnly {
+        slug: Option<String>,
+    }
+
+    let AppState { db, .. } = state;
+    let db = db.as_ref();
+
+    let query_result = retry_async("random_post_query", RetryConfig::default(), || async {
+        db.query("SELECT slug FROM post WHERE is_published = true ORDER BY rand() LIMIT 1;")
+            .await
+    })
+    .await;
+
+    let mut query = match query_result {
+        Ok(q) => q,
+        Err(e) => {
+            error!(?e, "random_handler: query failed");
+            return build_response(
+                "No posts available".to_string(),
+                "text/plain; charset=utf-8",
+                StatusCode::SERVICE_UNAVAILABLE,
+            );
+        }
+    };
+
+    let row: Option<SlugOnly> = match query.take(0) {
+        Ok(row) => row,
+        Err(e) => {
+            error!(?e, "random_handler: deserialize failed");
+            return build_response(
+                "No posts available".to_string(),
+                "text/plain; charset=utf-8",
+                StatusCode::SERVICE_UNAVAILABLE,
+            );
+        }
+    };
+
+    let slug = match row.and_then(|r| r.slug) {
+        Some(s) if !s.is_empty() => s,
+        _ => {
+            return build_response(
+                "No published posts to stumble through".to_string(),
+                "text/plain; charset=utf-8",
+                StatusCode::NOT_FOUND,
+            );
+        }
+    };
+
+    let target = format!("/post/{slug}");
+    let mut response = Response::new(format!("Redirecting to {target}"));
+    *response.status_mut() = StatusCode::FOUND;
+    if let Ok(location) = target.parse() {
+        response.headers_mut().insert("Location", location);
+    }
+    if let Ok(cache) = "public, max-age=60".parse() {
+        response.headers_mut().insert("Cache-Control", cache);
+    }
+    if let Ok(ct) = "text/plain; charset=utf-8".parse() {
+        response.headers_mut().insert("Content-Type", ct);
+    }
+    response
+}
+
+/// Handles GET /post/:slug.md — returns the raw markdown source for a post
+/// (spec §4.11, hacker-culture handshake).
+pub async fn raw_markdown_handler(
+    Path(slug_with_ext): Path<String>,
+    State(state): State<AppState>,
+) -> Response<String> {
+    // Strip the .md suffix; route pattern catches /post/:slug.md
+    let slug = slug_with_ext.strip_suffix(".md").unwrap_or(&slug_with_ext);
+    if slug.is_empty() {
+        return build_response(
+            "missing slug".to_string(),
+            "text/plain; charset=utf-8",
+            StatusCode::BAD_REQUEST,
+        );
+    }
+
+    #[derive(Deserialize)]
+    struct BodyOnly {
+        body: String,
+    }
+
+    let AppState { db, .. } = state;
+    let db = db.as_ref();
+
+    let query_result = retry_async("raw_markdown_query", RetryConfig::default(), || async {
+        db.query("SELECT body FROM post WHERE slug = $slug AND is_published = true LIMIT 1;")
+            .bind(("slug", slug.to_string()))
+            .await
+    })
+    .await;
+
+    let mut query = match query_result {
+        Ok(q) => q,
+        Err(e) => {
+            error!(?e, "raw_markdown_handler: query failed");
+            return build_response(
+                "Failed to fetch post".to_string(),
+                "text/plain; charset=utf-8",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
+
+    let row: Option<BodyOnly> = match query.take(0) {
+        Ok(row) => row,
+        Err(e) => {
+            error!(?e, "raw_markdown_handler: deserialize failed");
+            return build_response(
+                "Failed to fetch post".to_string(),
+                "text/plain; charset=utf-8",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
+
+    match row {
+        Some(BodyOnly { body }) => {
+            build_response(body, "text/markdown; charset=utf-8", StatusCode::OK)
+        }
+        None => build_response(
+            format!("Post '{slug}' not found"),
+            "text/plain; charset=utf-8",
+            StatusCode::NOT_FOUND,
+        ),
+    }
 }
 
 #[cfg(test)]

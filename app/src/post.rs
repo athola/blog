@@ -10,10 +10,10 @@
 //!   7. Post foot — prev/next + more-from-tag + raw-md/copy/share
 
 use leptos::{
-    html::{a, article, aside, div, img, p, section, span, time},
+    html::{a, article, div, img, p, section, span, time},
     prelude::*,
 };
-use leptos_meta::{Title, TitleProps};
+use leptos_meta::{Link, LinkProps, Title, TitleProps};
 use leptos_router::{
     components::{A, AProps},
     hooks::use_params_map,
@@ -197,10 +197,23 @@ pub fn component() -> impl IntoView {
                             .child("raw markdown"),
                     )),
                 )),
-            // Markdown alternate link in <head> via aside marker (Leptos head hook).
-            // T28 wires a per-page `<link rel="alternate" type="text/markdown">`
-            // — for now we rely on <head> defaults and the explicit anchor above.
-            aside().class("sr-only").child(format!("/post/{}.md", slug_for_links)),
+            // T28: per-post <link rel="alternate" type="text/markdown"> injected
+            // into <head> via leptos_meta. Pairs with the server route
+            // /post/{slug}.md (T25) to expose raw markdown source.
+            Link(
+                LinkProps::builder()
+                    .rel("alternate")
+                    .type_("text/markdown")
+                    .href(format!("/post/{}.md", slug_for_links))
+                    .build(),
+            ),
+            // Canonical URL helps search engines disambiguate.
+            Link(
+                LinkProps::builder()
+                    .rel("canonical")
+                    .href(format!("https://alexthola.com/post/{}", slug_for_links))
+                    .build(),
+            ),
         ))
     };
 
