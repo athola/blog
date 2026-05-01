@@ -25,7 +25,9 @@ use leptos_router::{
 #[cfg(feature = "ssr")]
 use std::sync::{Arc, OnceLock};
 
+mod about; // About / bio / colophon link
 pub mod api; // API endpoints and types
+mod archive; // Year-grouped chronological archive of posts
 mod components; // Reusable UI components
 mod contact; // Contact page logic and components
 mod home; // Homepage logic and components
@@ -201,7 +203,9 @@ pub fn component() -> impl IntoView {
                         error_template::component(Some(outside_errors), None)
                     }>
                         <Route path=StaticSegment("") view=home::component ssr=SsrMode::InOrder/>
+                        <Route path=StaticSegment("archive") view=archive::component/>
                         <Route path=StaticSegment("references") view=references::component/>
+                        <Route path=StaticSegment("about") view=about::component/>
                         <Route path=StaticSegment("contact") view=contact::component/>
                         <Route path=(StaticSegment("post"), ParamSegment("slug")) view=post::component ssr=SsrMode::Async/>
                         // /notes is the canonical microblog route (renamed from /activity)
