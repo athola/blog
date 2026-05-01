@@ -20,7 +20,6 @@ use leptos_router::components::{A, AProps};
 
 use crate::api::{select_activities, select_posts, select_tags};
 use crate::components::{
-    date_stamp::{self, DateStampSize},
     loader,
     post_list_row::{self, PostListSize},
     tag_strip,
@@ -190,13 +189,6 @@ pub fn component() -> impl IntoView {
                 }))
                 .build(),
         ),
-        // ─── Quick stamp at the very bottom (decorative) ─────────────
-        div().class("flex justify-center pt-4").child(date_stamp::component(
-            "ALEXTHOLA.COM".to_string(),
-            "—".to_string(),
-            "EST. 2024".to_string(),
-            DateStampSize::Compact,
-        )),
     ))
 }
 

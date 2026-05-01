@@ -20,7 +20,10 @@ pub enum DateStampSize {
     Featured,
     /// Default — for post-list rows on home and archive.
     Default,
-    /// Compact — for the home notes strip and other tight spaces.
+    /// Compact — for tight spaces. Spec'd for the home notes strip but
+    /// currently the notes strip uses inline rows; kept for the explicit
+    /// spec contract and future use.
+    #[allow(dead_code)]
     Compact,
 }
 
