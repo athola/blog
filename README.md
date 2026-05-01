@@ -46,8 +46,14 @@ Visit `http://127.0.0.1:3007` to see the blog running locally. Run
 - **Real-time data** backed by SurrealDB 2.x with automatic connection
   retry and migrations under `migrations/`.
 - **Markdown with math**: KaTeX rendering for technical posts.
-- **Responsive styling** through TailwindCSS v4 (`@tailwindcss/cli`)
-  with a typography plugin for long-form content.
+- **Editorial design system**: TailwindCSS v4 `@theme` block defines
+  every color, typeface, and spacing token in one place. Direction D
+  (Dual-Mode Editorial Engineer) — see [`docs/design-system.md`](docs/design-system.md).
+- **Light + dark themes** with no FOUC — pre-paint script in `<head>`
+  reads `localStorage` then `prefers-color-scheme` before the
+  stylesheet loads.
+- **Three-family type stack**: Fraunces (display serif), Inter
+  (variable sans, custom 470 weight), JetBrains Mono (code + meta).
 - **WebAssembly frontend** compiled by `cargo-leptos`; the client bundle
   ships as gzipped WASM.
 - **Automated security scanning**: Gitleaks, Semgrep, and TruffleHog
@@ -74,13 +80,34 @@ graph LR
 ### Core components
 
 - **`frontend/`**: Leptos client compiled to WASM.
-- **`app/`**: shared component library and routing.
+- **`app/`**: shared component library and routing. Routes live at
+  `app/src/{home,post,archive,notes,references,about,colophon,contact}.rs`;
+  reusable UI lives in `app/src/components/`.
 - **`server/`**: Axum application handling SSR, API routes, and
-  database access.
+  database access. Includes RSS, Atom, sitemap, raw-markdown, and
+  random-stumble handlers in `server/src/utils.rs`.
 - **`markdown/`**: Markdown pipeline with KaTeX math support.
 - **`shared_utils/`**: cross-crate helpers and types.
 - **Build system**: `cargo-leptos` for dev/hot-reload and
   `cargo-make` (`Makefile.toml`) for CI and release orchestration.
+
+### Routes
+
+| Path | Purpose |
+|---|---|
+| `/` | Home — featured + recent posts + notes strip + tag filter |
+| `/post/:slug` | Reading page with in-flow TOC + canonical + JSON-LD |
+| `/post/:slug.md` | Raw markdown alternate per post |
+| `/archive` | Year-grouped chronological archive (supports `?tag=`) |
+| `/notes` | Microblog stream (replaces legacy `/activity`) |
+| `/references` | Project portfolio with mono ▰▱ tech-stack bars |
+| `/about` | Bio, links, colophon link, JSON-LD Person |
+| `/colophon` | Stack, fonts, source, license |
+| `/contact` | Contact form |
+| `/random` | "Stumble" — 302 to a random published post |
+| `/feed/feed.xml` | Atom 1.0 |
+| `/feed/rss.xml` | RSS 2.0 |
+| `/sitemap.xml` | XML sitemap |
 
 ## Development
 
