@@ -21,7 +21,6 @@ cd "$REPO_ROOT"
 # Files allow-listed because Sprint 2 will refactor them. Drop entries as
 # tasks complete. Expected empty after T20 (Sprint 2 lint clear).
 ALLOWED_FILES=(
-    "app/src/references.rs"                  # T17
     "app/src/contact.rs"                     # T18
     "app/src/activity.rs"                    # T19 (renamed to notes.rs)
     "app/src/components/error_template.rs"   # T18-adjacent

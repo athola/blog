@@ -1,98 +1,164 @@
-//! This module defines the `references` component, which renders a portfolio
-//! or list of project references.
+//! References (portfolio) page.
 //!
-//! It fetches project data (title, description, tech stack) from the API and
-//! displays each project with its technical details and skill percentages.
+//! Layout (spec §4.5):
+//!   1. Page title in italic display ("references")
+//!   2. Subtitle paragraph
+//!   3. Project list — single column rows (NOT cards); each row has
+//!      title, description, and tech-stack as inline mono bars with
+//!      ▰/▱ glyphs.
+//!
+//! Replaces the prior glassmorphism + grid-bg cards with editorial rows.
 
-use crate::api::select_references;
 use leptos::{
-    html::{div, h1, h3, p, section, span},
+    html::{div, h1, h2, p, section, span},
     prelude::*,
 };
+use leptos_meta::{Title, TitleProps};
 
-/// Renders the references page, displaying a portfolio of projects.
-///
-/// This component fetches project data via the `references` resource,
-/// which calls the `select_references` server function. It then iterates
-/// through these projects, rendering each with its title, description,
-/// and a visual representation of its tech stack.
+use crate::api::select_references;
+
+/// Renders the references / portfolio page.
 pub fn component() -> impl IntoView {
-    // Resource to fetch project references from the server.
-    // #[expect(clippy::redundant_closure_call)] // This clippy warning is suppressed because of the way Leptos Resources are typically defined.
     let references = Resource::new_blocking(
         || (),
         move |()| async move { select_references().await.unwrap_or_default() },
     );
 
-    div().class("container py-12 px-4 mx-auto").child((
-        section().id("about").class("mx-auto mb-16 max-w-4xl text-center").child((
-            h1().class("mb-8 text-5xl font-bold md:text-7xl text-[#ffef5c]").child("Project References"),
-            p().class("mb-8 text-lg text-gray-300 md:text-xl").child("Explore my portfolio of successful projects. I enjoy solving network and OS problems with high performance solutions."),
+    div().class("flex flex-col gap-12").child((
+        Title(
+            TitleProps::builder()
+                .text("References — Alex Thola")
+                .build(),
+        ),
+        // Page header
+        section().class("flex flex-col gap-3").child((
+            h1().class("font-display italic text-4xl sm:text-5xl font-medium text-ink leading-tight tracking-tight")
+                .child("references"),
+            p().class("text-ink-2 text-base leading-relaxed max-w-prose")
+                .child("A portfolio of selected projects. I enjoy solving network and OS problems with high-performance solutions, and consult on Rust architecture, observability, and runtime tuning."),
         )),
-        section().id("projects").class("mx-auto max-w-5xl").child(
-            div().class("grid gap-8").child(
-                Suspense(
-                    SuspenseProps::builder()
-                        // No specific fallback content is rendered here; the component
-                        // simply waits for data to load before rendering anything.
-                        .fallback(|| ())
-                        .children(TypedChildren::to_children(move || {
-                            For(
-                                ForProps::builder()
-                                    .each(move || references.get().unwrap_or_default())
-                                    .key(|r| format!("{:?}", r.id))
-                                    .children(|r| {
-                                        // Render each project reference as a stylized card.
-                                        div().class("relative p-6 rounded-2xl transition-colors duration-500 group bg-[#ffef5c]/8 hover:bg-[#ffef5c]/10").child((
-                                            div().class("absolute inset-0 rounded-2xl -z-10 blur-2xl"),
-                                            div().class("absolute inset-2 rounded-xl border shadow-lg -z-10 bg-[#ffef5c]/10 backdrop-blur-xl shadow-[#ffef5c]/5 border-[#ffef5c]/20"),
-                                            div().class("absolute inset-2 rounded-xl border -z-10 backdrop-blur-2xl bg-white/5 border-white/10").child(
-                                                div().class("absolute inset-0 bg-[linear-gradient(0deg,transparent_24px,rgba(255,255,255,0.03)_25px),linear-gradient(90deg,transparent_24px,rgba(255,255,255,0.03)_25px)] bg-[size:25px_25px]"),
-                                            ),
-                                            div().class("flex relative flex-col").child((
-                                                h3().class("mb-2 text-xl font-bold text-[#ffef5c]").child(r.title),
-                                                p().class("flex-grow mb-4 text-sm text-gray-300").child(r.description),
-                                                div().class("grid grid-cols-2 gap-4").child(
-                                                    For(
-                                                        ForProps::builder()
-                                                            // Combine tech stack names with their corresponding percentages.
-                                                            .each(move || {
-                                                                r.tech_stack
-                                                                    .clone()
-                                                                    .into_iter()
-                                                                    .zip(r.teck_stack_percentage.clone())
-                                                                    .collect::<Vec<_>>()
-                                                            })
-                                                            .key(|tech| tech.0.to_string())
-                                                            .children(|tech| {
-                                                                div().child(
-                                                                    (
-                                                                        div().class("flex justify-between items-center mb-1")
-                                                                            .child((
-                                                                                span().class("text-xs font-medium text-[#ffef5c]").child(tech.0.to_string()),
-                                                                                span().class("text-xs text-gray-400").child(format!("{}%", tech.1))
-                                                                            )),
-                                                                        div().class("overflow-hidden h-1.5 rounded-full bg-black/40 backdrop-blur-sm")
-                                                                            .child(
-                                                                                div()
-                                                                                    .class("h-full bg-gradient-to-r from-[#ffef5c] to-[#ffef5c]")
-                                                                                    // Ensure the width does not exceed 100%.
-                                                                                    .style(format!("width: {}%", tech.1.min(100))),
-                                                                            )
-                                                                ))
-                                                            })
-                                                            .build(),
-                                                    ),
-                                                ),
-                                            )),
-                                        ))
+        // Projects list
+        section()
+            .attr("aria-label", "projects")
+            .class("flex flex-col")
+            .child(Suspense(
+                SuspenseProps::builder()
+                    .fallback(|| ())
+                    .children(TypedChildren::to_children(move || {
+                        move || {
+                            let refs = references.get().unwrap_or_default();
+                            if refs.is_empty() {
+                                return div()
+                                    .class("font-mono text-xs uppercase tracking-[0.08em] text-ink-3 py-8 text-center")
+                                    .child("No projects yet.")
+                                    .into_any();
+                            }
+                            let total = refs.len();
+                            div().class("flex flex-col").child(
+                                refs.into_iter()
+                                    .enumerate()
+                                    .map(|(i, r)| {
+                                        let divider = i < total - 1;
+                                        render_project_row(r, divider)
                                     })
-                                    .build()
-                            )
-                        }))
-                        .build()
-                )
-            )
-        )
+                                    .collect::<Vec<_>>(),
+                            ).into_any()
+                        }
+                    }))
+                    .build(),
+            )),
     ))
+}
+
+fn render_project_row(r: crate::types::Reference, divider: bool) -> impl IntoView {
+    let wrapper_class = if divider {
+        "py-8 border-b border-rule-soft"
+    } else {
+        "py-8"
+    };
+
+    let tech_zip: Vec<(String, u8)> = r
+        .tech_stack
+        .iter()
+        .cloned()
+        .zip(r.teck_stack_percentage.iter().cloned())
+        .collect();
+
+    div().class(wrapper_class).child((
+        // Title
+        h2()
+            .class("font-display text-2xl sm:text-3xl italic font-medium leading-tight text-ink mb-3")
+            .child(r.title.clone()),
+        // Description
+        p().class("text-ink-2 text-base leading-relaxed mb-5 max-w-prose")
+            .child(r.description.clone()),
+        // Tech stack — mono bars
+        div().class("grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 font-mono text-[11px] uppercase tracking-[0.08em]")
+            .child(
+                tech_zip
+                    .into_iter()
+                    .map(|(name, pct)| {
+                        let pct = pct.min(100);
+                        let bars = pct_to_bars(pct);
+                        div().class("flex items-center justify-between gap-3").child((
+                            span().class("text-ink-2 truncate").child(name),
+                            div().class("flex items-center gap-2").child((
+                                span().class("text-accent leading-none").child(bars),
+                                span().class("text-ink-4 tabular-nums").child(format!("{}%", pct)),
+                            )),
+                        ))
+                    })
+                    .collect::<Vec<_>>(),
+            ),
+    ))
+}
+
+/// Convert a 0..=100 percentage to a 10-cell mono bar `▰▰▰▰▰▱▱▱▱▱`.
+fn pct_to_bars(pct: u8) -> String {
+    let pct = pct.min(100) as usize;
+    let filled = pct / 10;
+    let empty = 10 - filled;
+    let mut s = String::with_capacity(10);
+    for _ in 0..filled {
+        s.push('▰');
+    }
+    for _ in 0..empty {
+        s.push('▱');
+    }
+    s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_references_component_signature() {
+        let _: fn() -> _ = component;
+    }
+
+    #[test]
+    fn test_pct_to_bars_zero() {
+        assert_eq!(pct_to_bars(0), "▱▱▱▱▱▱▱▱▱▱");
+    }
+
+    #[test]
+    fn test_pct_to_bars_full() {
+        assert_eq!(pct_to_bars(100), "▰▰▰▰▰▰▰▰▰▰");
+    }
+
+    #[test]
+    fn test_pct_to_bars_half() {
+        assert_eq!(pct_to_bars(50), "▰▰▰▰▰▱▱▱▱▱");
+    }
+
+    #[test]
+    fn test_pct_to_bars_clamps_overflow() {
+        assert_eq!(pct_to_bars(120), "▰▰▰▰▰▰▰▰▰▰");
+    }
+
+    #[test]
+    fn test_pct_to_bars_low() {
+        assert_eq!(pct_to_bars(15), "▰▱▱▱▱▱▱▱▱▱"); // 15 / 10 = 1
+    }
 }
