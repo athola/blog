@@ -8,13 +8,15 @@
 //!   5. Colophon link
 
 use leptos::{
-    html::{a, div, h1, img, p, section, span},
+    html::{a, div, h1, img, p, script, section, span},
     prelude::*,
 };
 use leptos_meta::{Title, TitleProps};
 use leptos_router::components::{A, AProps};
 
 const AVATAR_URL: &str = "https://avatars.githubusercontent.com/u/9769290?s=400&u=84fd5ddd993912372430ed97b768bf202827989b&v=4";
+
+const PERSON_JSONLD: &str = r#"{"@context":"https://schema.org","@type":"Person","name":"Alex Thola","url":"https://alexthola.com/about","image":"https://avatars.githubusercontent.com/u/9769290?s=400&u=84fd5ddd993912372430ed97b768bf202827989b&v=4","jobTitle":"Staff Software Engineer","sameAs":["https://github.com/athola","https://www.linkedin.com/in/alexthola","https://x.com/alexthola"]}"#;
 
 /// Renders the /about route.
 pub fn component() -> impl IntoView {
@@ -24,6 +26,10 @@ pub fn component() -> impl IntoView {
                 .text("About — Alex Thola")
                 .build(),
         ),
+        // T30: Schema.org Person JSON-LD for the bio page.
+        script()
+            .attr("type", "application/ld+json")
+            .inner_html(PERSON_JSONLD),
         // Page header
         section().class("flex flex-col gap-3").child((
             h1().class("font-display italic text-4xl sm:text-5xl font-medium text-ink leading-tight tracking-tight")

@@ -10,7 +10,7 @@
 //!   7. Post foot — prev/next + more-from-tag + raw-md/copy/share
 
 use leptos::{
-    html::{a, article, div, img, p, section, span, time},
+    html::{a, article, div, img, p, script, section, span, time},
     prelude::*,
 };
 use leptos_meta::{Link, LinkProps, Title, TitleProps};
@@ -214,6 +214,10 @@ pub fn component() -> impl IntoView {
                     .href(format!("https://alexthola.com/post/{}", slug_for_links))
                     .build(),
             ),
+            // T30: Schema.org Article JSON-LD for rich-result snippets.
+            script()
+                .attr("type", "application/ld+json")
+                .inner_html(build_article_jsonld(&post_data, &slug_for_links)),
         ))
     };
 
@@ -340,6 +344,43 @@ fn month_long(month_num: &str) -> Option<&'static str> {
     }
 }
 
+/// Builds Schema.org Article JSON-LD for a post page (T30, spec §6.3).
+fn build_article_jsonld(post: &Post, slug: &str) -> String {
+    let post_url = format!("https://alexthola.com/post/{}", slug);
+    let image = post
+        .header_image
+        .clone()
+        .unwrap_or_else(|| "https://alexthola.com/public/rust_color.webp".to_string());
+    format!(
+        r#"{{"@context":"https://schema.org","@type":"Article","headline":"{}","description":"{}","image":"{}","datePublished":"{}","dateModified":"{}","author":{{"@type":"Person","name":"{}","url":"https://alexthola.com/about"}},"publisher":{{"@type":"Person","name":"Alex Thola"}},"mainEntityOfPage":{{"@type":"WebPage","@id":"{}"}}}}"#,
+        json_escape(&post.title),
+        json_escape(&post.summary),
+        json_escape(&image),
+        json_escape(&post.created_at),
+        json_escape(&post.updated_at),
+        json_escape(&post.author.name),
+        post_url,
+    )
+}
+
+fn json_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c.is_control() => {
+                out.push_str(&format!("\\u{:04x}", c as u32));
+            }
+            c => out.push(c),
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -404,5 +445,30 @@ mod tests {
         assert_eq!(strip_html_tags("plain"), "plain");
         assert_eq!(strip_html_tags("<em>foo</em>"), "foo");
         assert_eq!(strip_html_tags("<a href=\"x\">link</a> text"), "link text");
+    }
+
+    #[test]
+    fn test_json_escape_basic() {
+        assert_eq!(json_escape("plain"), "plain");
+        assert_eq!(json_escape(r#"with "quotes""#), r#"with \"quotes\""#);
+        assert_eq!(json_escape("back\\slash"), "back\\\\slash");
+        assert_eq!(json_escape("with\nnewline"), "with\\nnewline");
+    }
+
+    #[test]
+    fn test_build_article_jsonld_contains_required_fields() {
+        let post = Post {
+            title: "Hello".to_string(),
+            summary: "A summary".to_string(),
+            slug: Some("hello".to_string()),
+            created_at: "2026-04-30T00:00:00Z".to_string(),
+            updated_at: "2026-04-30T00:00:00Z".to_string(),
+            ..Post::default()
+        };
+        let json = build_article_jsonld(&post, "hello");
+        assert!(json.contains(r#""@type":"Article""#));
+        assert!(json.contains(r#""headline":"Hello""#));
+        assert!(json.contains(r#""datePublished":"2026-04-30T00:00:00Z""#));
+        assert!(json.contains("alexthola.com/post/hello"));
     }
 }
