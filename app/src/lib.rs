@@ -7,17 +7,14 @@
 //! - Integrating various sub-components like headers, footers, and page-specific views.
 //! - Handling global error fallbacks.
 
-use crate::components::{error_template, header, icons};
-use chrono::{Datelike as _, Utc};
+use crate::components::{error_template, footer, nameplate, pipe_nav};
 #[cfg(feature = "ssr")]
 use leptos::html::{body, head, html, link, meta};
-use leptos::{
-    html::{a, div, footer, p, script},
-    prelude::*,
-};
+use leptos::{html::script, prelude::*};
 use leptos_meta::provide_meta_context;
 #[cfg(feature = "ssr")]
 use leptos_meta::{MetaTags, Stylesheet, StylesheetProps, Title, TitleProps};
+use leptos_router::hooks::use_location;
 use leptos_router::{
     ParamSegment, SsrMode, StaticSegment,
     components::{FlatRoutes, Route, Router},
@@ -195,7 +192,12 @@ pub fn component() -> impl IntoView {
         <Router>
             <a href="#main-content" class="skip-link">"Skip to content"</a>
             <div class="text-ink font-sans">
-                {move || header::component}
+                <header class="relative py-6 px-4 md:px-6 border-b-2 border-rule">
+                    <div class="container mx-auto max-w-5xl flex flex-row flex-wrap justify-between items-center gap-y-4 gap-x-6">
+                        {nameplate::component()}
+                        {move || pipe_nav::component(current_route())}
+                    </div>
+                </header>
                 <main id="main-content" class="container flex flex-col gap-8 px-4 pt-8 pb-16 mx-auto max-w-4xl md:px-0">
                     <FlatRoutes fallback=|| {
                         // Handle 404 (Not Found) errors by rendering a specific error template.
@@ -215,34 +217,21 @@ pub fn component() -> impl IntoView {
                         <Route path=StaticSegment("notes") view=notes::component/>
                     </FlatRoutes>
                 </main>
-                {footer_component()}
+                {footer::component()}
             </div>
         </Router>
     }
 }
 
-/// Renders the application's footer component.
-///
-/// Sprint 0 transitional footer — token-driven, no longer fixed. Sprint 1 T12
-/// replaces this with the sitemap-style three-column footer per spec §3.2.
-fn footer_component() -> impl IntoView {
-    footer()
-        .class("relative mt-16 py-8 text-center border-t-2 border-rule")
-        .child(
-            div()
-                .class("flex flex-col gap-2 justify-center items-center")
-                .child((
-                    p().class("text-ink-3 text-sm").child((
-                        "Powered by",
-                        a().href("https://github.com/athola")
-                            .class("hover:underline text-accent")
-                            .child(" athola"),
-                        format!(" \u{a9} {}", Utc::now().year()),
-                    )),
-                    div().class("block md:hidden").child(icons::component),
-                )),
-        )
+/// Returns the current pathname for use by PipeNav's active-state logic.
+fn current_route() -> String {
+    let location = use_location();
+    location.pathname.get()
 }
+
+// Sprint 0's transitional `footer_component` was replaced by
+// components::footer (Sprint 1 T12) and wired into the root component
+// above. The Sprint 1 footer is a sitemap-style three-column layout.
 
 #[cfg(test)]
 mod tests {

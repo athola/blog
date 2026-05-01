@@ -72,6 +72,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[allow(clippy::type_complexity)]
     fn test_tag_strip_structure() {
         let _: fn(Vec<(String, u32)>, RwSignal<Vec<String>>) -> _ = component;
     }

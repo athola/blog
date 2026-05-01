@@ -356,7 +356,7 @@ server-release:
 
 ## --- Validation -----------------------------------------------------------
 
-validate: fmt lint test
+validate: fmt lint lint-tokens test
 	$(ECHO_PREFIX) Validating $(PROJECT) for PR submission
 	@echo "Running security scans..."
 	@if [ -f "$(SCRIPTS_DIR)/run_secret_scan.sh" ]; then chmod +x $(SCRIPTS_DIR)/run_secret_scan.sh && $(SCRIPTS_DIR)/run_secret_scan.sh; else echo "Note: Secret scan script not found"; fi
