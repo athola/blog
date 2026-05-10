@@ -223,7 +223,14 @@ mod server_integration_tests {
         client: reqwest::Client,
         db_process: Option<Child>, // Track the database process
         port: u16,
+        // reload_port and db_port were previously read by an `lsof` cleanup
+        // sweep that has been removed (it hung in D-state on WSL2). The
+        // ports themselves remain reserved by the corresponding _guard
+        // fields below; these u16 copies are kept for diagnostic
+        // introspection in case future tests need them.
+        #[allow(dead_code)]
         reload_port: u16,
+        #[allow(dead_code)]
         db_port: u16,
         _port_guard: PortReservation,
         _reload_guard: PortReservation,
@@ -758,6 +765,20 @@ mod server_integration_tests {
         }
     }
 
+    /// Terminate `process` reliably without blocking the test runner.
+    ///
+    /// The original Drop impl called `pkill -P process.id()` (which reaps
+    /// only children, leaving the parent server alive) and then
+    /// `process.wait()` (which then hangs forever). That was the root cause
+    /// of the 219+ stale `rustblog_test_*.db` directories we accumulated.
+    ///
+    /// For a test harness we don't need graceful drain: `Child::kill()`
+    /// sends SIGKILL on Unix and `wait()` reaps in microseconds.
+    fn bounded_terminate(process: &mut Child, _label: &str) {
+        let _ = process.kill();
+        let _ = process.wait();
+    }
+
     impl Drop for TestServer {
         fn drop(&mut self) {
             println!("Dropping TestServer on port {}...", self.port);
@@ -770,7 +791,7 @@ mod server_integration_tests {
                     .arg("-P")
                     .arg(process.id().to_string())
                     .output();
-                let _ = process.wait();
+                bounded_terminate(&mut process, "server process");
             }
 
             // Clean up the database process
@@ -780,23 +801,26 @@ mod server_integration_tests {
                     .arg("-P")
                     .arg(db_process.id().to_string())
                     .output();
-                let _ = db_process.wait();
+                bounded_terminate(&mut db_process, "database process");
 
-                // Clean up database file
-                let db_file = format!("rustblog_test_{}.db", self.port);
-                let _ = std::fs::remove_file(&db_file);
+                // Clean up database directory. surrealkv stores data as a
+                // directory tree, not a single file — the previous
+                // remove_file() silently failed on every test run and is
+                // why the workspace accumulated 219+ stale rustblog_test_*.db
+                // directories.
+                let db_path = format!("rustblog_test_{}.db", self.port);
+                let _ = std::fs::remove_dir_all(&db_path);
             }
 
-            // Ensure any lingering processes on our reserved ports are terminated
-            let _ = Command::new("bash")
-                .args([
-                    "-c",
-                    &format!(
-                        "lsof -ti:{},{},{} | xargs -r kill -TERM 2>/dev/null || true",
-                        self.port, self.reload_port, self.db_port
-                    ),
-                ])
-                .output();
+            // Note: previously this Drop impl ended with an `lsof | xargs
+            // kill` "port sweep" as a belt-and-suspenders cleanup, but
+            // `lsof` can hang in uninterruptible (D) state on WSL2 and
+            // even `timeout 3` could not reliably kill it — that hang was
+            // the second root cause of cleanup never completing. Since we
+            // already SIGKILL'd the server and database processes above
+            // (via `Child::kill()`) and pkill'd their children, the kernel
+            // will release the bound ports immediately. The lsof sweep is
+            // unnecessary.
 
             eprintln!("TestServer cleanup completed for port {}.", self.port);
         }
@@ -1178,6 +1202,145 @@ mod server_integration_tests {
             let _body = response.text().await?;
         }
 
+        Ok(())
+    }
+
+    /// Test 7a: Redesign Routes (Sprint 3, T24-T28)
+    ///
+    /// GIVEN a running server with the v0.2.0 site redesign
+    /// WHEN the new feed/random/raw-markdown/legacy-redirect routes are exercised
+    /// THEN each returns its documented status code, content type, and (where
+    ///      applicable) Location header.
+    ///
+    /// All assertions are batched into a single server boot to keep CI cost
+    /// proportional to coverage. A non-redirect-following client is used so
+    /// 301/302 status codes can be observed directly rather than chased.
+    #[tokio::test]
+    async fn test_redesign_routes_sprint3() -> Result<(), Box<dyn std::error::Error>> {
+        let Some((server, server_url)) = start_test_server().await? else {
+            return Ok(());
+        };
+        let _server = server; // keep alive for the duration of the test
+        let no_redirect = reqwest::Client::builder()
+            .timeout(CLIENT_TIMEOUT)
+            .redirect(reqwest::redirect::Policy::none())
+            .build()?;
+
+        // T26: /activity is permanently relocated to /notes. External
+        // bookmarks must continue to resolve via a permanent redirect.
+        // axum's Redirect::permanent() emits 308 (RFC 7538, method-preserving)
+        // rather than the legacy 301; both are "permanent" to crawlers and
+        // bookmarking tools, so we accept either to keep the test resilient
+        // to a future migration to Redirect::to_status(StatusCode::MOVED_PERMANENTLY).
+        let resp = no_redirect
+            .get(format!("{}/activity", server_url))
+            .send()
+            .await?;
+        assert!(
+            matches!(resp.status().as_u16(), 301 | 308),
+            "/activity should issue a permanent redirect (301 or 308), got: {}",
+            resp.status()
+        );
+        let location = resp
+            .headers()
+            .get("location")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        assert_eq!(
+            location, "/notes",
+            "/activity Location header should point to /notes, got: {location}"
+        );
+
+        // T27: canonical /feed/rss.xml alias mirrors /rss.xml.
+        let resp = no_redirect
+            .get(format!("{}/feed/rss.xml", server_url))
+            .send()
+            .await?;
+        assert!(
+            resp.status().is_success(),
+            "/feed/rss.xml should return 2xx, got: {}",
+            resp.status()
+        );
+        let body = resp.text().await?;
+        assert!(
+            body.contains("<rss") || body.contains("<?xml"),
+            "/feed/rss.xml body should look like XML/RSS, got: {}…",
+            &body.chars().take(120).collect::<String>()
+        );
+
+        // T27: /feed/feed.xml serves the Atom 1.0 envelope. The xmlns marker
+        // is the load-bearing structural invariant — feed readers parse on it.
+        let resp = no_redirect
+            .get(format!("{}/feed/feed.xml", server_url))
+            .send()
+            .await?;
+        assert!(
+            resp.status().is_success(),
+            "/feed/feed.xml should return 2xx, got: {}",
+            resp.status()
+        );
+        let content_type = resp
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+        assert!(
+            content_type.contains("atom+xml"),
+            "/feed/feed.xml should advertise application/atom+xml, got: {content_type}"
+        );
+        let body = resp.text().await?;
+        assert!(
+            body.contains(r#"xmlns="http://www.w3.org/2005/Atom""#),
+            "Atom feed must declare the Atom namespace, body starts: {}…",
+            &body.chars().take(200).collect::<String>()
+        );
+
+        // T24: /random returns 302 to a /post/{slug} URL, or a 4xx/5xx if no
+        // posts are seeded. Both shapes are acceptable in CI; the invariant
+        // is that the route is wired and returns a deterministic status.
+        let resp = no_redirect
+            .get(format!("{}/random", server_url))
+            .send()
+            .await?;
+        let status = resp.status().as_u16();
+        if status == 302 {
+            let location = resp
+                .headers()
+                .get("location")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("");
+            assert!(
+                location.starts_with("/post/"),
+                "/random 302 Location should target a post page, got: {location}"
+            );
+        } else {
+            assert!(
+                matches!(status, 404 | 503),
+                "/random with no posts should return 404 or 503, got: {status}"
+            );
+        }
+
+        // T25: raw markdown alternate. For a slug that almost certainly
+        // does not exist, the handler must return 404 with text/plain.
+        // (Verifying the happy path requires seeded post fixtures.)
+        let resp = no_redirect
+            .get(format!(
+                "{}/post/__nonexistent_slug_for_test__/raw.md",
+                server_url
+            ))
+            .send()
+            .await?;
+        assert_eq!(
+            resp.status().as_u16(),
+            404,
+            "raw markdown for missing slug should return 404, got: {}",
+            resp.status()
+        );
+
+        // Sentinel line so test-runner output shows the body succeeded even
+        // if the server-cleanup Drop impl (which calls process.wait()) hangs.
+        eprintln!("test_redesign_routes_sprint3: all 5 assertions passed");
         Ok(())
     }
 

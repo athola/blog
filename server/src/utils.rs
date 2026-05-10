@@ -1029,4 +1029,126 @@ mod tests {
     fn test_sitemap_handler_signature() {
         let _: fn(State<AppState>) -> _ = sitemap_handler;
     }
+
+    // ─────────────────────────────────────────────────────────────────
+    // Sprint 3 (T24-T27): invariant-encoding tests for new feed/route
+    // helpers. These guard the XSS-prevention contract and the project
+    // convention that every public handler has a signature test.
+    // ─────────────────────────────────────────────────────────────────
+
+    /// GIVEN a string containing every XML metacharacter
+    /// WHEN escape_xml is applied
+    /// THEN every metacharacter is replaced by its named entity.
+    /// Catches partial-escape regressions in the table at line 491.
+    #[test]
+    fn escape_xml_replaces_all_five_metacharacters() {
+        let input = "<>&\"'";
+        let expected = "&lt;&gt;&amp;&quot;&apos;";
+        assert_eq!(escape_xml(input), expected);
+    }
+
+    /// GIVEN a compound XSS payload that an attacker might submit as a post title
+    /// WHEN escape_xml is applied
+    /// THEN no raw `<`, `>`, or `"` characters remain to break the XML envelope.
+    /// This is the load-bearing security invariant for RSS/Atom/sitemap output.
+    #[test]
+    fn escape_xml_neutralises_compound_xss_payload() {
+        let payload = r#"<script>alert("xss")</script>"#;
+        let escaped = escape_xml(payload);
+        assert!(
+            !escaped.contains('<'),
+            "raw '<' must not survive: {escaped}"
+        );
+        assert!(
+            !escaped.contains('>'),
+            "raw '>' must not survive: {escaped}"
+        );
+        assert!(
+            !escaped.contains('"'),
+            "raw '\"' must not survive: {escaped}"
+        );
+        assert!(escaped.contains("&lt;script&gt;"));
+        assert!(escaped.contains("&quot;xss&quot;"));
+    }
+
+    /// GIVEN a pre-escaped entity like &amp;
+    /// WHEN escape_xml is applied a second time
+    /// THEN the `&` re-escapes to `&amp;`, yielding `&amp;amp;`.
+    /// Documents the (intentional) non-idempotence: callers must escape exactly once.
+    #[test]
+    fn escape_xml_is_not_idempotent() {
+        assert_eq!(escape_xml("&amp;"), "&amp;amp;");
+    }
+
+    /// GIVEN an empty string
+    /// WHEN escape_xml is applied
+    /// THEN the result is empty (boundary case for the with_capacity call).
+    #[test]
+    fn escape_xml_handles_empty_string() {
+        assert_eq!(escape_xml(""), "");
+    }
+
+    /// GIVEN ASCII text with no metacharacters
+    /// WHEN escape_xml is applied
+    /// THEN the output is byte-identical to the input (no spurious escapes).
+    #[test]
+    fn escape_xml_passes_safe_ascii_through_unchanged() {
+        let safe = "Hello, world! 2026-05-01 alex@thola.com";
+        assert_eq!(escape_xml(safe), safe);
+    }
+
+    /// GIVEN a string mixing `&` with another metacharacter (`<`)
+    /// WHEN escape_xml is applied
+    /// THEN the `&` becomes `&amp;` and the `<` becomes `&lt;` independently —
+    ///      i.e. the `&` from `&lt;` is NOT re-escaped to `&amp;lt;`.
+    /// Locks in the single-pass char-iterator implementation against a future
+    /// "optimization" to chained `String::replace()`, which would naively turn
+    /// `<` into `&lt;` first and then mangle the resulting `&` on a second pass.
+    #[test]
+    fn escape_xml_escapes_ampersand_independently_of_other_metacharacters() {
+        assert_eq!(escape_xml("&<"), "&amp;&lt;");
+        assert_eq!(escape_xml("<&"), "&lt;&amp;");
+        assert_eq!(
+            escape_xml(r#"Tom & Jerry's <show> says "hi""#),
+            "Tom &amp; Jerry&apos;s &lt;show&gt; says &quot;hi&quot;"
+        );
+    }
+
+    /// GIVEN text containing multi-byte UTF-8 (em-dash, smart quotes, emoji,
+    ///       non-Latin script) with no XML metacharacters
+    /// WHEN escape_xml is applied
+    /// THEN every code point survives byte-identical.
+    /// Guards against a future refactor to byte-level (`u8`) matching, which
+    /// would split UTF-8 continuation bytes and corrupt feed content. Real post
+    /// titles routinely contain em-dashes and curly quotes — feed validators
+    /// reject malformed UTF-8.
+    #[test]
+    fn escape_xml_preserves_multibyte_unicode() {
+        let unicode = "Café — “smart quotes” • 日本語 • 🦀";
+        assert_eq!(escape_xml(unicode), unicode);
+        // Sanity: the bytes really are multi-byte.
+        assert!(unicode.len() > unicode.chars().count());
+    }
+
+    /// Verifies the `atom_handler` function exists with the correct signature.
+    /// Mirrors the `test_rss_handler_signature` convention so every public
+    /// handler in this module has a contract guard.
+    #[test]
+    fn test_atom_handler_signature() {
+        let _: fn(State<AppState>) -> _ = atom_handler;
+    }
+
+    /// Verifies the `random_handler` function exists with the correct signature.
+    #[test]
+    fn test_random_handler_signature() {
+        let _: fn(State<AppState>) -> _ = random_handler;
+    }
+
+    /// Verifies the `raw_markdown_handler` function exists with the correct signature.
+    /// Note: takes a Path extractor in addition to State, distinguishing it from
+    /// the State-only handlers above.
+    #[test]
+    fn test_raw_markdown_handler_signature() {
+        let _: fn(Path<String>, State<AppState>) -> _ = raw_markdown_handler;
+    }
 }
