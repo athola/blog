@@ -40,7 +40,9 @@ use tower_http::compression::predicate::{NotForContentType, SizeAbove};
 use tower_http::compression::{CompressionLayer, Predicate as _};
 use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
-use utils::{connect, rss_handler, sitemap_handler};
+use utils::{
+    atom_handler, connect, random_handler, raw_markdown_handler, rss_handler, sitemap_handler,
+};
 
 fn choose_site_addr(
     config_addr: SocketAddr,
@@ -295,9 +297,23 @@ async fn main() {
                         "/api/activities/create",
                         any(|| async { Redirect::temporary("/api/activities") }),
                     )
+                    // Sprint 3 (T26): /activity → /notes 301. The route was renamed
+                    // from /activity to /notes; preserve external bookmarks via
+                    // permanent redirect.
+                    .route("/activity", any(|| async { Redirect::permanent("/notes") }))
                     .route("/health", get(health_handler))
                     .route("/rss", get(rss_handler))
                     .route("/rss.xml", get(rss_handler))
+                    // Sprint 3: canonical /feed/* aliases (T27).
+                    .route("/feed/rss.xml", get(rss_handler))
+                    .route("/feed/feed.xml", get(atom_handler))
+                    // Sprint 3: /random stumble redirect (T24).
+                    .route("/random", get(random_handler))
+                    // Sprint 3: raw markdown alternate (T25). Axum 0.8 disallows
+                    // mixing a literal extension with a path parameter in the
+                    // same segment, so the .md slug source lives at
+                    // /post/{slug}/raw.md instead of /post/{slug}.md.
+                    .route("/post/{slug}/raw.md", get(raw_markdown_handler))
                     .route("/sitemap.xml", get(sitemap_handler))
                     // Serve static assets.
                     .nest_service(

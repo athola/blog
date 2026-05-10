@@ -20,7 +20,7 @@ resolver = "2"
 members = ["app", "frontend", "markdown", "server", "shared_utils"]
 
 [workspace.package]
-version = "0.1.8"
+version = "0.2.0"
 authors = ["Alex Thola <alexthola@gmail.com>"]
 license = "AGPL-3.0-or-later"
 description = "A public webblog"
@@ -49,7 +49,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 serde = { version = "1.0.226", features = ["derive"] }
 serde_json = "1.0"
 shared_utils = { path = "shared_utils" }
-surrealdb = { version = "2.6.3", features = ["protocol-http", "kv-mem"] }
+surrealdb = { version = "2.6.3", default-features = false }
 tokio-retry = "0.3"
 tracing = "0.1"
 
@@ -107,11 +107,10 @@ browserquery = "defaults"
 # This must match the LEPTOS_HASH_FILES=true flag used during Docker builds.
 hash-files = true
 
-# Set by cargo-leptos watch when building with that tool. Controls whether autoreload JS will be included in the head
-watch = false
-
-# The environment Leptos will run in, usually either "DEV" or "PROD"
-env = "DEV"
+# Note: `watch` and `env` keys were removed (cargo-leptos 0.3+ no longer
+# recognises them at the workspace metadata level — they are inferred from
+# the invocation: `cargo leptos watch` sets autoreload internally, and
+# the runtime LEPTOS_OUTPUT_NAME / RUST_ENV env vars drive build mode).
 
 # The features to use when compiling the bin target
 #

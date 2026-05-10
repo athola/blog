@@ -1,0 +1,91 @@
+{
+  "mission_id": "20260429-redesign",
+  "mission_type": "full",
+  "started_at": "2026-04-29",
+  "completed_at": "2026-04-30",
+  "branch": "site-redesign-0.2.0",
+  "current_phase": "execute",
+  "current_sprint": "Sprint 4 — completed; mission complete",
+  "outcome": "success",
+  "phase_status": {
+    "brainstorm": "completed",
+    "specify": "completed",
+    "plan": "completed",
+    "execute": "completed"
+  },
+  "sprint_status": {
+    "sprint_0_foundation": {
+      "status": "completed",
+      "tasks_completed": ["T01", "T02", "T03", "T04", "T05", "T06"],
+      "commits": ["57eed05", "8c53415", "f556110"]
+    },
+    "sprint_1_components": {
+      "status": "completed",
+      "tasks_completed": ["T07", "T08", "T09", "T10", "T11", "T12", "T13", "T14"],
+      "commits": ["ead1a42"]
+    },
+    "sprint_2_routes": {
+      "status": "completed",
+      "tasks_completed": ["T15", "T16", "T17", "T18", "T19", "T20"],
+      "commits": ["c658b52", "d9399ff", "99ab24b", "fa02e6a", "6eed6ef", "71ab3c2"]
+    },
+    "sprint_3_new_routes": {
+      "status": "completed",
+      "tasks_completed": ["T21", "T22", "T23", "T24", "T25", "T26", "T27", "T28"],
+      "commits": ["913b146", "7693d79", "d027774"]
+    },
+    "sprint_4_quality": {
+      "status": "completed",
+      "tasks_completed": ["T29", "T30", "T31", "T34"],
+      "tasks_documented_for_manual_run": ["T32 (browser screenshots)", "T33 (Lighthouse)"],
+      "commits": ["589c5a9", "4946d14", "2ee7b37"]
+    }
+  },
+  "artifacts": {
+    "project_brief": "docs/project-brief.md",
+    "specification": "docs/specification.md",
+    "implementation_plan": "docs/implementation-plan.md",
+    "design_system": "docs/design-system.md",
+    "mission_report": "docs/MISSION-REPORT.md"
+  },
+  "user_directives": [
+    "ultrathink",
+    "deep research online",
+    "go with your recommendations",
+    "proceed",
+    "continue (sprint 0)",
+    "continue (sprint 1)",
+    "continue with everything else, do not stop until fully complete; ignore scope guard"
+  ],
+  "user_decisions": {
+    "D1_direction": "D - Dual-Mode Editorial Engineer",
+    "D2_accent": "burgundy #7a2942 (light) / #c47c80 (dark)",
+    "D3_body_type": "hybrid - Fraunces (display) + Inter Variable @470 (body) + JetBrains Mono (meta/code)",
+    "D4_activity_route": "promote to /notes (top-level)",
+    "D5_header": "unfix",
+    "D6_newsletter": "slot-only (defer integration to PLAN.md Q2)"
+  },
+  "scope_deferrals": [
+    "JSON Feed",
+    "ThemeToggle UI",
+    "Newsletter integration",
+    "/colophon as standalone component (rendered as Leptos route instead)"
+  ],
+  "verification_evidence": {
+    "tailwind_v4_compile": "189ms clean",
+    "cargo_check_workspace": "1.6s clean",
+    "cargo_fmt_check": "clean",
+    "cargo_clippy_make_lint": "6.45s clean (no warnings, -D warnings)",
+    "cargo_test_app_lib": "112 passed; 0 failed",
+    "cargo_test_server": "69 passed; 0 failed",
+    "cargo_build_workspace": "1m 52s clean",
+    "make_lint_tokens": "✓ Token discipline holds — no arbitrary color values"
+  },
+  "follow_ups": [
+    "Run T32 (browser screenshots) + T33 (Lighthouse) with live dev server",
+    "Self-host webfonts (currently Google Fonts CDN)",
+    "ThemeToggle UI follow-up branch",
+    "Atom feed W3C validator after deploy",
+    "Sitemap update for /archive /notes /about /colophon entries"
+  ]
+}

@@ -1,164 +1,203 @@
-//! This module defines the `home` component, which serves as the application's
-//! homepage.
+//! Home page — the editorial entry point.
 //!
-//! It displays a paginated list of blog posts and provides a tag-based filtering
-//! mechanism. The component fetches post data and available tags from the API,
-//! managing state for selected tags and dynamically updating the displayed posts.
+//! Layout (spec §4.1):
+//!   1. Featured post (DateStamp Featured + title + excerpt + meta)
+//!   2. Recent posts list (PostListRow Default × 5-7)
+//!   3. + archive → link
+//!   4. Latest notes strip (3 most recent)
+//!   5. + notes → link
+//!   6. TagStrip filter (filters the recent posts list reactively)
 
 extern crate alloc;
 use alloc::vec::Vec;
-use core::clone::Clone;
-use icondata::{BsCalendar, BsClock, BsEye, FiUser};
-use leptos::{
-    ev,
-    html::{button, div, p, span},
-    prelude::*,
-    svg::svg,
-};
 
+use leptos::{
+    html::{div, p, span},
+    prelude::*,
+};
 use leptos_meta::{Title, TitleProps};
 use leptos_router::components::{A, AProps};
 
-use crate::{
-    api::{select_posts, select_tags},
-    components::loader,
+use crate::api::{select_activities, select_posts, select_tags};
+use crate::components::{
+    loader,
+    post_list_row::{self, PostListSize},
+    tag_strip,
 };
+use crate::types::Post;
 
-/// Renders the homepage of the blog, displaying a list of posts and a tag filter.
-///
-/// This component manages the following reactive state:
-/// - `selected_tags`: A `RwSignal` holding the list of tags currently selected by the user.
-/// - `tags`: A `Resource` that fetches all available tags from the server once.
-/// - `posts`: A `Resource` that fetches posts based on the `selected_tags` signal,
-///   re-fetching whenever the selected tags change.
-///
-/// The component uses `Suspense` for loading states and `For` for efficiently rendering
-/// lists of posts and tags.
-#[expect(clippy::too_many_lines)] // This function is necessarily large due to Leptos view! macro expansion.
+/// Renders the home page.
+#[expect(clippy::too_many_lines)]
 pub fn component() -> impl IntoView {
     let selected_tags = RwSignal::new(Vec::<String>::new());
 
-    // Resource to fetch all available tags once.
+    // All available tags for the inline category strip
     let tags = Resource::new_blocking(
-        || (), // The source is unit, meaning it runs once.
+        || (),
         move |()| async move { select_tags().await.unwrap_or_default() },
     );
 
-    // Resource to fetch posts based on currently selected tags.
-    // This resource will re-run whenever `selected_tags` changes.
+    // Posts filtered by selected tags — first item becomes Featured, rest are recent
     let posts = Resource::new(
         move || selected_tags.get(),
         move |selected_tags| async move { select_posts(selected_tags).await },
     );
 
-    div().child((
+    // Latest 3 notes (page 0 returns up to 10; we slice to 3)
+    let notes = Resource::new_blocking(
+        || (),
+        move |()| async move { select_activities(0).await.unwrap_or_default() },
+    );
+
+    div().class("flex flex-col gap-12").child((
         Title(
             TitleProps::builder()
-                .text("Alex Thola's Blog \u{2013} Tech Insights & Consulting")
+                .text("Alex Thola — Tech Insights & Consulting")
                 .build(),
         ),
+        // ─── Posts (featured + recent + archive link) ────────────────
         Suspense(
-            // Fallback for post loading. An empty fallback is used here as the posts are
-            // rendered within the main content area, and no specific loader is placed directly here.
-            SuspenseProps::builder().fallback(|| ()).children(TypedChildren::to_children(move || {
-                div()
-                    .class("gap-4 columns-1 sm:columns-2")
-                    .child(For(ForProps::builder()
-                        .each(move || posts.get().and_then(Result::ok).unwrap_or_default())
-                        .key(|post| format!("{:?}", post.id))
-                        .children(|post| {
-                            div().class("flex flex-col p-3 text-left text-white rounded-lg transition-all duration-500 cursor-pointer break-inside-avoid bg-card hover:text-[#ffef5c]").child(
-                                    A(AProps::builder()
-                                        .href(format!("/post/{}", post.slug.as_ref().map_or("", |v| v)))
-                                        .children(ToChildren::to_children(move || {
-                                            div()
-                                                .child(
-                                                (div().class("flex flex-col gap-1 mb-4 font-medium").child((
-                                                p().class("text-base line-clamp-2").child(post.title.clone()),
-                                                p().class("italic text-xxs").child(post.summary.clone()),
-                                            )),
-                                            div().class("flex flex-row gap-3 justify-start items-center text-xxs").child(
-                                                div().class("flex flex-row gap-3").child((
-                                                    div().class("flex flex-row gap-1 items-center").child((
-                                                        svg().attr("viewBox", BsClock.view_box).attr("innerHTML", BsClock.data).attr("style", "filter: brightness(0) invert(1);").class("size-4"),
-                                                        p().child(format!("{} min read", post.read_time)),
-                                                    )),
-                                                    div().class("flex flex-row gap-1 items-center").child((
-                                                        svg().attr("viewBox", BsEye.view_box).attr("innerHTML", BsEye.data).attr("style", "filter: brightness(0) invert(1);").class("size-4"),
-                                                        p().child(format!("{} views", post.total_views)),
-                                                    )),
-                                                    div().class("flex flex-row gap-1 items-center").child((
-                                                        svg().attr("viewBox", BsCalendar.view_box).attr("innerHTML", BsCalendar.data).attr("style", "filter: brightness(0) invert(1);").class("size-4"),
-                                                        p().child(post.created_at),
-                                                    )),
-                                                    div().class("flex flex-row gap-1 items-center").child((
-                                                        svg().attr("viewBox", FiUser.view_box).attr("innerHTML", FiUser.data).attr("style", "filter: brightness(0) invert(1);").class("size-4"),
-                                                        button().on(ev::click, move |e| {
-                                                            e.prevent_default();
-                                                            e.stop_propagation();
-                                                            let _ = window().open_with_url_and_target(
-                                                                post.author.github.as_ref().unwrap_or(&String::new()),
-                                                                "_blank",
-                                                            );
-                                                        }).child(
-                                                            span().class("text-xs font-semibold cursor-pointer hover:underline").child(post.author.name),
-                                                        ),
-                                                    )),
-                                                )),
-                                            )
-                                        ))}))
-                            .build())
-                        )})
-                    .build()))
-                })
-            ).build(),
+            SuspenseProps::builder()
+                .fallback(loader::component)
+                .children(TypedChildren::to_children(move || {
+                    move || {
+                        let post_list: Vec<Post> = posts
+                            .get()
+                            .and_then(Result::ok)
+                            .unwrap_or_default();
+
+                        if post_list.is_empty() {
+                            return div().class(
+                                "font-mono text-xs uppercase tracking-[0.08em] text-ink-3 py-12 text-center",
+                            ).child("No posts match the selected tags.").into_any();
+                        }
+
+                        let featured = post_list[0].clone();
+                        let recent: Vec<Post> = post_list[1..].iter().take(7).cloned().collect();
+                        let recent_len = recent.len();
+
+                        div().class("flex flex-col").child((
+                            // Featured post — full bleed within reading column
+                            div()
+                                .class("border-b border-rule-soft pb-2 mb-2")
+                                .child(post_list_row::component(
+                                    featured,
+                                    PostListSize::Featured,
+                                    false,
+                                )),
+                            // Recent posts list
+                            div().class("flex flex-col").child(
+                                recent
+                                    .into_iter()
+                                    .enumerate()
+                                    .map(|(i, post)| {
+                                        post_list_row::component(
+                                            post,
+                                            PostListSize::Default,
+                                            i < recent_len.saturating_sub(1),
+                                        )
+                                    })
+                                    .collect::<Vec<_>>(),
+                            ),
+                            // Archive link
+                            div().class("flex justify-end mt-2").child(
+                                A(AProps::builder()
+                                    .href("/archive".to_string())
+                                    .children(ToChildren::to_children(move || {
+                                        span()
+                                            .class("font-mono text-xs uppercase tracking-[0.08em] text-ink-3 hover:text-accent transition-colors")
+                                            .child("+ archive →")
+                                    }))
+                                    .build()),
+                            ),
+                        )).into_any()
+                    }
+                }))
+                .build(),
         ),
-        Suspense(SuspenseProps::builder()
-            // Display a loader component while tags are being fetched.
-            .fallback(|| loader::component)
-            .children(TypedChildren::to_children(move || {
-                div().class("flex flex-row flex-wrap gap-1 px-4 text-xs").child((
-                    button().on(ev::click, move |_| selected_tags.update(Vec::clear))
-                        .class("py-1 px-2 text-white rounded-lg transition-all duration-500 cursor-pointer bg-primary")
-                        // Underline the "All" button if no tags are selected.
-                        .class(("underline", move || selected_tags.get().is_empty()))
-                        .child("All"),
-                    For(ForProps::builder()
-                        .each(move || tags.get().unwrap_or_default())
-                        .key(Clone::clone)
-                        .children(move |(tag, count)| {
-                            button().on(ev::click, {
-                                let tag = tag.clone();
-                                move |_| {
-                                    selected_tags.update(|prev| {
-                                        // Toggle tag selection: add if not present, remove if present.
-                                        if prev.contains(&tag) {
-                                            *prev = prev.clone().into_iter().filter(|v| v != &tag).collect::<Vec<_>>();
-                                        } else {
-                                            *prev = prev.clone().into_iter().chain(core::iter::once(tag.clone())).collect();
-                                        }
-                                    });
-                                }
-                            })
-                            .class("py-1 px-2 rounded-lg transition-all duration-500 cursor-pointer hover:text-black hover:bg-white")
-                            .class((
-                                "bg-white",
-                                {
-                                    let tag = tag.clone();
-                                    move || selected_tags.get().contains(&tag)
-                                }),
-                            )
-                            .class((
-                                "text-black",
-                                {
-                                    let tag = tag.clone();
-                                    move || selected_tags.get().contains(&tag)
-                                }),
-                            )
-                            .child(tag + " (" + &count.to_string() + ")")
-                        })
-                        .build())
-                ))
-            })).build())
+        // ─── Latest notes strip ──────────────────────────────────────
+        Suspense(
+            SuspenseProps::builder()
+                .fallback(|| ())
+                .children(TypedChildren::to_children(move || {
+                    move || {
+                        let note_list = notes.get().unwrap_or_default();
+                        if note_list.is_empty() {
+                            return div().into_any();
+                        }
+                        let three: Vec<_> = note_list.into_iter().take(3).collect();
+                        div().class("flex flex-col gap-3 pt-8 border-t-2 border-rule").child((
+                            // Section kicker
+                            p().class("font-mono text-[11px] uppercase tracking-[0.08em] text-ink-3")
+                                .child("notes — recent"),
+                            // Note rows
+                            div().class("flex flex-col").child(
+                                three
+                                    .into_iter()
+                                    .map(|note| {
+                                        let tag = note.tags.first().cloned().unwrap_or_default();
+                                        div()
+                                            .class("py-3 border-b border-rule-soft last:border-b-0 flex flex-col gap-1")
+                                            .child((
+                                                p().class("text-ink-2 text-base line-clamp-2")
+                                                    .child(note.content.clone()),
+                                                p().class("font-mono text-[11px] uppercase tracking-[0.08em] text-ink-4")
+                                                    .child((
+                                                        note.created_at,
+                                                        if !tag.is_empty() {
+                                                            Some(format!(" · #{}", tag))
+                                                        } else {
+                                                            None
+                                                        },
+                                                    )),
+                                            ))
+                                    })
+                                    .collect::<Vec<_>>(),
+                            ),
+                            // Notes link
+                            div().class("flex justify-end").child(
+                                A(AProps::builder()
+                                    .href("/notes".to_string())
+                                    .children(ToChildren::to_children(move || {
+                                        span()
+                                            .class("font-mono text-xs uppercase tracking-[0.08em] text-ink-3 hover:text-accent transition-colors")
+                                            .child("+ notes →")
+                                    }))
+                                    .build()),
+                            ),
+                        )).into_any()
+                    }
+                }))
+                .build(),
+        ),
+        // ─── Tag filter strip ────────────────────────────────────────
+        Suspense(
+            SuspenseProps::builder()
+                .fallback(|| ())
+                .children(TypedChildren::to_children(move || {
+                    move || {
+                        let tag_list: Vec<(String, u32)> = tags
+                            .get()
+                            .unwrap_or_default()
+                            .into_iter()
+                            .map(|(k, v)| (k, v as u32))
+                            .collect();
+                        div()
+                            .class("pt-6 border-t border-rule-soft")
+                            .child(tag_strip::component(tag_list, selected_tags))
+                    }
+                }))
+                .build(),
+        ),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_home_component_signature() {
+        let _: fn() -> _ = component;
+    }
 }

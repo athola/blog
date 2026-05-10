@@ -8,7 +8,7 @@
 #![allow(deprecated)]
 
 use app::types::{AppState, Author, Post};
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::Response;
 use chrono::DateTime;
@@ -558,10 +558,16 @@ pub async fn sitemap_handler(State(state): State<AppState>) -> Response<String> 
     );
 
     // Define static URLs to be included in the sitemap.
+    // /archive, /notes, /about, /colophon land in this PR's IA refresh; without
+    // them the new routes are unreachable from search-engine crawls.
     let static_urls = vec![
         ("https://alexthola.com/", "daily", "0.9"),
+        ("https://alexthola.com/archive", "weekly", "0.7"),
+        ("https://alexthola.com/notes", "daily", "0.7"),
+        ("https://alexthola.com/about", "monthly", "0.6"),
         ("https://alexthola.com/contact", "weekly", "1.0"),
         ("https://alexthola.com/references", "weekly", "0.6"),
+        ("https://alexthola.com/colophon", "monthly", "0.4"),
         ("https://alexthola.com/rss.xml", "daily", "0.5"),
         ("https://alexthola.com/sitemap.xml", "monthly", "0.5"),
     ];
@@ -631,6 +637,269 @@ pub async fn sitemap_handler(State(state): State<AppState>) -> Response<String> 
     }
     sitemap.push_str("</urlset>");
     build_response(sitemap, "application/xml", StatusCode::OK)
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Sprint 3 (T24-T27): Atom feed, /random, /post/:slug/raw.md, redirects.
+// ─────────────────────────────────────────────────────────────────────
+
+/// Handles GET /feed/feed.xml — Atom 1.0 feed.
+///
+/// Per spec §4.10. The Atom feed mirrors the RSS content but with the
+/// Atom envelope. Hand-rolled XML to avoid adding the `atom_syndication`
+/// crate dependency.
+pub async fn atom_handler(State(state): State<AppState>) -> Response<String> {
+    let AppState { db, .. } = state;
+    let db = db.as_ref();
+    match generate_atom(db).await {
+        Ok(atom) => build_response(atom, "application/atom+xml; charset=utf-8", StatusCode::OK),
+        Err(err) => {
+            error!(?err, "Failed to generate Atom feed");
+            build_response(
+                "Failed to generate Atom feed".to_string(),
+                "text/plain; charset=utf-8",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
+    }
+}
+
+/// Generates the Atom feed XML from published posts.
+pub async fn generate_atom(db: &Surreal<Client>) -> Result<String, ServerFnError> {
+    let query_str =
+        "SELECT *, author.* from post WHERE is_published = true ORDER BY created_at DESC LIMIT 50;";
+    let query_result = retry_async("generate_atom_query", RetryConfig::default(), || async {
+        db.query(query_str).await
+    })
+    .await;
+
+    let mut query = match query_result {
+        Ok(q) => q,
+        Err(e) => return Err(ServerFnError::<NoCustomError>::ServerError(e.to_string())),
+    };
+
+    let posts = query
+        .take::<Vec<Post>>(0)
+        .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {e}")))?;
+
+    // Per Atom 1.0 §4.2.15, feed-level <updated> reflects the most recent
+    // meaningful modification. Use max(updated_at) across entries, not the
+    // first post's created_at — published-but-since-edited posts otherwise
+    // never bump <updated> and feed readers skip re-fetching.
+    let updated = posts
+        .iter()
+        .map(|p| &p.updated_at)
+        .max()
+        .cloned()
+        .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
+
+    let mut feed = String::new();
+    feed.push_str("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n");
+    feed.push_str("<feed xmlns=\"http://www.w3.org/2005/Atom\">\n");
+    let _ = writeln!(feed, "  <title>alexthola</title>");
+    let _ = writeln!(
+        feed,
+        "  <subtitle>Tech Insights &amp; Consulting from Alex Thola</subtitle>"
+    );
+    let _ = writeln!(feed, "  <id>https://alexthola.com/</id>");
+    let _ = writeln!(
+        feed,
+        "  <link href=\"https://alexthola.com/\" rel=\"alternate\"/>"
+    );
+    let _ = writeln!(
+        feed,
+        "  <link href=\"https://alexthola.com/feed/feed.xml\" rel=\"self\" type=\"application/atom+xml\"/>"
+    );
+    let _ = writeln!(feed, "  <updated>{}</updated>", escape_xml(&updated));
+    feed.push_str("  <author><name>Alex Thola</name></author>\n");
+
+    for post in posts {
+        let slug = post.slug.clone().unwrap_or_default();
+        if slug.is_empty() {
+            continue;
+        }
+        let post_url = format!("https://alexthola.com/post/{slug}");
+        let processed_body = match process_markdown(&post.body) {
+            Ok(html) => html,
+            Err(err) => {
+                // Skipping is preferable to publishing raw markdown inside
+                // <content type="html">: feed readers would render `**bold**`
+                // and `# heading` as literal text and break links.
+                error!(?err, slug = %slug, "atom: process_markdown failed; skipping post");
+                continue;
+            }
+        };
+        feed.push_str("  <entry>\n");
+        let _ = writeln!(feed, "    <title>{}</title>", escape_xml(&post.title));
+        let _ = writeln!(feed, "    <id>{}</id>", escape_xml(&post_url));
+        let _ = writeln!(
+            feed,
+            "    <link href=\"{}\" rel=\"alternate\"/>",
+            escape_xml(&post_url)
+        );
+        let _ = writeln!(
+            feed,
+            "    <updated>{}</updated>",
+            escape_xml(&post.updated_at)
+        );
+        let _ = writeln!(
+            feed,
+            "    <published>{}</published>",
+            escape_xml(&post.created_at)
+        );
+        let _ = writeln!(
+            feed,
+            "    <author><name>{}</name></author>",
+            escape_xml(&post.author.name)
+        );
+        let _ = writeln!(
+            feed,
+            "    <summary type=\"html\">{}</summary>",
+            escape_xml(&post.summary)
+        );
+        let _ = writeln!(
+            feed,
+            "    <content type=\"html\">{}</content>",
+            escape_xml(&processed_body)
+        );
+        feed.push_str("  </entry>\n");
+    }
+
+    feed.push_str("</feed>\n");
+    Ok(feed)
+}
+
+/// Handles GET /random — picks a random published post and 302 redirects
+/// to its detail page (spec §4.9, "Stumble" mechanic).
+pub async fn random_handler(State(state): State<AppState>) -> Response<String> {
+    #[derive(Deserialize)]
+    struct SlugOnly {
+        slug: Option<String>,
+    }
+
+    let AppState { db, .. } = state;
+    let db = db.as_ref();
+
+    let query_result = retry_async("random_post_query", RetryConfig::default(), || async {
+        db.query("SELECT slug FROM post WHERE is_published = true ORDER BY rand() LIMIT 1;")
+            .await
+    })
+    .await;
+
+    let mut query = match query_result {
+        Ok(q) => q,
+        Err(e) => {
+            error!(?e, "random_handler: query failed");
+            return build_response(
+                "No posts available".to_string(),
+                "text/plain; charset=utf-8",
+                StatusCode::SERVICE_UNAVAILABLE,
+            );
+        }
+    };
+
+    let row: Option<SlugOnly> = match query.take(0) {
+        Ok(row) => row,
+        Err(e) => {
+            error!(?e, "random_handler: deserialize failed");
+            return build_response(
+                "No posts available".to_string(),
+                "text/plain; charset=utf-8",
+                StatusCode::SERVICE_UNAVAILABLE,
+            );
+        }
+    };
+
+    let slug = match row.and_then(|r| r.slug) {
+        Some(s) if !s.is_empty() => s,
+        _ => {
+            return build_response(
+                "No published posts to stumble through".to_string(),
+                "text/plain; charset=utf-8",
+                StatusCode::NOT_FOUND,
+            );
+        }
+    };
+
+    let target = format!("/post/{slug}");
+    let mut response = Response::new(format!("Redirecting to {target}"));
+    *response.status_mut() = StatusCode::FOUND;
+    if let Ok(location) = target.parse() {
+        response.headers_mut().insert("Location", location);
+    }
+    if let Ok(cache) = "public, max-age=60".parse() {
+        response.headers_mut().insert("Cache-Control", cache);
+    }
+    if let Ok(ct) = "text/plain; charset=utf-8".parse() {
+        response.headers_mut().insert("Content-Type", ct);
+    }
+    response
+}
+
+/// Handles GET /post/{slug}/raw.md — returns the raw markdown source for a post
+/// (spec §4.11, hacker-culture handshake). Axum 0.8 requires a path param to
+/// occupy a whole segment, so the .md suffix lives in its own segment.
+pub async fn raw_markdown_handler(
+    Path(slug): Path<String>,
+    State(state): State<AppState>,
+) -> Response<String> {
+    if slug.is_empty() {
+        return build_response(
+            "missing slug".to_string(),
+            "text/plain; charset=utf-8",
+            StatusCode::BAD_REQUEST,
+        );
+    }
+
+    #[derive(Deserialize)]
+    struct BodyOnly {
+        body: String,
+    }
+
+    let AppState { db, .. } = state;
+    let db = db.as_ref();
+
+    let query_result = retry_async("raw_markdown_query", RetryConfig::default(), || async {
+        db.query("SELECT body FROM post WHERE slug = $slug AND is_published = true LIMIT 1;")
+            .bind(("slug", slug.to_string()))
+            .await
+    })
+    .await;
+
+    let mut query = match query_result {
+        Ok(q) => q,
+        Err(e) => {
+            error!(?e, "raw_markdown_handler: query failed");
+            return build_response(
+                "Failed to fetch post".to_string(),
+                "text/plain; charset=utf-8",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
+
+    let row: Option<BodyOnly> = match query.take(0) {
+        Ok(row) => row,
+        Err(e) => {
+            error!(?e, "raw_markdown_handler: deserialize failed");
+            return build_response(
+                "Failed to fetch post".to_string(),
+                "text/plain; charset=utf-8",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
+
+    match row {
+        Some(BodyOnly { body }) => {
+            build_response(body, "text/markdown; charset=utf-8", StatusCode::OK)
+        }
+        None => build_response(
+            format!("Post '{slug}' not found"),
+            "text/plain; charset=utf-8",
+            StatusCode::NOT_FOUND,
+        ),
+    }
 }
 
 #[cfg(test)]
@@ -780,5 +1049,127 @@ mod tests {
     #[test]
     fn test_sitemap_handler_signature() {
         let _: fn(State<AppState>) -> _ = sitemap_handler;
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // Sprint 3 (T24-T27): invariant-encoding tests for new feed/route
+    // helpers. These guard the XSS-prevention contract and the project
+    // convention that every public handler has a signature test.
+    // ─────────────────────────────────────────────────────────────────
+
+    /// GIVEN a string containing every XML metacharacter
+    /// WHEN escape_xml is applied
+    /// THEN every metacharacter is replaced by its named entity.
+    /// Catches partial-escape regressions in the table at line 491.
+    #[test]
+    fn escape_xml_replaces_all_five_metacharacters() {
+        let input = "<>&\"'";
+        let expected = "&lt;&gt;&amp;&quot;&apos;";
+        assert_eq!(escape_xml(input), expected);
+    }
+
+    /// GIVEN a compound XSS payload that an attacker might submit as a post title
+    /// WHEN escape_xml is applied
+    /// THEN no raw `<`, `>`, or `"` characters remain to break the XML envelope.
+    /// This is the load-bearing security invariant for RSS/Atom/sitemap output.
+    #[test]
+    fn escape_xml_neutralises_compound_xss_payload() {
+        let payload = r#"<script>alert("xss")</script>"#;
+        let escaped = escape_xml(payload);
+        assert!(
+            !escaped.contains('<'),
+            "raw '<' must not survive: {escaped}"
+        );
+        assert!(
+            !escaped.contains('>'),
+            "raw '>' must not survive: {escaped}"
+        );
+        assert!(
+            !escaped.contains('"'),
+            "raw '\"' must not survive: {escaped}"
+        );
+        assert!(escaped.contains("&lt;script&gt;"));
+        assert!(escaped.contains("&quot;xss&quot;"));
+    }
+
+    /// GIVEN a pre-escaped entity like &amp;
+    /// WHEN escape_xml is applied a second time
+    /// THEN the `&` re-escapes to `&amp;`, yielding `&amp;amp;`.
+    /// Documents the (intentional) non-idempotence: callers must escape exactly once.
+    #[test]
+    fn escape_xml_is_not_idempotent() {
+        assert_eq!(escape_xml("&amp;"), "&amp;amp;");
+    }
+
+    /// GIVEN an empty string
+    /// WHEN escape_xml is applied
+    /// THEN the result is empty (boundary case for the with_capacity call).
+    #[test]
+    fn escape_xml_handles_empty_string() {
+        assert_eq!(escape_xml(""), "");
+    }
+
+    /// GIVEN ASCII text with no metacharacters
+    /// WHEN escape_xml is applied
+    /// THEN the output is byte-identical to the input (no spurious escapes).
+    #[test]
+    fn escape_xml_passes_safe_ascii_through_unchanged() {
+        let safe = "Hello, world! 2026-05-01 alex@thola.com";
+        assert_eq!(escape_xml(safe), safe);
+    }
+
+    /// GIVEN a string mixing `&` with another metacharacter (`<`)
+    /// WHEN escape_xml is applied
+    /// THEN the `&` becomes `&amp;` and the `<` becomes `&lt;` independently —
+    ///      i.e. the `&` from `&lt;` is NOT re-escaped to `&amp;lt;`.
+    /// Locks in the single-pass char-iterator implementation against a future
+    /// "optimization" to chained `String::replace()`, which would naively turn
+    /// `<` into `&lt;` first and then mangle the resulting `&` on a second pass.
+    #[test]
+    fn escape_xml_escapes_ampersand_independently_of_other_metacharacters() {
+        assert_eq!(escape_xml("&<"), "&amp;&lt;");
+        assert_eq!(escape_xml("<&"), "&lt;&amp;");
+        assert_eq!(
+            escape_xml(r#"Tom & Jerry's <show> says "hi""#),
+            "Tom &amp; Jerry&apos;s &lt;show&gt; says &quot;hi&quot;"
+        );
+    }
+
+    /// GIVEN text containing multi-byte UTF-8 (em-dash, smart quotes, emoji,
+    ///       non-Latin script) with no XML metacharacters
+    /// WHEN escape_xml is applied
+    /// THEN every code point survives byte-identical.
+    /// Guards against a future refactor to byte-level (`u8`) matching, which
+    /// would split UTF-8 continuation bytes and corrupt feed content. Real post
+    /// titles routinely contain em-dashes and curly quotes — feed validators
+    /// reject malformed UTF-8.
+    #[test]
+    fn escape_xml_preserves_multibyte_unicode() {
+        let unicode = "Café — “smart quotes” • 日本語 • 🦀";
+        assert_eq!(escape_xml(unicode), unicode);
+        // Sanity: the bytes really are multi-byte.
+        assert!(unicode.len() > unicode.chars().count());
+    }
+
+    /// Verifies the `atom_handler` function exists with the correct signature.
+    /// Mirrors the `test_rss_handler_signature` convention so every public
+    /// handler in this module has a contract guard.
+    #[test]
+    fn test_atom_handler_signature() {
+        let _: fn(State<AppState>) -> _ = atom_handler;
+    }
+
+    /// Verifies the `random_handler` function exists with the correct signature.
+    #[test]
+    fn test_random_handler_signature() {
+        let _: fn(State<AppState>) -> _ = random_handler;
+    }
+
+    /// Verifies the `raw_markdown_handler` function exists with the correct signature.
+    /// Note: takes a Path extractor in addition to State, distinguishing it from
+    /// the State-only handlers above.
+    #[test]
+    fn test_raw_markdown_handler_signature() {
+        let _: fn(Path<String>, State<AppState>) -> _ = raw_markdown_handler;
     }
 }

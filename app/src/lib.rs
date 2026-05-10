@@ -7,17 +7,14 @@
 //! - Integrating various sub-components like headers, footers, and page-specific views.
 //! - Handling global error fallbacks.
 
-use crate::components::{error_template, header, icons};
-use chrono::{Datelike as _, Utc};
+use crate::components::{error_template, footer, nameplate, pipe_nav};
 #[cfg(feature = "ssr")]
-use leptos::html::{body, head, html, meta};
-use leptos::{
-    html::{a, div, footer, p},
-    prelude::*,
-};
+use leptos::html::{body, head, html, link, meta, script};
+use leptos::prelude::*;
 use leptos_meta::provide_meta_context;
 #[cfg(feature = "ssr")]
 use leptos_meta::{MetaTags, Stylesheet, StylesheetProps, Title, TitleProps};
+use leptos_router::hooks::use_location;
 use leptos_router::{
     ParamSegment, SsrMode, StaticSegment,
     components::{FlatRoutes, Route, Router},
@@ -25,11 +22,14 @@ use leptos_router::{
 #[cfg(feature = "ssr")]
 use std::sync::{Arc, OnceLock};
 
-mod activity;
+mod about; // About / bio / colophon link
 pub mod api; // API endpoints and types
+mod archive; // Year-grouped chronological archive of posts
+mod colophon; // Colophon — site tech stack, fonts, license
 mod components; // Reusable UI components
 mod contact; // Contact page logic and components
 mod home; // Homepage logic and components
+mod notes; // Notes (microblog) page; replaces /activity
 mod post; // Post display logic and components
 mod references; // References page logic and components
 pub mod types; // Shared type definitions
@@ -121,12 +121,22 @@ pub fn shell(options: Arc<LeptosOptions>) -> impl IntoView {
     // Provides context for managing stylesheets, titles, meta tags, etc., throughout the app.
     provide_meta_context();
 
-    let html_comp = html().lang("en").child((
+    // Theme pre-paint script: must run synchronously in <head> BEFORE first
+    // paint to set [data-theme] on <html> without FOUC. Reads localStorage
+    // first (user toggle), falls back to prefers-color-scheme.
+    // Spec: docs/specification.md §6.5
+    let theme_prepaint = "(function(){try{var s=localStorage.getItem('alexthola-theme');\
+        var t=s||(window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');\
+        document.documentElement.setAttribute('data-theme',t);}catch(e){}})();";
+
+    let html_comp = html().lang("en").attr("data-theme", "light").child((
         head().child((
             meta().charset("utf-8"),
             meta()
                 .name("viewport")
                 .content("width=device-width, initial-scale=1"),
+            // Pre-paint theme attribute setter — runs before stylesheet loads
+            script().inner_html(theme_prepaint),
             // AutoReload(AutoReloadProps::builder().options(options.clone()).build()),
             HydrationScripts(HydrationScriptsProps::builder().options(options).build()),
             MetaTags(),
@@ -142,13 +152,26 @@ pub fn shell(options: Arc<LeptosOptions>) -> impl IntoView {
                     .href("/public/katex.min.css")
                     .build(),
             ),
+            // Feed advertisements — Atom + RSS per spec §4.10. JSON Feed
+            // deferred per implementation-plan.md §1 additive-bias scan.
+            // Markdown alternate per-post is added in app/src/post.rs (T16/T25).
+            link()
+                .rel("alternate")
+                .r#type("application/atom+xml")
+                .href("/feed/feed.xml")
+                .attr("title", "alexthola.com — Atom"),
+            link()
+                .rel("alternate")
+                .r#type("application/rss+xml")
+                .href("/feed/rss.xml")
+                .attr("title", "alexthola.com — RSS"),
             Title(
                 TitleProps::builder()
                     .text("Alex Thola's Blog \u{2013} Tech Insights & Consulting")
                     .build(),
             ),
         )),
-        body().class("bg-[#1e1e1e]").child(self::component),
+        body().class("bg-paper text-ink").child(self::component),
     ));
 
     view! {
@@ -167,9 +190,15 @@ pub fn component() -> impl IntoView {
 
     view! {
         <Router>
-            <div class="overflow-auto text-white font-poppins">
-                {move || header::component}
-                <main class="container flex flex-col gap-8 px-4 pt-10 pb-14 mx-auto mt-16 max-w-4xl md:px-0">
+            <a href="#main-content" class="skip-link">"Skip to content"</a>
+            <div class="text-ink font-sans">
+                <header class="relative py-6 px-4 md:px-6 border-b-2 border-rule">
+                    <div class="container mx-auto max-w-5xl flex flex-row flex-wrap justify-between items-center gap-y-4 gap-x-6">
+                        {nameplate::component()}
+                        {move || pipe_nav::component(current_route())}
+                    </div>
+                </header>
+                <main id="main-content" class="container flex flex-col gap-8 px-4 pt-8 pb-16 mx-auto max-w-4xl md:px-0">
                     <FlatRoutes fallback=|| {
                         // Handle 404 (Not Found) errors by rendering a specific error template.
                         let mut outside_errors = Errors::default();
@@ -177,39 +206,32 @@ pub fn component() -> impl IntoView {
                         error_template::component(Some(outside_errors), None)
                     }>
                         <Route path=StaticSegment("") view=home::component ssr=SsrMode::InOrder/>
+                        <Route path=StaticSegment("archive") view=archive::component/>
                         <Route path=StaticSegment("references") view=references::component/>
+                        <Route path=StaticSegment("about") view=about::component/>
+                        <Route path=StaticSegment("colophon") view=colophon::component/>
                         <Route path=StaticSegment("contact") view=contact::component/>
                         <Route path=(StaticSegment("post"), ParamSegment("slug")) view=post::component ssr=SsrMode::Async/>
-                        <Route path=StaticSegment("activity") view=activity::component/>
+                        // /notes is the canonical microblog route (renamed from /activity).
+                        // /activity is 301-redirected at the Axum level — see server/src/main.rs (T26).
+                        <Route path=StaticSegment("notes") view=notes::component/>
                     </FlatRoutes>
                 </main>
-                {footer_component()}
+                {footer::component()}
             </div>
         </Router>
     }
 }
 
-/// Renders the application's footer component.
-///
-/// This includes copyright information, a link to the author's GitHub, and dynamically
-/// displays the current year. It also conditionally shows icons on smaller screens.
-fn footer_component() -> impl IntoView {
-    footer()
-        .class("fixed right-0 bottom-0 left-0 z-10 py-2 text-center md:py-4 bg-[#1e1e1e]/80 backdrop-blur-md")
-        .child(
-            div().class("flex flex-col gap-1 justify-center items-center").child((
-                p().class("text-gray-400").child((
-                    "Powered by",
-                    a()
-                        .href("https://github.com/athola")
-                        .class("hover:underline text-[#ffef5c]")
-                        .child(" athola"),
-                    format!(" \u{a9} {}", Utc::now().year()),
-                )),
-                div().class("block md:hidden").child(icons::component),
-            )),
-        )
+/// Returns the current pathname for use by PipeNav's active-state logic.
+fn current_route() -> String {
+    let location = use_location();
+    location.pathname.get()
 }
+
+// Sprint 0's transitional `footer_component` was replaced by
+// components::footer (Sprint 1 T12) and wired into the root component
+// above. The Sprint 1 footer is a sitemap-style three-column layout.
 
 #[cfg(test)]
 mod tests {
