@@ -532,7 +532,7 @@ direction selection or wants multi-LLM pressure-testing, `/attune:war-room
 | Date-stamp component hard to render in masonry | Low | Move post-list off masonry to single-column with date-stamp gutter |
 | `prose` rewrite breaks math (KaTeX) | Medium | Test KaTeX-heavy post on every commit; treat KaTeX styles as untouchable |
 | Activity stream `/activity` doesn't fit new design language | High | Decide in Phase 9 of this brief: fold into home, retire, or re-skin |
-| `<link rel="alternate" type="text/markdown">` requires raw markdown route on the server | Medium | Add lightweight `/post/:slug.md` Axum route; SurrealDB already stores raw markdown |
+| `<link rel="alternate" type="text/markdown">` requires raw markdown route on the server | Medium | Add lightweight `/post/:slug/raw.md` Axum route (path-segment-bound to satisfy Axum 0.8 routing); SurrealDB already stores raw markdown |
 | Header is fixed → date-stamp 2px accent rail competes for visual weight | Low | Make header unfixed (recommended anyway — currently eats 9% viewport) |
 | Direction D ships looking like Stripe Press / Linear blog | Medium | Distinctive moves (italic nameplate, date stamp, ↗ glyph, ochre underline) are non-negotiable |
 

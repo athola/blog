@@ -97,7 +97,7 @@ graph LR
 |---|---|
 | `/` | Home — featured + recent posts + notes strip + tag filter |
 | `/post/:slug` | Reading page with in-flow TOC + canonical + JSON-LD |
-| `/post/:slug.md` | Raw markdown alternate per post |
+| `/post/:slug/raw.md` | Raw markdown alternate per post |
 | `/archive` | Year-grouped chronological archive (supports `?tag=`) |
 | `/notes` | Microblog stream (replaces legacy `/activity`) |
 | `/references` | Project portfolio with mono ▰▱ tech-stack bars |

@@ -199,7 +199,9 @@ pub fn component() -> impl IntoView {
                 )),
             // T28: per-post <link rel="alternate" type="text/markdown"> injected
             // into <head> via leptos_meta. Pairs with the server route
-            // /post/{slug}.md (T25) to expose raw markdown source.
+            // /post/{slug}/raw.md (T25) to expose raw markdown source.
+            // Path shape forced by Axum 0.8: literal extensions cannot share
+            // a segment with a path param (see server/src/main.rs).
             Link(
                 LinkProps::builder()
                     .rel("alternate")

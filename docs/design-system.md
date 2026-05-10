@@ -159,7 +159,7 @@ text-decoration: none;
 |---|---|---|
 | `/` | `app/src/home.rs` | Featured + recent + notes-strip + tag filter |
 | `/post/:slug` | `app/src/post.rs` | Pre-meta + italic date + h1 + tag-byline + TOC + ochre prose + post-foot |
-| `/post/:slug.md` | `server/src/utils.rs::raw_markdown_handler` | Raw markdown alternate per post |
+| `/post/:slug/raw.md` | `server/src/utils.rs::raw_markdown_handler` | Raw markdown alternate per post (Axum 0.8 forbids literal `.md` extension on the same segment as a path param) |
 | `/archive` | `app/src/archive.rs` | Year-grouped chronological archive with `?tag=foo` filter |
 | `/notes` | `app/src/notes.rs` | Microblog stream (renamed from `/activity`) |
 | `/references` | `app/src/references.rs` | Portfolio rows with mono ▰▱ tech-stack bars |

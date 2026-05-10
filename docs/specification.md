@@ -183,7 +183,7 @@ Existing routes are preserved (no permalink breakage). New routes are added.
 | `/about` | **NEW** — author bio (lifted from `/contact` `whoami`), timeline, colophon link | `app/src/about.rs` (new) |
 | `/contact` | **Refactored** — form-only; bio moved to `/about` | `app/src/contact.rs` |
 | `/colophon` | **NEW** — site tech stack, fonts, license | `app/src/colophon.rs` (new) |
-| `/post/:slug.md` | **NEW** — raw markdown alternate per post | server route in `server/` crate |
+| `/post/:slug/raw.md` | **NEW** — raw markdown alternate per post | server route in `server/` crate |
 | `/feed/feed.xml` | **NEW or verify** — Atom feed | server route |
 | `/feed/rss.xml` | **NEW or verify** — RSS feed | server route |
 | `/feed/feed.json` | **NEW** — JSON feed | server route |
@@ -328,7 +328,7 @@ padding `--space-reading-pad` (56px).
      - **Prev / Next** post links (mono uppercase, with `←` / `→` glyphs)
      - **More from #<tag>** — 2 random posts with the same primary tag
    - Mono uppercase row: `RAW MARKDOWN ↗ · COPY LINK · SHARE`
-     - "RAW MARKDOWN" links to `/post/:slug.md`
+     - "RAW MARKDOWN" links to `/post/:slug/raw.md`
      - "COPY LINK" copies canonical URL via JS (progressive — works without JS too)
      - "SHARE" opens native share sheet on mobile, else copies URL
 
@@ -338,8 +338,8 @@ padding `--space-reading-pad` (56px).
 - [ ] Code blocks with `<pre><code class="language-rust">` render with the mono
       stack and accent kicker.
 - [ ] TOC appears only on long posts; uses anchor links to h2 headings.
-- [ ] `/post/:slug.md` returns the raw markdown source with `Content-Type: text/markdown`.
-- [ ] `<link rel="alternate" type="text/markdown" href="/post/:slug.md">` is in head.
+- [ ] `/post/:slug/raw.md` returns the raw markdown source with `Content-Type: text/markdown`.
+- [ ] `<link rel="alternate" type="text/markdown" href="/post/:slug/raw.md">` is in head.
 - [ ] `<link rel="canonical" href="/post/:slug">` is in head.
 - [ ] OG image generation: defer to PLAN.md backlog, but ensure `<meta property="og:image">` falls back to a default brand image.
 - [ ] Increment-views server action runs only in production builds (current behavior preserved).
@@ -518,12 +518,14 @@ section.
 - [ ] `<head>` of every page includes `<link rel="alternate">` for all three feeds.
 - [ ] `/post/:slug` includes `<link rel="alternate" type="text/markdown">`.
 
-### 4.11 `/post/:slug.md` — NEW (raw markdown alternate)
+### 4.11 `/post/:slug/raw.md` — NEW (raw markdown alternate)
 
 **Purpose**: Hacker-culture handshake; lets readers grab the source.
 
+**Path shape note**: Axum 0.8 forbids mixing a literal extension (`.md`) with a path parameter (`:slug`) in the same path segment, so the route ships at `/post/:slug/raw.md` rather than the cleaner `/post/:slug.md`. See `server/src/main.rs` for the load-bearing comment that documents this.
+
 **Acceptance criteria**:
-- [ ] `GET /post/:slug.md` returns 200 with `Content-Type: text/markdown; charset=utf-8`.
+- [ ] `GET /post/:slug/raw.md` returns 200 with `Content-Type: text/markdown; charset=utf-8`.
 - [ ] Body is the canonical markdown source (not regenerated from HTML).
 - [ ] Returns 404 for unpublished or missing slugs.
 - [ ] Public access (no auth required).
@@ -661,7 +663,7 @@ Mirror of section-specific ACs, summarized for plan-phase task ordering.
 
 ### Server routes
 - [ ] `/random` 302 redirect.
-- [ ] `/post/:slug.md` raw markdown alternate.
+- [ ] `/post/:slug/raw.md` raw markdown alternate.
 - [ ] Three feed routes (RSS, Atom, JSON Feed).
 
 ### Quality gates

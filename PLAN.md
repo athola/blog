@@ -22,7 +22,7 @@ Already shipped on the redesign branch:
   contact, notes-renamed-from-activity).
 - Three new routes: `/archive` (year-grouped chronological), `/about`
   (lifted from contact whoami), `/colophon` (stack + fonts + license).
-- Server-side: `/random` stumble redirect, `/post/:slug.md` raw markdown
+- Server-side: `/random` stumble redirect, `/post/:slug/raw.md` raw markdown
   alternate, `/feed/feed.xml` Atom feed, `/feed/rss.xml` RSS alias,
   `/activity` → `/notes` 301 permanent redirect.
 - SEO: per-post canonical + markdown alternate `<link>`, Schema.org

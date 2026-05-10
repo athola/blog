@@ -1265,7 +1265,7 @@ mod server_integration_tests {
         assert!(
             body.contains("<rss") || body.contains("<?xml"),
             "/feed/rss.xml body should look like XML/RSS, got: {}…",
-            &body.chars().take(120).collect::<String>()
+            body.chars().take(120).collect::<String>()
         );
 
         // T27: /feed/feed.xml serves the Atom 1.0 envelope. The xmlns marker
@@ -1293,7 +1293,7 @@ mod server_integration_tests {
         assert!(
             body.contains(r#"xmlns="http://www.w3.org/2005/Atom""#),
             "Atom feed must declare the Atom namespace, body starts: {}…",
-            &body.chars().take(200).collect::<String>()
+            body.chars().take(200).collect::<String>()
         );
 
         // T24: /random returns 302 to a /post/{slug} URL, or a 4xx/5xx if no

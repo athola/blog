@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install cargo-leptos and wasm-bindgen-cli (pinned versions for reproducible builds)
 # --locked uses each crate's bundled Cargo.lock so yanked transitive deps (e.g. core2 0.4.0) don't break the install.
 RUN cargo install --locked cargo-leptos --version 0.3.2 && \
-    cargo install --locked wasm-bindgen-cli --version 0.2.114 && \
+    cargo install --locked wasm-bindgen-cli --version 0.2.120 && \
     rustup target add wasm32-unknown-unknown
 
 # Create app user for security

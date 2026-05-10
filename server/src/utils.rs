@@ -558,10 +558,16 @@ pub async fn sitemap_handler(State(state): State<AppState>) -> Response<String> 
     );
 
     // Define static URLs to be included in the sitemap.
+    // /archive, /notes, /about, /colophon land in this PR's IA refresh; without
+    // them the new routes are unreachable from search-engine crawls.
     let static_urls = vec![
         ("https://alexthola.com/", "daily", "0.9"),
+        ("https://alexthola.com/archive", "weekly", "0.7"),
+        ("https://alexthola.com/notes", "daily", "0.7"),
+        ("https://alexthola.com/about", "monthly", "0.6"),
         ("https://alexthola.com/contact", "weekly", "1.0"),
         ("https://alexthola.com/references", "weekly", "0.6"),
+        ("https://alexthola.com/colophon", "monthly", "0.4"),
         ("https://alexthola.com/rss.xml", "daily", "0.5"),
         ("https://alexthola.com/sitemap.xml", "monthly", "0.5"),
     ];
@@ -634,7 +640,7 @@ pub async fn sitemap_handler(State(state): State<AppState>) -> Response<String> 
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Sprint 3 (T24-T27): Atom feed, /random, /post/:slug.md, redirects.
+// Sprint 3 (T24-T27): Atom feed, /random, /post/:slug/raw.md, redirects.
 // ─────────────────────────────────────────────────────────────────────
 
 /// Handles GET /feed/feed.xml — Atom 1.0 feed.
@@ -676,9 +682,15 @@ pub async fn generate_atom(db: &Surreal<Client>) -> Result<String, ServerFnError
         .take::<Vec<Post>>(0)
         .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {e}")))?;
 
+    // Per Atom 1.0 §4.2.15, feed-level <updated> reflects the most recent
+    // meaningful modification. Use max(updated_at) across entries, not the
+    // first post's created_at — published-but-since-edited posts otherwise
+    // never bump <updated> and feed readers skip re-fetching.
     let updated = posts
-        .first()
-        .map(|p| p.created_at.clone())
+        .iter()
+        .map(|p| &p.updated_at)
+        .max()
+        .cloned()
         .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
 
     let mut feed = String::new();
@@ -707,7 +719,16 @@ pub async fn generate_atom(db: &Surreal<Client>) -> Result<String, ServerFnError
             continue;
         }
         let post_url = format!("https://alexthola.com/post/{slug}");
-        let processed_body = process_markdown(&post.body).unwrap_or_else(|_| post.body.clone());
+        let processed_body = match process_markdown(&post.body) {
+            Ok(html) => html,
+            Err(err) => {
+                // Skipping is preferable to publishing raw markdown inside
+                // <content type="html">: feed readers would render `**bold**`
+                // and `# heading` as literal text and break links.
+                error!(?err, slug = %slug, "atom: process_markdown failed; skipping post");
+                continue;
+            }
+        };
         feed.push_str("  <entry>\n");
         let _ = writeln!(feed, "    <title>{}</title>", escape_xml(&post.title));
         let _ = writeln!(feed, "    <id>{}</id>", escape_xml(&post_url));
@@ -719,7 +740,7 @@ pub async fn generate_atom(db: &Surreal<Client>) -> Result<String, ServerFnError
         let _ = writeln!(
             feed,
             "    <updated>{}</updated>",
-            escape_xml(&post.created_at)
+            escape_xml(&post.updated_at)
         );
         let _ = writeln!(
             feed,

@@ -27,7 +27,7 @@ Before sequencing, I challenged every NEW item in the spec against
 | `/about` route | KEEP | Lifts existing `whoami` content; small surface |
 | `/colophon` route | KEEP, simplified | Render via existing `/post/:slug` route as a special markdown post — no new component |
 | `/random` route | KEEP | One server function; high personality return per LOC |
-| `/post/:slug.md` route | KEEP | Server route only; no component |
+| `/post/:slug/raw.md` route | KEEP | Server route only; no component (Axum 0.8 forces the trailing-segment shape) |
 | Three feed formats | DEFER **JSON Feed**, ship Atom + RSS | JSON Feed is nice but Atom + RSS cover 99% of readers |
 | ThemeToggle UI | DEFER | Spec §5.9 explicitly defers; tokens land here, UI ships next branch |
 | Newsletter slot component | KEEP | Static placeholder; no integration; unblocks PLAN.md Q2 |
@@ -183,7 +183,7 @@ hours without losing user-facing value.
 | **T22** | `app/src/about.rs` per §4.6: lifts `whoami` content from old `contact.rs`, adds links row + colophon link | M | §4.6 | All ACs in §4.6; avatar has dimensions to prevent CLS; links use outbound pattern |
 | **T23** | `markdown/colophon.md` (data file) — colophon content per §4.8; route `/colophon` renders via post-detail layout (no new component file) | S | §4.8 | `/colophon` resolves and renders the markdown file at `/post/:slug` style; spec-deviating simplification approved by additive-bias scan above |
 | **T24** | `server/src/random.rs` (or extend existing): `/random` returns 302 to a random published post slug, cached 60s | S | §4.9 | `curl -I /random` returns 302 with `Location: /post/:slug`; repeat call within 60s returns same slug |
-| **T25** | `server/src/markdown_alt.rs` (or extend): `/post/:slug.md` returns 200 with `Content-Type: text/markdown; charset=utf-8`, body is canonical markdown source | S | §4.11 | `curl /post/<existing-slug>.md` returns 200 with text/markdown content type and raw markdown body; non-existent slug returns 404 |
+| **T25** | `server/src/markdown_alt.rs` (or extend): `/post/:slug/raw.md` returns 200 with `Content-Type: text/markdown; charset=utf-8`, body is canonical markdown source | S | §4.11 | `curl /post/<existing-slug>/raw.md` returns 200 with text/markdown content type and raw markdown body; non-existent slug returns 404 |
 | **T26** | `/activity` HTTP 301 → `/notes` redirect | XS | §4.4 | `curl -I /activity` returns 301 with `Location: /notes` |
 | **T27** | Atom feed at `/feed/feed.xml` and RSS at `/feed/rss.xml` (top 50 posts, full content if ≤ 4096 chars else excerpt) — JSON Feed deferred per scope decision | M | §4.10 | Both feeds return 200 with correct Content-Type; valid against [W3C Feed Validator](https://validator.w3.org/feed/); top entry matches latest blog post |
 | **T28** | `<head>` `<link rel="alternate">` for Atom + RSS on every page; `<link rel="alternate" type="text/markdown">` on post pages only | XS | §6.3 | View source on `/`, `/notes`, `/archive`: 2 alternates (Atom, RSS). View source on `/post/:slug`: 3 alternates (Atom, RSS, markdown) |
@@ -447,7 +447,7 @@ feat(archive): add /archive route with year-grouped pagination (T21)
 feat(about): add /about route with bio + links (T22)
 feat(colophon): add /colophon as markdown-driven post (T23)
 feat(server): add /random stumble redirect (T24)
-feat(server): add /post/:slug.md raw markdown alternate (T25)
+feat(server): add /post/:slug/raw.md raw markdown alternate (T25)
 feat(server): add /activity → /notes 301 redirect (T26)
 feat(server): add Atom + RSS feeds (T27)
 feat(seo): head rel=alternate for feeds + markdown (T28)
