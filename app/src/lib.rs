@@ -152,9 +152,9 @@ pub fn shell(options: Arc<LeptosOptions>) -> impl IntoView {
                     .href("/public/katex.min.css")
                     .build(),
             ),
-            // Feed advertisements — Atom + RSS per spec §4.10. JSON Feed
-            // deferred per implementation-plan.md §1 additive-bias scan.
-            // Markdown alternate per-post is added in app/src/post.rs (T16/T25).
+            // Feed advertisements — Atom + RSS per spec §4.10. JSON Feed is
+            // deferred (out of scope; see docs/specification.md §8).
+            // Markdown alternate per-post is added in app/src/post.rs.
             link()
                 .rel("alternate")
                 .r#type("application/atom+xml")

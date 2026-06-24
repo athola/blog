@@ -1,3 +1,10 @@
+// NOTE on the `#[allow(dead_code)]` attributes below: this module is compiled
+// independently into *every* integration-test binary in `tests/`. A helper used
+// by, say, `migration_core_tests.rs` is genuinely dead when the harness is
+// linked into `server_integration_tests.rs`, which would otherwise emit a
+// false-positive `dead_code` warning. Each suppression here guards a method that
+// IS exercised by at least one test binary; do not delete the methods.
+
 use serde::Deserialize;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;

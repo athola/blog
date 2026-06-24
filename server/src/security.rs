@@ -13,9 +13,7 @@ use axum::{
         header::{HeaderName, HeaderValue},
     },
     middleware::Next,
-    response::IntoResponse,
 };
-use serde::Serialize;
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
@@ -53,144 +51,6 @@ impl SecurityConfig {
     }
 }
 
-/// Categorizes endpoints for rate limiting purposes.
-///
-/// Different endpoint categories have different rate limits to balance
-/// security needs with usability.
-#[allow(dead_code)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum EndpointCategory {
-    /// API endpoints: 100 requests/minute (default)
-    Api,
-    /// Contact form: 10 requests/minute (stricter to prevent spam)
-    Contact,
-    /// Static assets: 1000 requests/minute (relaxed)
-    Static,
-    /// Health check: Unlimited (for monitoring)
-    Health,
-}
-
-#[allow(dead_code)]
-impl EndpointCategory {
-    /// Returns the rate limit configuration for this endpoint category.
-    ///
-    /// Returns `None` for unlimited categories (like Health).
-    pub fn rate_limit(&self) -> Option<(usize, u64)> {
-        match self {
-            EndpointCategory::Api => Some((100, 60)), // 100 requests per minute
-            EndpointCategory::Contact => Some((10, 60)), // 10 requests per minute
-            EndpointCategory::Static => Some((1000, 60)), // 1000 requests per minute
-            EndpointCategory::Health => None,         // Unlimited
-        }
-    }
-
-    /// Returns a human-readable name for this category.
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            EndpointCategory::Api => "api",
-            EndpointCategory::Contact => "contact",
-            EndpointCategory::Static => "static",
-            EndpointCategory::Health => "health",
-        }
-    }
-}
-
-impl std::fmt::Display for EndpointCategory {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_str())
-    }
-}
-
-/// Status information about rate limiting for a specific IP and category.
-#[allow(dead_code)]
-#[derive(Debug, Clone, Serialize)]
-pub struct RateLimitStatus {
-    /// Number of requests remaining in the current window.
-    pub remaining: usize,
-    /// Seconds until the rate limit window resets.
-    pub reset_in_seconds: u64,
-    /// Whether the client is currently rate limited.
-    pub is_limited: bool,
-}
-
-/// Error returned when a request is rate limited.
-#[allow(dead_code)]
-#[derive(Debug, Clone, Serialize)]
-pub struct RateLimitError {
-    /// Error message.
-    pub error: String,
-    /// Seconds until the client can retry.
-    pub retry_after: u64,
-    /// Number of requests remaining (always 0 when limited).
-    pub remaining: usize,
-    /// The endpoint category that was rate limited.
-    pub category: String,
-}
-
-#[allow(dead_code)]
-impl RateLimitError {
-    /// Creates a new rate limit error.
-    pub fn new(category: EndpointCategory, retry_after: u64) -> Self {
-        Self {
-            error: "Rate limit exceeded".to_string(),
-            retry_after,
-            remaining: 0,
-            category: category.as_str().to_string(),
-        }
-    }
-}
-
-impl IntoResponse for RateLimitError {
-    fn into_response(self) -> axum::response::Response {
-        let retry_after = self.retry_after.to_string();
-        let body = serde_json::to_string(&self)
-            .unwrap_or_else(|_| r#"{"error":"Rate limit exceeded"}"#.to_string());
-
-        let mut response = (
-            StatusCode::TOO_MANY_REQUESTS,
-            [(axum::http::header::CONTENT_TYPE, "application/json")],
-            body,
-        )
-            .into_response();
-
-        // Add Retry-After header
-        if let Ok(value) = HeaderValue::from_str(&retry_after) {
-            response
-                .headers_mut()
-                .insert(HeaderName::from_static("retry-after"), value);
-        }
-
-        response
-    }
-}
-
-/// Axum middleware that adds a set of HTTP security headers to all responses.
-///
-/// These headers help protect against common web vulnerabilities like XSS,
-/// clickjacking, and MIME type sniffing. It also enforces HTTPS and sets
-/// a strict Content Security Policy (CSP).
-///
-/// This version uses the default production configuration. For environment-aware
-/// configuration, use `security_headers_with_config` instead.
-///
-/// # Arguments
-///
-/// * `req` - The incoming `Request`.
-/// * `next` - The `Next` middleware in the stack.
-///
-/// # Returns
-///
-/// A `Result` containing the `Response` with added security headers, or an
-/// `Axum` `StatusCode` if an error occurs (e.g., invalid header value).
-#[allow(dead_code)]
-pub async fn security_headers(
-    req: Request<Body>,
-    next: Next,
-) -> Result<Response<Body>, StatusCode> {
-    // Default to production-safe configuration
-    security_headers_with_config(State(SecurityConfig::new(true)), req, next).await
-}
-
 /// Axum middleware that adds environment-aware HTTP security headers to all responses.
 ///
 /// This middleware adjusts security headers based on whether the application is
@@ -225,13 +85,13 @@ pub async fn security_headers_with_config(
 
     let headers = response.headers_mut();
 
-    // X-Frame-Options: Prevents clickjacking attacks.
+    // Prevent clickjacking by disallowing this page from being framed.
     headers.insert(
         HeaderName::from_static("x-frame-options"),
         HeaderValue::from_static("DENY"),
     );
 
-    // X-Content-Type-Options: Prevents MIME type sniffing vulnerabilities.
+    // Block MIME-type sniffing.
     headers.insert(
         HeaderName::from_static("x-content-type-options"),
         HeaderValue::from_static("nosniff"),
@@ -245,7 +105,7 @@ pub async fn security_headers_with_config(
         HeaderValue::from_static("1; mode=block"),
     );
 
-    // Referrer-Policy: Controls how much referrer information is sent with requests.
+    // Limit referrer leakage on cross-origin navigations.
     headers.insert(
         HeaderName::from_static("referrer-policy"),
         HeaderValue::from_static("strict-origin-when-cross-origin"),
@@ -333,39 +193,11 @@ pub async fn security_headers_with_config(
         HeaderValue::from_static("same-origin"),
     );
 
-    // Cross-Origin-Embedder-Policy: Controls embedding of cross-origin resources.
-    // Note: require-corp is commented out as it may break loading of external
-    // resources (fonts, images) that don't set CORP headers. Enable if needed
-    // for SharedArrayBuffer or other cross-origin isolation features.
-    // Uncomment the following if cross-origin isolation is required:
-    // headers.insert(
-    //     HeaderName::from_static("cross-origin-embedder-policy"),
-    //     HeaderValue::from_static("require-corp"),
-    // );
+    // Cross-Origin-Embedder-Policy is intentionally omitted: "require-corp"
+    // would block cross-origin fonts and images that lack CORP headers. Add it
+    // only if SharedArrayBuffer / cross-origin isolation becomes a requirement.
 
     Ok(response)
-}
-
-/// Creates a closure suitable for use with `axum::middleware::from_fn_with_state`.
-///
-/// This is a convenience function that creates the security headers middleware
-/// with the given configuration.
-///
-/// # Arguments
-/// * `is_production` - Whether the application is running in production mode.
-///
-/// # Example
-/// ```ignore
-/// let app = Router::new()
-///     .route("/", get(handler))
-///     .layer(axum::middleware::from_fn_with_state(
-///         SecurityConfig::new(is_production),
-///         security_headers_with_config,
-///     ));
-/// ```
-#[allow(dead_code)]
-pub fn create_security_config(is_production: bool) -> SecurityConfig {
-    SecurityConfig::new(is_production)
 }
 
 /// Implements a simple IP-based rate limiting mechanism.
@@ -396,6 +228,9 @@ impl RateLimiter {
         }
     }
 
+    /// Maximum number of tracked IP entries before eviction.
+    const MAX_TRACKED_IPS: usize = 10_000;
+
     /// Checks if a request from the given IP address should be allowed by the rate limit.
     ///
     /// # Arguments
@@ -403,32 +238,23 @@ impl RateLimiter {
     ///
     /// # Returns
     /// `true` if the request is allowed, `false` if it exceeds the rate limit.
-    /// Maximum number of tracked IP entries before eviction.
-    const MAX_TRACKED_IPS: usize = 10_000;
-
     async fn check_rate_limit(&self, ip: &str) -> bool {
         let mut requests = self.requests.lock().await;
         let now = Instant::now();
         let window = Duration::from_secs(self.window_secs);
 
-        // Get or create request history for this IP.
         let ip_requests = requests.entry(ip.to_string()).or_insert_with(Vec::new);
-
-        // Remove old requests that fall outside the current time window.
         ip_requests.retain(|&time| now.duration_since(time) < window);
 
-        // Clean up empty IP entries to prevent unbounded memory growth.
-        // If an IP has no recent requests within the time window, remove it entirely.
+        // Drop the entry entirely when its window empties (bounds memory growth),
+        // then re-insert a fresh history recording the current request.
         if ip_requests.is_empty() {
             requests.remove(ip);
-            // Since the vector was empty, we can allow this request.
-            // Re-insert with the current timestamp to track this new request.
             requests
                 .entry(ip.to_string())
                 .or_insert_with(Vec::new)
                 .push(now);
         } else if ip_requests.len() < self.max_requests {
-            // If the number of requests is within the limit, record the current request.
             ip_requests.push(now);
         } else {
             return false;
@@ -665,11 +491,7 @@ pub fn validate_production_env() -> Result<(), Vec<String>> {
     // Required environment variables for a production deployment.
     let required_vars = vec!["SURREAL_NS", "SURREAL_DB", "LEPTOS_SITE_ADDR"];
 
-    // Determine if the application is running in production mode.
-    let is_production =
-        std::env::var("RUST_ENV").unwrap_or_else(|_| "development".to_string()) == "production";
-
-    if is_production {
+    if SecurityConfig::from_env().is_production {
         for var in required_vars {
             if std::env::var(var).is_err() {
                 errors.push(format!("Missing required environment variable: {}", var));
@@ -758,16 +580,6 @@ mod tests {
             // Clean up
             std::env::remove_var("RUST_ENV");
         }
-    }
-
-    /// Test create_security_config helper function.
-    #[test]
-    fn test_create_security_config() {
-        let prod_config = create_security_config(true);
-        assert!(prod_config.is_production);
-
-        let dev_config = create_security_config(false);
-        assert!(!dev_config.is_production);
     }
 
     /// Test that the rate limiter allows requests under the configured limit.

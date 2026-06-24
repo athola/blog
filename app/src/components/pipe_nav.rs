@@ -3,8 +3,8 @@
 //! Renders `writing | notes | references | about | rss ↗` in mono uppercase
 //! kicker style. Current route is matched against each item; the matching
 //! item gets accent color + accent underline. Pattern borrowed from
-//! text.blogosphere.app (see docs/project-brief.md §4 reference site
-//! research and docs/specification.md §5.2).
+//! text.blogosphere.app (see docs/design-decisions.md and
+//! docs/specification.md §5.2).
 
 use leptos::{
     html::{nav, span},

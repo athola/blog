@@ -2,8 +2,8 @@
 use app::types::Activity;
 use leptos::prelude::ServerFnError;
 use leptos::server_fn::error::NoCustomError;
-use once_cell::sync::Lazy;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 use std::time::Duration;
 use surrealdb::engine::any::Any;
 use surrealdb::opt::auth::Root;
@@ -14,8 +14,8 @@ use tokio_retry::{strategy::ExponentialBackoff, Retry};
 
 pub type TestDb = Any;
 
-static FALLBACK_ACTIVITIES: Lazy<Mutex<HashMap<String, Activity>>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
+static FALLBACK_ACTIVITIES: LazyLock<Mutex<HashMap<String, Activity>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 pub async fn retry_db_operation<F, Fut, T>(operation: F) -> Result<T, ServerFnError>
 where

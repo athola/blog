@@ -6,49 +6,86 @@ use pulldown_cmark::html::push_html;
 use pulldown_cmark::{CodeBlockKind, CowStr, Event, Options, Parser, Tag, TagEnd, TextMergeStream};
 use regex::Regex;
 use std::borrow::Cow;
+use std::sync::LazyLock;
 use syntect::easy::HighlightLines;
 use syntect::highlighting::ThemeSet;
 use syntect::html::{IncludeBackground, styled_line_to_highlighted_html};
 use syntect::parsing::SyntaxSet;
 
-struct MathEventProcessor {
-    display_style_opts: katex::Opts,
-}
+/// KaTeX options for display-mode (block) math, built once on first use.
+static DISPLAY_MATH_OPTS: LazyLock<katex::Opts> = LazyLock::new(|| {
+    katex::Opts::builder()
+        .display_mode(true)
+        .build()
+        .expect("static katex display options are valid")
+});
 
-impl MathEventProcessor {
-    fn new() -> Self {
-        let opts = katex::Opts::builder().display_mode(true).build().unwrap();
-        Self {
-            display_style_opts: opts,
-        }
-    }
-
-    fn process_math_event<'a>(&'a self, event: Event<'a>) -> Event<'a> {
-        match event {
-            Event::InlineMath(math_exp) => {
-                Event::InlineHtml(CowStr::from(katex::render(&math_exp).unwrap()))
+/// Renders a math event to HTML, falling back to the raw expression rather than
+/// panicking the worker thread when KaTeX rejects user-supplied math (undefined
+/// commands, unbalanced braces, etc.).
+fn process_math_event(event: Event<'_>) -> Event<'_> {
+    match event {
+        Event::InlineMath(math_exp) => match katex::render(&math_exp) {
+            Ok(html) => Event::InlineHtml(CowStr::from(html)),
+            Err(_) => Event::InlineHtml(CowStr::from(format!(
+                "<code>{}</code>",
+                escape_html(&math_exp)
+            ))),
+        },
+        Event::DisplayMath(math_exp) => {
+            match katex::render_with_opts(&math_exp, &*DISPLAY_MATH_OPTS) {
+                Ok(html) => Event::Html(CowStr::from(html)),
+                Err(_) => Event::Html(CowStr::from(format!(
+                    "<pre><code>{}</code></pre>",
+                    escape_html(&math_exp)
+                ))),
             }
-            Event::DisplayMath(math_exp) => Event::Html(CowStr::from(
-                katex::render_with_opts(&math_exp, &self.display_style_opts).unwrap(),
-            )),
-            _ => event,
         }
+        _ => event,
     }
 }
 
-/// Process markdown content with optimized image handling using Cow to reduce allocations.
-/// Returns Cow<str> to avoid unnecessary string allocations when no images are found.
-fn process_images_with_cow(markdown: &str) -> Cow<'_, str> {
-    let re_img = Regex::new(r"!\[.*?\]\((.*?\.(svg|png|jpe?g|gif|bmp|webp))\)").unwrap();
+/// Minimal HTML escaping for raw text emitted on a renderer fallback path.
+fn escape_html(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for c in input.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
 
-    let caps: Vec<_> = re_img.captures_iter(markdown).collect();
+/// Centered `<img>` wrapper shared by the markdown image pre-pass and the
+/// pulldown-cmark `Tag::Image` branch. SVGs are colour-inverted for dark mode.
+fn center_image_html(img_path: &str, img_format: &str) -> String {
+    let extra_style = if img_format == "svg" {
+        "filter: invert(100%); width: 100%;"
+    } else {
+        "width: 100%;"
+    };
+    format!(
+        r#"<div style="display: flex; justify-content: center;"><img src="{img_path}" style="{extra_style}"></div>"#
+    )
+}
+
+/// Rewrites Markdown image syntax into centered HTML, borrowing the input
+/// unchanged when it contains no images (the common case).
+fn preprocess_images(markdown: &str) -> Cow<'_, str> {
+    static RE_IMG: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"!\[.*?\]\((.*?\.(svg|png|jpe?g|gif|bmp|webp))\)")
+            .expect("static image regex is valid")
+    });
+
+    let caps: Vec<_> = RE_IMG.captures_iter(markdown).collect();
     if caps.is_empty() {
-        // No images found, return original content without allocation
         return Cow::Borrowed(markdown);
     }
 
-    // Images found, need to allocate new string
-    let mut result = String::with_capacity(markdown.len() + 256); // Pre-allocate with extra space for HTML wrappers
+    let mut result = String::with_capacity(markdown.len() + 256);
     let mut last_end = 0;
 
     for cap in caps {
@@ -57,16 +94,7 @@ fn process_images_with_cow(markdown: &str) -> Cow<'_, str> {
             let img_path = &cap[1];
             let img_format = &cap[2];
 
-            let img_html = if img_format == "svg" {
-                format!(
-                    r#"<div style="display: flex; justify-content: center;"><img src="{img_path}" style="filter: invert(100%); width: 100%;"></div>"#
-                )
-            } else {
-                format!(
-                    r#"<div style="display: flex; justify-content: center;"><img src="{img_path}" style="width: 100%;"></div>"#
-                )
-            };
-            result.push_str(&img_html);
+            result.push_str(&center_image_html(img_path, img_format));
             last_end = full_match.end();
         }
     }
@@ -74,9 +102,8 @@ fn process_images_with_cow(markdown: &str) -> Cow<'_, str> {
     Cow::Owned(result)
 }
 
-/// Process code block content with optimized highlighting, using pre-allocated capacity
-/// to reduce string reallocations during HTML generation.
-fn highlight_code_block_optimized(
+/// Syntax-highlights a single fenced code block into inline-styled HTML.
+fn highlight_code_block(
     content: &str,
     language: &str,
     ps: &SyntaxSet,
@@ -111,7 +138,7 @@ pub fn process_markdown(markdown: &str) -> Result<String, ServerFnError> {
     let theme = &ts.themes["base16-eighties.dark"];
 
     // Process images with Cow optimization to reduce allocations
-    let processed_markdown = process_images_with_cow(markdown);
+    let processed_markdown = preprocess_images(markdown);
 
     // Configure pulldown-cmark parser.
     let mut options = Options::empty();
@@ -121,7 +148,6 @@ pub fn process_markdown(markdown: &str) -> Result<String, ServerFnError> {
     options.insert(Options::ENABLE_MATH);
 
     let parser = Parser::new_ext(&processed_markdown, options);
-    let mep = MathEventProcessor::new();
 
     let mut events = Vec::new();
     let mut code_block_language: Option<String> = None;
@@ -147,7 +173,7 @@ pub fn process_markdown(markdown: &str) -> Result<String, ServerFnError> {
                 let language = code_block_language.as_deref().unwrap_or("plaintext");
 
                 let highlighted_html =
-                    highlight_code_block_optimized(&code_block_content, language, &ps, theme)?;
+                    highlight_code_block(&code_block_content, language, &ps, theme)?;
                 events.push(Event::Html(CowStr::from(highlighted_html)));
                 code_block_language = None;
             }
@@ -161,16 +187,10 @@ pub fn process_markdown(markdown: &str) -> Result<String, ServerFnError> {
             Event::Start(Tag::Image { dest_url, .. }) => {
                 let img_path = dest_url.into_string();
                 let img_format = img_path.split('.').next_back().unwrap_or("").to_lowercase();
-                let img_html = if img_format == "svg" {
-                    format!(
-                        r#"<div style="display: flex; justify-content: center;"><img src="{img_path}" style="filter: invert(100%); width: 100%;"></div>"#
-                    )
-                } else {
-                    format!(
-                        r#"<div style="display: flex; justify-content: center;"><img src="{img_path}" style="width: 100%;"></div>"#
-                    )
-                };
-                events.push(Event::Html(CowStr::from(img_html)));
+                events.push(Event::Html(CowStr::from(center_image_html(
+                    &img_path,
+                    &img_format,
+                ))));
                 skip_image = true;
             }
             Event::End(TagEnd::Image) => {
@@ -180,7 +200,7 @@ pub fn process_markdown(markdown: &str) -> Result<String, ServerFnError> {
                 skip_image = false;
             }
             other => {
-                let processed = mep.process_math_event(other);
+                let processed = process_math_event(other);
                 events.push(processed);
             }
         }
@@ -226,14 +246,35 @@ mod tests {
     fn test_process_markdown_math() {
         let markdown = "This is inline math: $x^2$\n\n$$\\int_0^1 x \\, dx$$";
         let html = process_markdown(markdown).unwrap();
-        assert!(html.contains("x^2") || html.contains("math"));
+        // KaTeX wraps successful renders in `<span class="katex">`; asserting on
+        // that marker proves the math was actually rendered rather than passed
+        // through as raw text via the fallback path.
+        assert!(
+            html.contains("katex"),
+            "expected KaTeX-rendered output, got: {html}"
+        );
+    }
+
+    #[test]
+    fn test_process_markdown_malformed_math_does_not_panic() {
+        // An undefined KaTeX control sequence makes katex::render return Err.
+        // The renderer must degrade gracefully (raw expression preserved),
+        // not panic the worker thread on user-supplied post content.
+        let markdown = "inline $\\undefinedcmd{x}$ and block $$\\undefinedcmd{y}$$";
+        let html = process_markdown(markdown).expect("malformed math must not error the page");
+        assert!(
+            html.contains("undefinedcmd"),
+            "raw expression should survive as fallback, got: {html}"
+        );
     }
 
     #[test]
     fn test_markdown_formatting() {
         let markdown = "**bold** and *italic*";
         let html = process_markdown(markdown).unwrap();
-        assert!(html.contains("<strong>") || html.contains("<b>"));
-        assert!(html.contains("<em>") || html.contains("<i>"));
+        // pulldown-cmark emits semantic tags (`<strong>`/`<em>`), never the
+        // legacy `<b>`/`<i>` forms, so assert on the exact expected output.
+        assert!(html.contains("<strong>bold</strong>"), "got: {html}");
+        assert!(html.contains("<em>italic</em>"), "got: {html}");
     }
 }

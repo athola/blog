@@ -5,6 +5,11 @@
 //! It encapsulates logic for interacting with the database, handling external
 //! data formats (RSS, sitemap), and managing server-side response construction.
 
+// Suppresses the `leptos::server_fn::error::NoCustomError` deprecation, used
+// pervasively here via `ServerFnError::<NoCustomError>::ServerError(..)` — the
+// idiomatic error type for leptos 0.8 server functions. server_fn 0.9 removes
+// the `WrappedServerError` variant; drop this allow during the leptos 0.9
+// upgrade and migrate to the new custom-error API.
 #![allow(deprecated)]
 
 use app::types::{AppState, Author, Post};
@@ -49,22 +54,8 @@ fn parse_surreal_address(raw: &str) -> Option<(String, String)> {
     Some((scheme.to_string(), host.to_string()))
 }
 
-/// Builds an Axum `Response<String>` with the specified body, content type, and status code.
-///
-/// This helper standardizes the process of creating HTTP responses and
-/// handles potential errors during response construction by returning an
-/// internal server error.
-///
-/// # Arguments
-///
-/// * `body` - The `String` content for the response body.
-/// * `content_type` - The `Content-Type` header value (e.g., "text/html", "application/json").
-/// * `status` - The HTTP `StatusCode` for the response.
-///
-/// # Returns
-///
-/// An `Axum` `Response<String>`. In case of a response build error, it returns
-/// a generic `500 Internal Server Error` response.
+// Wraps body + content type + status into an Axum response, falling back to a
+// bare 500 if the builder rejects the header or status.
 fn build_response(body: String, content_type: &str, status: StatusCode) -> Response<String> {
     match Response::builder()
         .status(status)
@@ -108,7 +99,6 @@ fn build_response(body: String, content_type: &str, status: StatusCode) -> Respo
 /// on success, or a `surrealdb::Error` if connection or authentication fails
 /// after all retries.
 pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
-    // Retrieve connection and authentication details from environment variables.
     let default_protocol = env::var("SURREAL_PROTOCOL").unwrap_or_else(|_| "http".to_owned());
     let default_host = env::var("SURREAL_HOST").unwrap_or_else(|_| "127.0.0.1:8000".to_owned());
 
@@ -184,12 +174,10 @@ pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
         _ => None,
     };
 
-    // Retry strategy for initial database connection.
     let retry_strategy = ExponentialBackoff::from_millis(100)
         .max_delay(Duration::from_secs(5))
         .take(5);
 
-    // Attempt to connect to SurrealDB with retries.
     let db = Retry::spawn(retry_strategy, || async {
         tracing::info!(
             "Attempting to connect to SurrealDB at {}://{}",
@@ -208,12 +196,10 @@ pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
         e
     })?;
 
-    // Retry strategy for database authentication.
     let auth_retry_strategy = ExponentialBackoff::from_millis(100)
         .max_delay(Duration::from_secs(3))
         .take(3);
 
-    // Attempt to authenticate with SurrealDB using available credentials.
     Retry::spawn(auth_retry_strategy, || {
         let db = &db;
         let root_credentials = root_credentials.clone();
@@ -227,7 +213,7 @@ pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
 
             // Attempt root-level authentication first (recommended for simple setups).
             if let Some((ref username, ref password)) = root_credentials {
-                match db.signin(Root { username: &username.clone(), password: &password.clone() }).await {
+                match db.signin(Root { username, password }).await {
                     Ok(_) => return Ok(()),
                     Err(e) => {
                         tracing::debug!("Root authentication attempt failed: {:?}", e);
@@ -240,9 +226,9 @@ pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
             if let Some((ref username, ref password)) = namespace_credentials {
                 match db
                     .signin(Namespace {
-                        namespace: &ns_clone.clone(),
-                        username: &username.clone(),
-                        password: &password.clone(),
+                        namespace: &ns_clone,
+                        username,
+                        password,
                     })
                     .await
                 {
@@ -261,10 +247,10 @@ pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
             if let Some((ref username, ref password)) = database_credentials {
                 match db
                     .signin(Database {
-                        namespace: &ns_clone.clone(),
-                        database: &db_name_clone.clone(),
-                        username: &username.clone(),
-                        password: &password.clone(),
+                        namespace: &ns_clone,
+                        database: &db_name_clone,
+                        username,
+                        password,
                     })
                     .await
                 {
@@ -279,7 +265,6 @@ pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
                 }
             }
 
-            // If no authentication method succeeded, return the last error encountered.
             if let Some(err) = last_err {
                 Err(err)
             } else {
@@ -297,23 +282,19 @@ pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
             e
         );
 
-        let database_credentials_present = database_credentials.is_some();
-        let namespace_credentials_present = namespace_credentials.is_some();
-        let root_credentials_present = root_credentials.is_some();
-
         // Provide specific error messages based on attempted credentials (in auth priority order).
-        if root_credentials_present {
+        if root_credentials.is_some() {
             tracing::error!(
                 "Root-level authentication failed. Verify SURREAL_ROOT_USER/SURREAL_ROOT_PASS match the credentials SurrealDB was started with. See DEPLOYMENT.md for details."
             );
-        } else if namespace_credentials_present {
+        } else if namespace_credentials.is_some() {
             tracing::error!(
                 "Namespace-level authentication failed. Verify SURREAL_NAMESPACE_USER/SURREAL_NAMESPACE_PASS."
             );
             tracing::error!(
                 "The user must exist in SurrealDB: DEFINE USER <name> ON NAMESPACE PASSWORD '<pass>' ROLES OWNER;"
             );
-        } else if database_credentials_present {
+        } else if database_credentials.is_some() {
             tracing::error!(
                 "Database-level authentication failed for namespace `{}` and database `{}`.",
                 ns,
@@ -331,12 +312,10 @@ pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
         e
     })?;
 
-    // Retry strategy for selecting namespace and database.
     let ns_retry_strategy = ExponentialBackoff::from_millis(50)
         .max_delay(Duration::from_secs(2))
         .take(3);
 
-    // Attempt to use the specified namespace and database with retries.
     Retry::spawn(ns_retry_strategy, || {
         let ns = ns.clone();
         let db_name = db_name.clone();
@@ -412,10 +391,9 @@ pub async fn generate_rss(db: &Surreal<Client>) -> Result<String, ServerFnError>
         .take::<Vec<Post>>(0)
         .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {}", e)))?;
     for post in &mut posts {
-        let post_id = format!("{:?}", post.id); // Get post ID for error logging.
-        let raw_created_at = mem::take(&mut post.created_at); // Take ownership to parse.
+        let post_id = format!("{:?}", post.id);
+        let raw_created_at = mem::take(&mut post.created_at);
 
-        // Parse and format the creation date for RSS.
         let date_time = DateTime::parse_from_rfc3339(&raw_created_at).map_err(|e| {
             error!(
                 %post_id,
@@ -437,7 +415,6 @@ pub async fn generate_rss(db: &Surreal<Client>) -> Result<String, ServerFnError>
         post.body = processed_body;
     }
 
-    // Construct RSS items from processed posts.
     let items = posts
         .into_iter()
         .map(|post| {
@@ -464,7 +441,6 @@ pub async fn generate_rss(db: &Surreal<Client>) -> Result<String, ServerFnError>
         })
         .collect::<Vec<_>>();
 
-    // Build the RSS channel.
     let channel = ChannelBuilder::default()
         .title("alexthola")
         .link("https://alexthola.com")
@@ -475,19 +451,8 @@ pub async fn generate_rss(db: &Surreal<Client>) -> Result<String, ServerFnError>
     Ok(channel.to_string())
 }
 
-/// Handles requests for the sitemap XML endpoint (`/sitemap.xml`).
-///
-/// Fetches published post slugs and creation dates from the database,
-/// combines them with static URLs, and generates the sitemap XML string.
-///
-/// # Arguments
-///
-/// * `state` - An `AppState` containing the SurrealDB client.
-///
-/// # Returns
-///
-/// An `Axum` `Response<String>` with the sitemap XML content or an error message.
-/// Escapes special XML characters in a string to prevent XML injection.
+// Escapes the five standard XML metacharacters (&, <, >, ", ') for feed and
+// sitemap output, preventing XML injection.
 fn escape_xml(input: &str) -> String {
     let mut output = String::with_capacity(input.len());
     for ch in input.chars() {
@@ -503,6 +468,11 @@ fn escape_xml(input: &str) -> String {
     output
 }
 
+/// Handles requests for the sitemap XML endpoint (`/sitemap.xml`).
+///
+/// Fetches published post slugs and creation dates from the database, combines
+/// them with static URLs, and generates the sitemap XML string. Returns a `500`
+/// response if the database query fails.
 pub async fn sitemap_handler(State(state): State<AppState>) -> Response<String> {
     /// Internal struct for deserializing post data relevant to the sitemap.
     #[derive(Serialize, Deserialize)]
@@ -934,127 +904,9 @@ mod tests {
         assert_eq!(host, "10.0.0.1:8000");
     }
 
-    /// Test helper macro to temporarily set and restore environment variables during test execution.
-    ///
-    /// # Purpose
-    /// This macro provides a safe way to temporarily override environment variables for testing
-    /// and automatically restore them afterward, ensuring test isolation and preventing
-    /// side effects on the actual environment.
-    ///
-    /// # Usage
-    /// ```rust
-    /// with_env_vars! {
-    ///     "DATABASE_URL" => "memory://test",
-    ///     "LOG_LEVEL" => "debug",
-    /// }
-    /// // Test code that depends on these environment variables
-    /// ```
-    ///
-    /// # Safety
-    /// - Uses `unsafe` blocks for `std::env::set_var` and `std::env::remove_var` calls,
-    ///   which is necessary because these functions modify global state.
-    /// - The unsafety is contained and safe because:
-    ///   - We only modify environment variables that were explicitly provided
-    ///   - All modifications are restored to their original state
-    ///   - The operation has no undefined behavior
-    ///
-    /// # Implementation Details
-    /// 1. Captures original values of all specified environment variables
-    /// 2. Sets new temporary values for all variables in the macro call
-    /// 3. Returns control to the calling code for test execution
-    /// 4. Automatically restores all variables to their original state
-    /// 5. Properly handles cases where variables didn't exist originally
-    ///
-    /// # Example
-    /// ```rust
-    /* #test
-    fn test_database_connection() {
-    ///     with_env_vars! {
-    ///         "SURREAL_DB" => "test_db",
-    ///         "SURREAL_NS" => "test_namespace",
-    ///         "SURREAL_USER" => "test_user",
-    ///         "SURREAL_PASS" => "test_pass",
-    ///     }
-    ///
-    ///     // Test code that uses these environment variables
-    ///     let result = validate_production_env();
-    ///     assert!(result.is_ok());
-    /// }
-    /// */
-    macro_rules! with_env_vars {
-    ($($key:expr => $value:expr),* $(,)?) => {{
-        // Store original values to restore them later
-        let original_vars: Vec<(&'static str, Option<String>)> = vec![
-            $(($key, std::env::var($key).ok()),)*
-        ];
-
-        // Set temporary values for test execution
-        unsafe { $(std::env::set_var($key, $value);)* }
-
-        let result = {
-            // Placeholder for potential setup; currently unused.
-            // This allows for future enhancement where setup code could be injected
-            // before returning control to the calling test code.
-        };
-
-        // Restore all environment variables to their original state
-        for (key, original_value) in original_vars {
-            if let Some(value) = original_value {
-                unsafe { std::env::set_var(key, value); }
-            } else {
-                unsafe { std::env::remove_var(key); }
-            }
-        }
-        result
-    }};
-}
-
-    /// Verifies that environment variable parsing correctly applies default values.
-    /// This test uses a macro to isolate environment variable changes.
-    #[tokio::test]
-    async fn test_connect_env_var_defaults() {
-        with_env_vars! {
-            "SURREAL_PROTOCOL" => "",
-            "SURREAL_HOST" => "",
-            "SURREAL_ROOT_USER" => "",
-            "SURREAL_ROOT_PASS" => "",
-            "SURREAL_NS" => "",
-            "SURREAL_DB" => "",
-        };
-
-        let protocol = std::env::var("SURREAL_PROTOCOL").unwrap_or_else(|_| "http".to_owned());
-        let host = std::env::var("SURREAL_HOST").unwrap_or_else(|_| "127.0.0.1:8000".to_owned());
-        let username = std::env::var("SURREAL_ROOT_USER").unwrap_or_else(|_| "root".to_owned());
-        let password = std::env::var("SURREAL_ROOT_PASS").unwrap_or_else(|_| "root".to_owned());
-        let ns = std::env::var("SURREAL_NS").unwrap_or_else(|_| "rustblog".to_owned());
-        let db_name = std::env::var("SURREAL_DB").unwrap_or_else(|_| "rustblog".to_owned());
-
-        assert_eq!(protocol, "http");
-        assert_eq!(host, "127.0.0.1:8000");
-        assert_eq!(username, "root");
-        assert_eq!(password, "root");
-        assert_eq!(ns, "rustblog");
-        assert_eq!(db_name, "rustblog");
-    }
-
-    /// Verifies the `rss_handler` function exists with the correct signature.
-    /// The full functionality is not tested here, but only its API contract.
-    #[test]
-    fn test_rss_handler_signature() {
-        let _: fn(State<AppState>) -> _ = rss_handler;
-    }
-
-    /// Verifies the `sitemap_handler` function exists with the correct signature.
-    /// The full functionality is not tested here, but only its API contract.
-    #[test]
-    fn test_sitemap_handler_signature() {
-        let _: fn(State<AppState>) -> _ = sitemap_handler;
-    }
-
     // ─────────────────────────────────────────────────────────────────
     // Sprint 3 (T24-T27): invariant-encoding tests for new feed/route
-    // helpers. These guard the XSS-prevention contract and the project
-    // convention that every public handler has a signature test.
+    // helpers. These guard the XSS-prevention contract for feed output.
     // ─────────────────────────────────────────────────────────────────
 
     /// GIVEN a string containing every XML metacharacter
@@ -1149,27 +1001,5 @@ mod tests {
         assert_eq!(escape_xml(unicode), unicode);
         // Sanity: the bytes really are multi-byte.
         assert!(unicode.len() > unicode.chars().count());
-    }
-
-    /// Verifies the `atom_handler` function exists with the correct signature.
-    /// Mirrors the `test_rss_handler_signature` convention so every public
-    /// handler in this module has a contract guard.
-    #[test]
-    fn test_atom_handler_signature() {
-        let _: fn(State<AppState>) -> _ = atom_handler;
-    }
-
-    /// Verifies the `random_handler` function exists with the correct signature.
-    #[test]
-    fn test_random_handler_signature() {
-        let _: fn(State<AppState>) -> _ = random_handler;
-    }
-
-    /// Verifies the `raw_markdown_handler` function exists with the correct signature.
-    /// Note: takes a Path extractor in addition to State, distinguishing it from
-    /// the State-only handlers above.
-    #[test]
-    fn test_raw_markdown_handler_signature() {
-        let _: fn(Path<String>, State<AppState>) -> _ = raw_markdown_handler;
     }
 }

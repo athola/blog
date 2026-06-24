@@ -5,8 +5,8 @@
 //! Default (32px day, used for post-list rows and archive), and Compact
 //! (24px day, used in the home notes strip).
 //!
-//! Pattern borrowed from blog.fsck.com (see docs/project-brief.md §4
-//! reference site research and docs/specification.md §5.3).
+//! Pattern borrowed from blog.fsck.com (see docs/design-decisions.md and
+//! docs/specification.md §5.3).
 
 use leptos::{
     html::{div, span},

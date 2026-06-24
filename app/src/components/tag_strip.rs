@@ -3,8 +3,8 @@
 //!
 //! `topics: all · rust · leptos · surrealdb · …` with the selected tag
 //! showing accent color + underline. Pattern borrowed from
-//! text.blogosphere.app (see docs/project-brief.md §4 reference site
-//! research and docs/specification.md §5.5).
+//! text.blogosphere.app (see docs/design-decisions.md and
+//! docs/specification.md §5.5).
 
 use leptos::{
     ev,

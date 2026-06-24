@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 
 fn ensure_server_binary() -> Result<(), Box<dyn std::error::Error>> {
     use std::path::Path;
@@ -79,10 +79,11 @@ mod server_integration_tests {
     static PORT_PERMISSION_DENIED: AtomicBool = AtomicBool::new(false);
     static SURREAL_MISSING: AtomicBool = AtomicBool::new(false);
     static FRONTEND_ASSETS_UNAVAILABLE: AtomicBool = AtomicBool::new(false);
-    static PORT_REGISTRY: Lazy<Mutex<HashSet<u16>>> = Lazy::new(|| Mutex::new(HashSet::new()));
+    static PORT_REGISTRY: LazyLock<Mutex<HashSet<u16>>> =
+        LazyLock::new(|| Mutex::new(HashSet::new()));
     const PORT_RANGE: u16 = 1024;
     const PORT_START: u16 = 24000;
-    static PORT_NAMESPACE_BASE: Lazy<u16> = Lazy::new(|| {
+    static PORT_NAMESPACE_BASE: LazyLock<u16> = LazyLock::new(|| {
         let pid = process::id() as u16;
         let namespace = pid % 40; // 0..39
         PORT_START + namespace * PORT_RANGE

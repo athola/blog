@@ -106,16 +106,13 @@ async fn main() {
         .with_max_level(tracing_level)
         .init();
 
-    // Load environment variables from a `.env` file if present.
-    // In production, env vars are typically provided externally by the host platform,
-    // so a missing `.env` should not cause errors.
+    // In production, env vars are provided externally by the host platform, so a
+    // missing `.env` is not an error.
     let _ = dotenv();
 
-    // Validate essential environment variables.
-    // In production mode (RUST_ENV=production), validation failures are fatal.
-    // In development mode, we warn but continue to allow easier local testing.
-    let is_production =
-        std::env::var("RUST_ENV").unwrap_or_else(|_| "development".to_string()) == "production";
+    // In production mode (RUST_ENV=production) validation failures are fatal; in
+    // development we warn but continue to ease local testing.
+    let is_production = SecurityConfig::from_env().is_production;
 
     if let Err(errors) = validate_production_env() {
         for error in &errors {
@@ -168,7 +165,6 @@ async fn main() {
             .unwrap_or_else(|| "../Cargo.toml".to_string())
     });
 
-    // Load Leptos configuration.
     let Ok(conf) = get_configuration(Some(&config_path)) else {
         logging::error!("Failed to load configuration from: {}", config_path);
         return;

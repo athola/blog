@@ -5,7 +5,7 @@
 //! to the site root.
 //!
 //! Pattern borrowed from blog.fsck.com's italic-accented two-piece nameplate
-//! (see docs/project-brief.md §5 Direction D).
+//! (see docs/design-decisions.md).
 
 use leptos::{
     html::{em, span},

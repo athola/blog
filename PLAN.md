@@ -7,9 +7,8 @@ This document outlines planned features and technical improvements for the blog 
 The site is being redesigned per the **Dual-Mode Editorial Engineer** direction
 synthesized from blogosphere.app, posthog.com, and blog.fsck.com.
 
-- **Brief**: [`docs/project-brief.md`](./docs/project-brief.md)
+- **Design decisions**: [`docs/design-decisions.md`](./docs/design-decisions.md)
 - **Specification**: [`docs/specification.md`](./docs/specification.md)
-- **Implementation plan**: [`docs/implementation-plan.md`](./docs/implementation-plan.md)
 - **Design system reference**: [`docs/design-system.md`](./docs/design-system.md)
 
 Already shipped on the redesign branch:

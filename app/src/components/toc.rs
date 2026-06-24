@@ -5,7 +5,7 @@
 //! than 4 headings are passed (short posts don't need a TOC).
 //!
 //! Pattern borrowed from posthog.com's in-flow TOC at the top of long
-//! blog posts (see docs/project-brief.md §4 and docs/specification.md §5.6).
+//! blog posts (see docs/design-decisions.md and docs/specification.md §5.6).
 
 use leptos::{
     either::Either,

@@ -703,7 +703,6 @@ dependencies = [
  "leptos",
  "lettre",
  "markdown",
- "once_cell",
  "reqwest 0.12.28",
  "serde",
  "serde_json",

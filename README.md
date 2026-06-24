@@ -26,7 +26,7 @@ on every commit.
 
 ## Quick Start
 
-Get a local development environment running in a couple of minutes:
+Get a local development environment running:
 
 ```bash
 git clone https://github.com/athola/blog.git

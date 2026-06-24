@@ -2,7 +2,7 @@
 
 **Direction**: D — Dual-Mode Editorial Engineer
 **Branch landed in**: `site-redesign-0.2.0`
-**Reference research**: [`docs/project-brief.md`](./project-brief.md)
+**Design rationale**: [`docs/design-decisions.md`](./design-decisions.md)
 **Spec**: [`docs/specification.md`](./specification.md)
 
 This document is the **living reference** for the site's design system.

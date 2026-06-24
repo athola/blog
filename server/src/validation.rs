@@ -74,24 +74,11 @@ impl fmt::Display for ValidationError {
 
 impl std::error::Error for ValidationError {}
 
-/// Sanitizes a string by escaping HTML entities to prevent XSS attacks.
+/// Escapes HTML metacharacters in untrusted input to prevent XSS.
 ///
-/// This function replaces dangerous HTML characters with their entity equivalents:
-/// - `&` -> `&amp;`
-/// - `<` -> `&lt;`
-/// - `>` -> `&gt;`
-/// - `"` -> `&quot;`
-/// - `'` -> `&#x27;`
-/// - `/` -> `&#x2F;`
-/// - `` ` `` -> `&#x60;`
-///
-/// # Arguments
-///
-/// * `input` - The string to sanitize.
-///
-/// # Returns
-///
-/// A new string with all HTML entities properly escaped.
+/// Re-exported from [`shared_utils`] (the canonical implementation shared with
+/// the `app` crate) so the server's validation API exposes sanitization
+/// alongside the field validators below.
 ///
 /// # Examples
 ///
@@ -102,21 +89,29 @@ impl std::error::Error for ValidationError {}
 /// let sanitized = sanitize_html(input);
 /// assert_eq!(sanitized, "&lt;script&gt;alert(&#x27;xss&#x27;)&lt;&#x2F;script&gt;");
 /// ```
-pub fn sanitize_html(input: &str) -> String {
-    let mut result = String::with_capacity(input.len());
-    for c in input.chars() {
-        match c {
-            '&' => result.push_str("&amp;"),
-            '<' => result.push_str("&lt;"),
-            '>' => result.push_str("&gt;"),
-            '"' => result.push_str("&quot;"),
-            '\'' => result.push_str("&#x27;"),
-            '/' => result.push_str("&#x2F;"),
-            '`' => result.push_str("&#x60;"),
-            _ => result.push(c),
-        }
+pub use shared_utils::sanitize_html;
+
+/// Trims `input`, then rejects it as [`ValidationError::Empty`] if blank or
+/// [`ValidationError::TooLong`] if it exceeds `max_len` bytes. Returns the
+/// trimmed slice so callers can apply their own field-specific validation.
+///
+/// Shared preamble for the `validate_*` / `sanitize_*` functions, which all
+/// begin with the same trim/empty/length checks.
+fn trim_bounded(input: &str, max_len: usize) -> Result<&str, ValidationError> {
+    let trimmed = input.trim();
+
+    if trimmed.is_empty() {
+        return Err(ValidationError::Empty);
     }
-    result
+
+    if trimmed.len() > max_len {
+        return Err(ValidationError::TooLong {
+            max: max_len,
+            actual: trimmed.len(),
+        });
+    }
+
+    Ok(trimmed)
 }
 
 /// Validates and sanitizes a slug.
@@ -151,24 +146,10 @@ pub fn sanitize_html(input: &str) -> String {
 /// assert!(validate_slug("hello world", 200).is_err()); // spaces not allowed
 /// ```
 pub fn validate_slug(input: &str, max_len: usize) -> Result<String, ValidationError> {
-    let trimmed = input.trim();
-
-    if trimmed.is_empty() {
-        return Err(ValidationError::Empty);
-    }
-
-    if trimmed.len() > max_len {
-        return Err(ValidationError::TooLong {
-            max: max_len,
-            actual: trimmed.len(),
-        });
-    }
+    let trimmed = trim_bounded(input, max_len)?;
 
     // Validate characters: only alphanumeric, hyphens, and underscores
-    if !trimmed
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-    {
+    if !shared_utils::slug_chars_valid(trimmed) {
         return Err(ValidationError::InvalidCharacters {
             allowed: "alphanumeric characters, hyphens (-), and underscores (_)".to_string(),
         });
@@ -209,24 +190,10 @@ pub fn validate_slug(input: &str, max_len: usize) -> Result<String, ValidationEr
 /// assert!(validate_tag("rust<script>", 100).is_err()); // HTML not allowed
 /// ```
 pub fn validate_tag(input: &str, max_len: usize) -> Result<String, ValidationError> {
-    let trimmed = input.trim();
-
-    if trimmed.is_empty() {
-        return Err(ValidationError::Empty);
-    }
-
-    if trimmed.len() > max_len {
-        return Err(ValidationError::TooLong {
-            max: max_len,
-            actual: trimmed.len(),
-        });
-    }
+    let trimmed = trim_bounded(input, max_len)?;
 
     // Validate characters: only alphanumeric, hyphens, underscores, and spaces
-    if !trimmed
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == ' ')
-    {
+    if !shared_utils::tag_chars_valid(trimmed) {
         return Err(ValidationError::InvalidCharacters {
             allowed: "alphanumeric characters, hyphens (-), underscores (_), and spaces"
                 .to_string(),
@@ -393,18 +360,7 @@ pub fn validate_email(input: &str) -> Result<String, ValidationError> {
 /// assert!(!result.unwrap().contains("<script>"));
 /// ```
 pub fn sanitize_message(input: &str, max_len: usize) -> Result<String, ValidationError> {
-    let trimmed = input.trim();
-
-    if trimmed.is_empty() {
-        return Err(ValidationError::Empty);
-    }
-
-    if trimmed.len() > max_len {
-        return Err(ValidationError::TooLong {
-            max: max_len,
-            actual: trimmed.len(),
-        });
-    }
+    let trimmed = trim_bounded(input, max_len)?;
 
     // Escape all HTML entities while preserving newlines
     let sanitized = sanitize_html(trimmed);
@@ -412,67 +368,17 @@ pub fn sanitize_message(input: &str, max_len: usize) -> Result<String, Validatio
     Ok(sanitized)
 }
 
-/// Validates and sanitizes a name (e.g., contact form name field).
-///
-/// A valid name:
-/// - Is not empty
-/// - Does not exceed the maximum length
-/// - Has all HTML entities escaped
-///
-/// # Arguments
-///
-/// * `input` - The name string to validate.
-/// * `max_len` - Maximum allowed length for the name.
-///
-/// # Returns
-///
-/// A `Result` containing the sanitized name on success, or a `ValidationError` on failure.
+/// Trims `input`, rejects it if empty or longer than `max_len`, and returns the
+/// HTML-sanitized result. Unicode is preserved so international names pass.
 ///
 /// # Errors
-///
-/// Returns an error if:
-/// - The input is empty
-/// - The input exceeds `max_len` characters
-///
-/// # Examples
-///
-/// ```
-/// use server::validation::validate_name;
-///
-/// assert!(validate_name("John Doe", 100).is_ok());
-/// assert!(validate_name("<script>", 100).is_ok()); // Returns sanitized version
-/// assert!(validate_name("", 100).is_err());
-/// ```
+/// Returns [`ValidationError::Empty`] or [`ValidationError::TooLong`].
 pub fn validate_name(input: &str, max_len: usize) -> Result<String, ValidationError> {
-    let trimmed = input.trim();
-
-    if trimmed.is_empty() {
-        return Err(ValidationError::Empty);
-    }
-
-    if trimmed.len() > max_len {
-        return Err(ValidationError::TooLong {
-            max: max_len,
-            actual: trimmed.len(),
-        });
-    }
-
-    // Sanitize HTML but allow unicode characters (international names)
+    let trimmed = trim_bounded(input, max_len)?;
     Ok(sanitize_html(trimmed))
 }
 
-/// Validates that a string does not exceed a maximum length.
-///
-/// This is a simple helper for length validation.
-///
-/// # Arguments
-///
-/// * `input` - The string to validate.
-/// * `max_len` - Maximum allowed length.
-///
-/// # Returns
-///
-/// A `Result` containing the trimmed input on success, or a `ValidationError` on failure.
+/// Trims `input` and rejects it if it exceeds `max_len`, returning the trimmed string.
 pub fn validate_length(input: &str, max_len: usize) -> Result<String, ValidationError> {
     let trimmed = input.trim();
 
@@ -486,18 +392,7 @@ pub fn validate_length(input: &str, max_len: usize) -> Result<String, Validation
     Ok(trimmed.to_string())
 }
 
-/// Validates that a string has a minimum length.
-///
-/// This is a helper for minimum length validation.
-///
-/// # Arguments
-///
-/// * `input` - The string to validate.
-/// * `min_len` - Minimum required length.
-///
-/// # Returns
-///
-/// A `Result` containing the trimmed input on success, or a `ValidationError` on failure.
+/// Trims `input` and rejects it if shorter than `min_len`, returning the trimmed string.
 pub fn validate_min_length(input: &str, min_len: usize) -> Result<String, ValidationError> {
     let trimmed = input.trim();
 

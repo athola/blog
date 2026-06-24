@@ -4,7 +4,7 @@
 **Author**: Alex Thola (assisted)
 **Status**: Draft — feeds into planning
 **Branch**: `site-redesign-0.2.0`
-**Brief**: [`docs/project-brief.md`](./project-brief.md)
+**Design rationale**: [`docs/design-decisions.md`](./design-decisions.md)
 **Direction**: D — Dual-Mode Editorial Engineer
 
 ---
@@ -734,12 +734,10 @@ Mirror of section-specific ACs, summarized for plan-phase task ordering.
 
 ## 11. Next Steps
 
-1. **`/attune:blueprint`** → produce `docs/implementation-plan.md` with tasks
-   in dependency order, each with a TDD or proof-of-work test, sized to ≤ 1
-   work-session each.
-2. **`/attune:execute`** → execute the plan. Expect 2–3 working sessions.
-
-The next phase auto-invokes per the orchestrator's protocol.
+1. Break this specification into an implementation plan: tasks in dependency
+   order, each with a TDD or proof-of-work test, sized to roughly one work
+   session apiece.
+2. Execute the plan over the resulting 2–3 working sessions.
 
 ---
 

@@ -42,7 +42,6 @@ pub struct Author {
 }
 
 impl Default for Author {
-    /// Provides default values for `Author` fields.
     fn default() -> Self {
         Self {
             id: Thing::from(("author", "0")),
@@ -75,7 +74,6 @@ pub struct Post {
 }
 
 impl Default for Post {
-    /// Provides default values for `Post` fields.
     fn default() -> Self {
         Self {
             id: Thing::from(("post", "0")),

@@ -18,7 +18,7 @@ use leptos::{
 };
 use leptos_meta::{Title, TitleProps};
 
-use crate::api::{create_activity, select_activities};
+use crate::api::select_activities;
 use crate::types::Activity;
 
 /// Number of notes per page (matches server-side ACTIVITIES_PER_PAGE).
@@ -60,14 +60,6 @@ pub fn component() -> impl IntoView {
             current_page.update(|p| *p += 1);
         }
     };
-
-    // Register the server action so it is available in the Leptos runtime,
-    // even if not invoked here (matches original activity.rs pattern).
-    let _create_action = Action::new(move |(api_key, note): &(String, Activity)| {
-        let api_key = api_key.clone();
-        let note = note.clone();
-        async move { create_activity(api_key, note).await }
-    });
 
     div().class("flex flex-col gap-12").child((
         Title(

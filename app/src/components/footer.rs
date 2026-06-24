@@ -5,8 +5,7 @@
 //! About) collapse to a single column on mobile. Social icons row appears
 //! below columns; copyright in mono uppercase below social.
 //!
-//! Pattern borrowed from posthog.com (see docs/project-brief.md §4
-//! reference site research).
+//! Pattern borrowed from posthog.com (see docs/design-decisions.md).
 
 use crate::components::icons;
 use chrono::{Datelike as _, Utc};
