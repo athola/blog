@@ -453,7 +453,7 @@ pub struct Pagination {
 async fn insert_activity<C: surrealdb::Connection>(
     db: &surrealdb::Surreal<C>,
     activity: Activity,
-) -> Result<(), surrealdb::Error> {
+) -> Result<(), Box<surrealdb::Error>> {
     let _: Option<Activity> = if let Some(id) = activity.id.clone() {
         // The id is specified in the create call, so drop it from the content.
         let mut content_activity = activity.clone();
@@ -464,11 +464,13 @@ async fn insert_activity<C: surrealdb::Connection>(
         let record_id = RecordId::from((table, id_str.as_str()));
         db.create::<Option<Activity>>(record_id)
             .content(content_activity)
-            .await?
+            .await
+            .map_err(Box::new)?
     } else {
         db.create::<Option<Activity>>("activity")
             .content(activity)
-            .await?
+            .await
+            .map_err(Box::new)?
     };
     Ok(())
 }
@@ -480,13 +482,15 @@ async fn insert_activity<C: surrealdb::Connection>(
 async fn query_activities_page<C: surrealdb::Connection>(
     db: &surrealdb::Surreal<C>,
     page: usize,
-) -> Result<Vec<Activity>, surrealdb::Error> {
+) -> Result<Vec<Activity>, Box<surrealdb::Error>> {
     let start = page * ACTIVITIES_PER_PAGE;
     db.query("SELECT * FROM activity ORDER BY created_at DESC LIMIT $limit START $start")
         .bind(("limit", ACTIVITIES_PER_PAGE))
         .bind(("start", start))
-        .await?
+        .await
+        .map_err(Box::new)?
         .take(0)
+        .map_err(Box::new)
 }
 
 #[server(prefix = "/api/activities", endpoint = "create")]
