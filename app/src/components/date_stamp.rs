@@ -1,4 +1,4 @@
-//! DateStamp — newspaper-stamp tile with mono kicker, serif day numeral,
+//! DateStamp: newspaper-stamp tile with mono kicker, serif day numeral,
 //! and 2px accent left rail.
 //!
 //! Three sizes: Featured (48px day, used for the homepage hero post),
@@ -16,12 +16,12 @@ use leptos::{
 /// Size variant for the date-stamp tile. Affects the day numeral size.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DateStampSize {
-    /// Largest variant — for the home page featured post.
+    /// Largest variant, for the home page featured post.
     Featured,
-    /// Default — for post-list rows on home and archive.
+    /// Default, for post-list rows on home and archive.
     Default,
-    /// Compact — for tight spaces. Spec'd for the home notes strip but
-    /// currently the notes strip uses inline rows; kept for the explicit
+    /// Compact, for tight spaces. Spec'd for the home notes strip but
+    /// currently the notes strip uses inline rows. Kept for the explicit
     /// spec contract and future use.
     #[allow(dead_code)]
     Compact,

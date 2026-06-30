@@ -1,4 +1,4 @@
-//! PipeNav — pipe-separated lowercase navigation row.
+//! PipeNav: pipe-separated lowercase navigation row.
 //!
 //! Renders `writing | notes | references | about | rss ↗` in mono uppercase
 //! kicker style. Current route is matched against each item; the matching
@@ -60,7 +60,7 @@ pub fn component(current_route: String) -> impl IntoView {
                     (separator, make_link(href, label, is_current))
                 })
                 .collect::<Vec<_>>(),
-            // RSS link last — outbound, gets ↗ glyph automatically via CSS rule
+            // RSS link last: outbound, gets ↗ glyph automatically via CSS rule
             span().class("text-ink-4").child("|"),
             A(AProps::builder()
                 .href("/feed/rss.xml".to_string())

@@ -9,7 +9,7 @@
 //! All database operations are wrapped with a retry mechanism to enhance resilience.
 
 // Suppresses the `leptos::server_fn::error::NoCustomError` deprecation, used
-// pervasively here via `ServerFnError::<NoCustomError>::ServerError(..)` — the
+// pervasively here via `ServerFnError::<NoCustomError>::ServerError(..)`, the
 // idiomatic error type for leptos 0.8 server functions. server_fn 0.9 removes
 // the `WrappedServerError` variant; drop this allow during the leptos 0.9
 // upgrade and migrate to the new custom-error API.
@@ -282,8 +282,8 @@ pub struct ContactRequest {
 /// Validates a contact-form email address, returning its normalized (trimmed,
 /// lowercased) form.
 ///
-/// Delegates to the canonical [`is_valid_email`] rule so the contact form — the
-/// highest-risk user input point — is validated no more weakly than
+/// Delegates to the canonical [`is_valid_email`] rule so the contact form, the
+/// highest-risk user input point, is validated no more weakly than
 /// `server::validation::validate_email`.
 #[cfg(feature = "ssr")]
 fn validate_contact_email(input: &str) -> Result<String, String> {

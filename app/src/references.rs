@@ -3,11 +3,11 @@
 //! Layout (spec §4.5):
 //!   1. Page title in italic display ("references")
 //!   2. Subtitle paragraph
-//!   3. Project list — single column rows (NOT cards); each row has
+//!   3. Project list: single column rows (NOT cards). Each row has
 //!      title, description, and tech-stack as inline mono bars with
 //!      ▰/▱ glyphs.
 //!
-//! Replaces the prior glassmorphism + grid-bg cards with editorial rows.
+//! Replaces the prior glassmorphism and grid-bg cards with editorial rows.
 
 use leptos::{
     html::{div, h1, h2, p, section, span},
@@ -27,7 +27,7 @@ pub fn component() -> impl IntoView {
     div().class("flex flex-col gap-12").child((
         Title(
             TitleProps::builder()
-                .text("References — Alex Thola")
+                .text("References | Alex Thola")
                 .build(),
         ),
         // Page header
@@ -92,7 +92,7 @@ fn render_project_row(r: crate::types::Reference, divider: bool) -> impl IntoVie
         // Description
         p().class("text-ink-2 text-base leading-relaxed mb-5 max-w-prose")
             .child(r.description.clone()),
-        // Tech stack — mono bars
+        // Tech stack: mono bars
         div().class("grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 font-mono text-[11px] uppercase tracking-[0.08em]")
             .child(
                 tech_zip

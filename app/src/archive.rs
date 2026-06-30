@@ -1,13 +1,13 @@
-//! Archive page — full chronological list of posts, year-grouped, with
+//! Archive page: full chronological list of posts, year-grouped, with
 //! optional `?tag=<slug>` filter.
 //!
 //! Layout (spec §4.3):
 //!   1. Page title in italic display ("writing")
 //!   2. Total-count mono kicker
 //!   3. Tag filter strip (URL-driven via ?tag=foo)
-//!   4. Year-grouped post list — each year header is a `<h2>` anchor
+//!   4. Year-grouped post list: each year header is a `<h2>` anchor
 //!
-//! Pagination is not yet implemented at this scale; the full list renders
+//! Pagination is not yet implemented at this scale. The full list renders
 //! in a single SSR pass. Add cursor pagination once the corpus exceeds
 //! ~200 posts.
 
@@ -45,9 +45,9 @@ pub fn component() -> impl IntoView {
         Title(
             TitleProps::builder()
                 .text(if initial_tag.is_empty() {
-                    "Writing — Alex Thola".to_string()
+                    "Writing | Alex Thola".to_string()
                 } else {
-                    format!("Writing tagged #{} — Alex Thola", initial_tag)
+                    format!("Writing tagged #{} | Alex Thola", initial_tag)
                 })
                 .build(),
         ),
@@ -104,7 +104,7 @@ pub fn component() -> impl IntoView {
 fn render_year_group(year: String, posts: Vec<Post>) -> impl IntoView {
     let total = posts.len();
     section().attr("id", year.clone()).class("flex flex-col").child((
-        // Year header — italic display, anchor for in-page links
+        // Year header: italic display, anchor for in-page links
         h2()
             .class("font-display italic text-3xl sm:text-4xl font-medium text-ink mb-4 flex items-baseline gap-3")
             .child((

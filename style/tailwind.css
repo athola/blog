@@ -2,7 +2,7 @@
 
 /*
  * ============================================================================
- * alexthola.com — Locked design palette (Direction D — Dual-Mode Editorial Engineer)
+ * alexthola.com: Locked design palette (Direction D: Dual-Mode Editorial Engineer)
  *
  *   --paper / --paper-2  Page background and surface tier
  *   --ink / --ink-2/3/4  Text tiers (primary, secondary, muted, subtle)
@@ -52,7 +52,7 @@
     --radius-pill: 999px;
 }
 
-/* Dark mode variants — activated by [data-theme="dark"] on <html>.
+/* Dark mode variants: activated by [data-theme="dark"] on <html>.
  * Initial value set by inline pre-paint <script> in app/src/lib.rs to
  * read localStorage then prefers-color-scheme without FOUC.
  */
@@ -93,7 +93,7 @@
         letter-spacing: -0.015em;
     }
 
-    /* Body link pattern — ink color, accent underline, accent on hover.
+    /* Body link pattern: ink color, accent underline, accent on hover.
      * Scoped to article/.prose so navigation links are not affected.
      */
     article a,
@@ -108,7 +108,7 @@
         color: var(--color-accent);
     }
 
-    /* Outbound link glyph — appended via CSS pseudo-element so any external
+    /* Outbound link glyph: appended via CSS pseudo-element so any external
      * link gets the indicator with no per-call site change. Skips internal
      * links to alexthola.com and relative links.
      */
@@ -120,7 +120,7 @@
         opacity: 0.7;
     }
 
-    /* Blockquote — accent left rail, italic */
+    /* Blockquote: accent left rail, italic */
     blockquote {
         border-left: 3px solid var(--color-accent);
         padding-left: 1.5rem;
@@ -147,7 +147,7 @@
         top: 0;
     }
 
-    /* Reduced motion — respect user preference */
+    /* Reduced motion: respect user preference */
     @media (prefers-reduced-motion: reduce) {
         *, *::before, *::after {
             transition-duration: 0.01ms !important;
@@ -155,7 +155,7 @@
         }
     }
 
-    /* Focus state — token-driven, replaces browser default */
+    /* Focus state: token-driven, replaces browser default */
     :focus-visible {
         outline: 2px solid var(--color-accent);
         outline-offset: 2px;

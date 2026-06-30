@@ -6,7 +6,7 @@
 //! data formats (RSS, sitemap), and managing server-side response construction.
 
 // Suppresses the `leptos::server_fn::error::NoCustomError` deprecation, used
-// pervasively here via `ServerFnError::<NoCustomError>::ServerError(..)` — the
+// pervasively here via `ServerFnError::<NoCustomError>::ServerError(..)`, the
 // idiomatic error type for leptos 0.8 server functions. server_fn 0.9 removes
 // the `WrappedServerError` variant; drop this allow during the leptos 0.9
 // upgrade and migrate to the new custom-error API.
@@ -613,7 +613,7 @@ pub async fn sitemap_handler(State(state): State<AppState>) -> Response<String> 
 // Sprint 3 (T24-T27): Atom feed, /random, /post/:slug/raw.md, redirects.
 // ─────────────────────────────────────────────────────────────────────
 
-/// Handles GET /feed/feed.xml — Atom 1.0 feed.
+/// Handles GET /feed/feed.xml: Atom 1.0 feed.
 ///
 /// Per spec §4.10. The Atom feed mirrors the RSS content but with the
 /// Atom envelope. Hand-rolled XML to avoid adding the `atom_syndication`
@@ -654,7 +654,7 @@ pub async fn generate_atom(db: &Surreal<Client>) -> Result<String, ServerFnError
 
     // Per Atom 1.0 §4.2.15, feed-level <updated> reflects the most recent
     // meaningful modification. Use max(updated_at) across entries, not the
-    // first post's created_at — published-but-since-edited posts otherwise
+    // first post's created_at. Published-but-since-edited posts otherwise
     // never bump <updated> and feed readers skip re-fetching.
     let updated = posts
         .iter()
@@ -739,7 +739,7 @@ pub async fn generate_atom(db: &Surreal<Client>) -> Result<String, ServerFnError
     Ok(feed)
 }
 
-/// Handles GET /random — picks a random published post and 302 redirects
+/// Handles GET /random: picks a random published post and 302 redirects
 /// to its detail page (spec §4.9, "Stumble" mechanic).
 pub async fn random_handler(State(state): State<AppState>) -> Response<String> {
     #[derive(Deserialize)]
@@ -806,7 +806,7 @@ pub async fn random_handler(State(state): State<AppState>) -> Response<String> {
     response
 }
 
-/// Handles GET /post/{slug}/raw.md — returns the raw markdown source for a post
+/// Handles GET /post/{slug}/raw.md: returns the raw markdown source for a post
 /// (spec §4.11, hacker-culture handshake). Axum 0.8 requires a path param to
 /// occupy a whole segment, so the .md suffix lives in its own segment.
 pub async fn raw_markdown_handler(
@@ -972,8 +972,8 @@ mod tests {
 
     /// GIVEN a string mixing `&` with another metacharacter (`<`)
     /// WHEN escape_xml is applied
-    /// THEN the `&` becomes `&amp;` and the `<` becomes `&lt;` independently —
-    ///      i.e. the `&` from `&lt;` is NOT re-escaped to `&amp;lt;`.
+    /// THEN the `&` becomes `&amp;` and the `<` becomes `&lt;` independently.
+    ///      The `&` from `&lt;` is NOT re-escaped to `&amp;lt;`.
     /// Locks in the single-pass char-iterator implementation against a future
     /// "optimization" to chained `String::replace()`, which would naively turn
     /// `<` into `&lt;` first and then mangle the resulting `&` on a second pass.
@@ -993,7 +993,7 @@ mod tests {
     /// THEN every code point survives byte-identical.
     /// Guards against a future refactor to byte-level (`u8`) matching, which
     /// would split UTF-8 continuation bytes and corrupt feed content. Real post
-    /// titles routinely contain em-dashes and curly quotes — feed validators
+    /// titles routinely contain em-dashes and curly quotes. Feed validators
     /// reject malformed UTF-8.
     #[test]
     fn escape_xml_preserves_multibyte_unicode() {

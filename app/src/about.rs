@@ -1,4 +1,4 @@
-//! About page — author bio, role, links, and colophon link.
+//! About page: author bio, role, links, and colophon link.
 //!
 //! Layout (spec §4.6):
 //!   1. Page title in italic display ("about")
@@ -23,7 +23,7 @@ pub fn component() -> impl IntoView {
     div().class("flex flex-col gap-12").child((
         Title(
             TitleProps::builder()
-                .text("About — Alex Thola")
+                .text("About | Alex Thola")
                 .build(),
         ),
         // T30: Schema.org Person JSON-LD for the bio page.
@@ -35,7 +35,7 @@ pub fn component() -> impl IntoView {
             h1().class("font-display italic text-4xl sm:text-5xl font-medium text-ink leading-tight tracking-tight")
                 .child("about"),
         )),
-        // Author chip — avatar + name + role + italic one-line bio
+        // Author chip: avatar, name, role, and italic one-line bio
         section().class("flex flex-col sm:flex-row gap-6 items-start").child((
             img()
                 .src(AVATAR_URL)
@@ -51,13 +51,13 @@ pub fn component() -> impl IntoView {
                 p().class("font-mono text-[11px] uppercase tracking-[0.08em] text-ink-3")
                     .child("staff software engineer · rust consultant"),
                 p().class("text-ink-2 italic leading-relaxed")
-                    .child("I design scalable architectures built for performance and reliability — and I write about it here."),
+                    .child("I design scalable architectures built for performance and reliability, and I write about it here."),
             )),
         )),
         // Long-form bio
         section().class("flex flex-col gap-4 max-w-prose").child((
             p().class("text-ink leading-[1.7]")
-                .child("I'm Alex Thola — a staff software engineer focused on Rust, distributed systems, and observability. I enjoy solving network and OS-level problems with high-performance solutions, and I consult on Rust architecture, runtime tuning, and engineering productivity for teams shipping systems software."),
+                .child("I'm Alex Thola, a staff software engineer focused on Rust, distributed systems, and observability. I enjoy solving network and OS-level problems with high-performance solutions, and I consult on Rust architecture, runtime tuning, and engineering productivity for teams shipping systems software."),
             p().class("text-ink leading-[1.7]")
                 .child("This blog is a long-running notebook of what I've learned, what I'm working on, and what I think holds up after a few years of practice. Posts trend toward Rust internals, async runtimes, and the engineering ergonomics that make small teams effective."),
         )),

@@ -1,4 +1,4 @@
-//! Colophon — site stack, fonts, source, license.
+//! Colophon: site stack, fonts, source, license.
 //!
 //! Layout (spec §4.8):
 //!   1. Page title in italic display ("colophon")
@@ -18,7 +18,7 @@ pub fn component() -> impl IntoView {
     div().class("flex flex-col gap-12").child((
         Title(
             TitleProps::builder()
-                .text("Colophon — Alex Thola")
+                .text("Colophon | Alex Thola")
                 .build(),
         ),
         // Page header
@@ -26,7 +26,7 @@ pub fn component() -> impl IntoView {
             h1().class("font-display italic text-4xl sm:text-5xl font-medium text-ink leading-tight tracking-tight")
                 .child("colophon"),
             p().class("text-ink-2 leading-relaxed max-w-prose")
-                .child("How this site is built. The stack is intentionally small — Rust on both ends, one variable font per role, no analytics, no client-side framework beyond Leptos hydration."),
+                .child("How this site is built. The stack is intentionally small: Rust on both ends, one variable font per role, no analytics, no client-side framework beyond Leptos hydration."),
         )),
         // Stack section
         section().class("flex flex-col gap-3 max-w-prose").child((
@@ -45,9 +45,9 @@ pub fn component() -> impl IntoView {
         section().class("flex flex-col gap-3 max-w-prose").child((
             h2().class("font-mono text-xs uppercase tracking-[0.08em] text-ink-3").child("fonts"),
             ul().class("flex flex-col gap-2 text-ink leading-relaxed list-none pl-0").child((
-                stack_row("Fraunces", "Display serif — used for h1, h2, and the italic-accent nameplate", "https://fonts.google.com/specimen/Fraunces"),
-                stack_row("Inter", "Body sans — variable, set to a custom 470 weight", "https://fonts.google.com/specimen/Inter"),
-                stack_row("JetBrains Mono", "Monospace — used for code, post metadata, and footer", "https://fonts.google.com/specimen/JetBrains+Mono"),
+                stack_row("Fraunces", "Display serif: used for h1, h2, and the italic-accent nameplate", "https://fonts.google.com/specimen/Fraunces"),
+                stack_row("Inter", "Body sans: variable, set to a custom 470 weight", "https://fonts.google.com/specimen/Inter"),
+                stack_row("JetBrains Mono", "Monospace: used for code, post metadata, and footer", "https://fonts.google.com/specimen/JetBrains+Mono"),
             )),
         )),
         // Source + license
@@ -70,7 +70,7 @@ fn stack_row(name: &'static str, description: &'static str, href: &'static str) 
                 "font-medium text-ink hover:text-accent border-b border-accent transition-colors",
             )
             .child(name),
-        " — ",
+        ": ",
         leptos::html::span().class("text-ink-2").child(description),
     ))
 }

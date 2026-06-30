@@ -1,4 +1,4 @@
-//! Contact page — form only.
+//! Contact page: form only.
 //!
 //! Layout (spec §4.7):
 //!   1. Page title in italic display ("contact")
@@ -36,7 +36,7 @@ pub fn component() -> impl IntoView {
     div().class("flex flex-col gap-12").child((
         Title(
             TitleProps::builder()
-                .text("Contact — Alex Thola")
+                .text("Contact | Alex Thola")
                 .build(),
         ),
         // Page header
@@ -79,7 +79,7 @@ pub fn component() -> impl IntoView {
                             .fallback(|| ())
                             .children(ToChildren::to_children(|| {
                                 p().class("font-mono text-[11px] uppercase tracking-[0.08em] text-accent")
-                                    .child("✓ message sent — i'll get back to you shortly.")
+                                    .child("✓ message sent. i'll get back to you shortly.")
                             }))
                             .build(),
                     ),

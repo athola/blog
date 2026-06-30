@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Token discipline check — fails on arbitrary color values in component code.
+# Token discipline check: fails on arbitrary color values in component code.
 #
 # Direction D (site-redesign-0.2.0) requires all colors to flow from
 # Tailwind v4 @theme tokens (style/tailwind.css). This guard catches
@@ -19,7 +19,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
-# Allow-list — keep empty after Sprint 2 T20. Add a temporary entry only
+# Allow-list: keep empty after Sprint 2 T20. Add a temporary entry only
 # for active in-flight refactors and remove it as the file is migrated.
 ALLOWED_FILES=()
 
@@ -62,5 +62,5 @@ if [[ $EXIT -ne 0 ]]; then
     exit 1
 fi
 
-echo "✓ Token discipline holds — no arbitrary color values found."
+echo "✓ Token discipline holds. No arbitrary color values found."
 exit 0

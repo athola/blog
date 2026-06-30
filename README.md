@@ -41,19 +41,19 @@ Visit `http://127.0.0.1:3007` to see the blog running locally. Run
 
 ## Features
 
-- **Server-side rendering** via Leptos + Axum for fast first paint and
+- **Server-side rendering** via Leptos and Axum for fast first paint and
   progressive hydration.
 - **Real-time data** backed by SurrealDB 2.x with automatic connection
   retry and migrations under `migrations/`.
 - **Markdown with math**: KaTeX rendering for technical posts.
 - **Editorial design system**: TailwindCSS v4 `@theme` block defines
   every color, typeface, and spacing token in one place. Direction D
-  (Dual-Mode Editorial Engineer) — see [`docs/design-system.md`](docs/design-system.md).
-- **Light + dark themes** with no FOUC — pre-paint script in `<head>`
+  (Dual-Mode Editorial Engineer). See [`docs/design-system.md`](docs/design-system.md).
+- **Light and dark themes** with no FOUC: a pre-paint script in `<head>`
   reads `localStorage` then `prefers-color-scheme` before the
   stylesheet loads.
 - **Three-family type stack**: Fraunces (display serif), Inter
-  (variable sans, custom 470 weight), JetBrains Mono (code + meta).
+  (variable sans, custom 470 weight), JetBrains Mono (code and meta).
 - **WebAssembly frontend** compiled by `cargo-leptos`; the client bundle
   ships as gzipped WASM.
 - **Automated security scanning**: Gitleaks, Semgrep, and TruffleHog
@@ -95,8 +95,8 @@ graph LR
 
 | Path | Purpose |
 |---|---|
-| `/` | Home — featured + recent posts + notes strip + tag filter |
-| `/post/:slug` | Reading page with in-flow TOC + canonical + JSON-LD |
+| `/` | Home: featured and recent posts, notes strip, tag filter |
+| `/post/:slug` | Reading page with in-flow TOC, canonical, and JSON-LD |
 | `/post/:slug/raw.md` | Raw markdown alternate per post |
 | `/archive` | Year-grouped chronological archive (supports `?tag=`) |
 | `/notes` | Microblog stream (replaces legacy `/activity`) |
@@ -104,7 +104,7 @@ graph LR
 | `/about` | Bio, links, colophon link, JSON-LD Person |
 | `/colophon` | Stack, fonts, source, license |
 | `/contact` | Contact form |
-| `/random` | "Stumble" — 302 to a random published post |
+| `/random` | "Stumble": 302 to a random published post |
 | `/feed/feed.xml` | Atom 1.0 |
 | `/feed/rss.xml` | RSS 2.0 |
 | `/sitemap.xml` | XML sitemap |
@@ -177,7 +177,7 @@ operational runbooks, and troubleshooting.
   models.
 - [Development Workflow](wiki/Development-Workflow.md): local setup,
   testing, and common `make` targets.
-- [Deployment Guide](DEPLOYMENT.md): DigitalOcean + Caddy production
+- [Deployment Guide](DEPLOYMENT.md): DigitalOcean and Caddy production
   setup.
 - [Security Guide](wiki/Security-Guide.md): hardening practices and
   scanning pipeline.
@@ -226,13 +226,13 @@ security reports.**
 Measured targets for production (`alexthola.com`):
 
 - **First Contentful Paint**: ~200 ms
-- **WASM bundle size**: ~1.6 MB gzipped (8.3 MB raw); `wasm-opt` is
+- **WASM bundle size**: ~1.6 MB gzipped (8.3 MB raw). `wasm-opt` is
   currently disabled in `frontend/Cargo.toml`, so the artifact is the
   unminified `wasm-release` profile output.
 - **Database query latency**: <50 ms for typical operations
 - **Memory footprint**: <50 MB resident
 
-These are operational targets rather than guaranteed SLAs; regressions
+These are operational targets rather than guaranteed SLAs. Regressions
 are flagged by CI integration tests before deploy.
 
 ## Roadmap

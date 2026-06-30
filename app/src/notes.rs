@@ -1,10 +1,10 @@
-//! Notes (microblog) page — replaces the prior /activity route.
+//! Notes (microblog) page: replaces the prior /activity route.
 //!
 //! Layout (spec §4.4):
 //!   1. Page title in italic display ("notes")
 //!   2. Subtitle in mono uppercase
-//!   3. Note list — each row: relative-time mono kicker + content + tag row
-//!      + optional source link with ↗ outbound glyph
+//!   3. Note list, each row: relative-time mono kicker, content, tag row,
+//!      and optional source link with ↗ outbound glyph
 //!   4. Load-more pagination (preserved from original /activity)
 //!
 //! Design migration: the previous bg-gray-800/text-blue-400 palette is
@@ -64,7 +64,7 @@ pub fn component() -> impl IntoView {
     div().class("flex flex-col gap-12").child((
         Title(
             TitleProps::builder()
-                .text("Notes — Alex Thola")
+                .text("Notes | Alex Thola")
                 .build(),
         ),
         // Page header
@@ -124,7 +124,7 @@ fn render_note_row(note: Activity) -> impl IntoView {
     let source_text = source.clone().unwrap_or_default();
 
     div().class("py-6 border-b border-rule-soft last:border-b-0 flex flex-col gap-2").child((
-        // Mono kicker — relative time / created_at
+        // Mono kicker: relative time / created_at
         p().class("font-mono text-[11px] uppercase tracking-[0.08em] text-ink-3")
             .child(note.created_at.clone()),
         // Content

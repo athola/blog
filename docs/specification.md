@@ -1,17 +1,17 @@
-# alexthola.com Redesign — Specification
+# alexthola.com Redesign: Specification
 
 **Date**: 2026-04-29
 **Author**: Alex Thola (assisted)
-**Status**: Draft — feeds into planning
+**Status**: Draft, feeds into planning
 **Branch**: `site-redesign-0.2.0`
 **Design rationale**: [`docs/design-decisions.md`](./design-decisions.md)
-**Direction**: D — Dual-Mode Editorial Engineer
+**Direction**: D (Dual-Mode Editorial Engineer)
 
 ---
 
 ## 1. Specification Scope
 
-This document translates the approved brief (Direction D + recommended defaults
+This document translates the approved brief (Direction D and recommended defaults
 for D2–D6) into testable acceptance criteria, design tokens with exact values,
 component contracts, and route-by-route requirements. It feeds directly into
 the planning phase and is the contract executors will be tested against.
@@ -20,12 +20,12 @@ the planning phase and is the contract executors will be tested against.
 
 | ID | Decision |
 |---|---|
-| D1 | Direction D — Dual-Mode Editorial Engineer |
+| D1 | Direction D: Dual-Mode Editorial Engineer |
 | D2 | Burgundy accent: `#7a2942` (light) / `#c47c80` (dark) |
-| D3 | Hybrid type stack: display serif + body sans + mono meta |
+| D3 | Hybrid type stack: display serif, body sans, and mono meta |
 | D4 | `/activity` → promote to top-level `/notes` (microblog companion to blog) |
-| D5 | Header **unfixed** — scrolls with page |
-| D6 | Newsletter slot designed; integration deferred to PLAN.md Q2 |
+| D5 | Header **unfixed**: scrolls with page |
+| D6 | Newsletter slot designed, with integration deferred to PLAN.md Q2 |
 
 ---
 
@@ -34,40 +34,40 @@ the planning phase and is the contract executors will be tested against.
 ### 2.1 Color Tokens
 
 Declared as Tailwind v4 `@theme` block in `style/tailwind.css`. Light is
-default; dark activates via `[data-theme="dark"]` attribute (toggleable +
-`prefers-color-scheme` initial value).
+default. Dark activates via `[data-theme="dark"]` attribute (toggleable, with
+`prefers-color-scheme` as the initial value).
 
 #### Light mode
 | Token | Hex | Role | Contrast against `--paper` |
 |---|---|---|---|
-| `--paper` | `#ecedef` | Page background (cool platinum) | — |
-| `--paper-2` | `#dfe1e4` | Surface / code block bg | — |
+| `--paper` | `#ecedef` | Page background (cool platinum) | n/a |
+| `--paper-2` | `#dfe1e4` | Surface / code block bg | n/a |
 | `--ink` | `#0a0a0a` | Primary text | 17.6:1 ✓ AAA |
 | `--ink-2` | `#2a2a2a` | Secondary text / nameplate body | 13.4:1 ✓ AAA |
 | `--ink-3` | `#5a5e62` | Muted text / meta | 6.4:1 ✓ AA |
 | `--ink-4` | `#8a8e92` | Subtle / placeholder / disabled | 3.6:1 ✓ AA-large only |
-| `--accent` | `#7a2942` | Burgundy — link underline, hover, current-state, blockquote rail | 8.4:1 ✓ AAA |
-| `--accent-soft` | `#c47c80` | Lightened accent (used in dark; reused for soft fills in light) | — |
-| `--rule` | `#0a0a0a` | Hard 1–2px section rules | — |
-| `--rule-soft` | `#bfc1c5` | Hairline rules between list items | — |
+| `--accent` | `#7a2942` | Burgundy: link underline, hover, current-state, blockquote rail | 8.4:1 ✓ AAA |
+| `--accent-soft` | `#c47c80` | Lightened accent (used in dark, reused for soft fills in light) | n/a |
+| `--rule` | `#0a0a0a` | Hard 1–2px section rules | n/a |
+| `--rule-soft` | `#bfc1c5` | Hairline rules between list items | n/a |
 
 #### Dark mode
 | Token | Hex | Role | Contrast against `--paper` |
 |---|---|---|---|
-| `--paper` | `#151515` | Page background | — |
-| `--paper-2` | `#2a2a2a` | Surface / code block bg | — |
+| `--paper` | `#151515` | Page background | n/a |
+| `--paper-2` | `#2a2a2a` | Surface / code block bg | n/a |
 | `--ink` | `#ecedef` | Primary text | 16.4:1 ✓ AAA |
 | `--ink-2` | `#bfc1c5` | Secondary text | 11.8:1 ✓ AAA |
 | `--ink-3` | `#8a8e92` | Muted text | 5.5:1 ✓ AA |
-| `--ink-4` | `#5a5e62` | Subtle / disabled | 2.7:1 — **decorative only** |
+| `--ink-4` | `#5a5e62` | Subtle / disabled | 2.7:1, **decorative only** |
 | `--accent` | `#c47c80` | Lightened burgundy for dark mode | 6.7:1 ✓ AA |
-| `--accent-soft` | `#7a2942` | Original burgundy reused as deep accent | — |
-| `--rule` | `#ecedef` | Hard rules | — |
-| `--rule-soft` | `#3a3a3a` | Hairline rules | — |
+| `--accent-soft` | `#7a2942` | Original burgundy reused as deep accent | n/a |
+| `--rule` | `#ecedef` | Hard rules | n/a |
+| `--rule-soft` | `#3a3a3a` | Hairline rules | n/a |
 
 **Discipline rules**:
 - Never use opacity-modifier syntax (`bg-accent/50`) in a component when a token
-  exists for the value; declare the variant token instead.
+  exists for the value. Declare the variant token instead.
 - All component code references tokens. Lint catches `bg-[#hex]` / `text-[#hex]`
   arbitrary values.
 - No new tokens added without a documented role.
@@ -89,7 +89,7 @@ default; dark activates via `[data-theme="dark"]` attribute (toggleable +
 
 **Loading strategy**:
 - `font-display: swap` on all three.
-- Preload `Fraunces` and `Inter` (display + body land on every page).
+- Preload `Fraunces` and `Inter` (display and body land on every page).
 - Defer-load `JetBrains Mono` (post-detail and footer only).
 - Latin subset only (drop CJK, Cyrillic, Greek). Target compressed payload < 200KB total.
 
@@ -131,29 +131,29 @@ spacing tokens added for editorial rhythm:
 
 | Token | Value | Use |
 |---|---|---|
-| `--radius-none` | `0` | Default (editorial; no rounded chrome) |
+| `--radius-none` | `0` | Default (editorial, no rounded chrome) |
 | `--radius-sm` | `0.125rem` (2px) | Buttons, code blocks |
 | `--radius-md` | `0.25rem` (4px) | Cards (rare) |
 | `--radius-pill` | `999px` | Tag/category chips on archive |
 
-Direction D is mostly square. `--radius-none` is the default; `sm` is reserved
+Direction D is mostly square. `--radius-none` is the default. `sm` is reserved
 for interactive controls (buttons, code blocks).
 
 ### 2.5 Rule (border) patterns
 
 | Pattern | Spec |
 |---|---|
-| Hard ink rule | `border-bottom: 2px solid var(--rule)` — under header, over footer |
-| Hairline soft rule | `border-bottom: 1px solid var(--rule-soft)` — between post-list rows, around code blocks |
-| Accent rail (left) | `border-left: 2px solid var(--accent)` — date-stamp tile, blockquote |
-| Accent rail (left, subtle) | `border-left: 3px solid var(--accent)` — blockquote |
+| Hard ink rule | `border-bottom: 2px solid var(--rule)`, under header, over footer |
+| Hairline soft rule | `border-bottom: 1px solid var(--rule-soft)`, between post-list rows, around code blocks |
+| Accent rail (left) | `border-left: 2px solid var(--accent)`, date-stamp tile, blockquote |
+| Accent rail (left, subtle) | `border-left: 3px solid var(--accent)`, blockquote |
 
 ### 2.6 Link patterns
 
 | Pattern | Spec |
 |---|---|
-| Body prose link | `color: var(--ink); border-bottom: 1px solid var(--accent); text-decoration: none;` — `:hover { color: var(--accent); }` |
-| Nav link | `color: var(--ink); border-bottom: 1px solid transparent;` — `:hover, [data-current="true"] { border-bottom-color: var(--accent); color: var(--accent); }` |
+| Body prose link | `color: var(--ink); border-bottom: 1px solid var(--accent); text-decoration: none;`, `:hover { color: var(--accent); }` |
+| Nav link | `color: var(--ink); border-bottom: 1px solid transparent;`, `:hover, [data-current="true"] { border-bottom-color: var(--accent); color: var(--accent); }` |
 | Outbound link | Same as body prose link, plus `::after { content: " ↗"; font-family: var(--mono); font-size: 0.85em; opacity: 0.7; }` for `[href^="http"]:not([href*="alexthola.com"])` |
 | Footer link | `color: var(--ink-3); text-decoration: dotted underline; text-underline-offset: 0.25em;` |
 
@@ -162,7 +162,7 @@ for interactive controls (buttons, code blocks).
 - The current `svg { fill: white !important; }` global rule is **deleted** in
   this redesign. Icons inherit `currentColor` per token.
 - Icon sizes: 16px (inline meta), 20px (nav), 24px (footer/social).
-- `icondata` Bootstrap icons stay in use; ensure each icon's `fill="currentColor"`
+- `icondata` Bootstrap icons stay in use. Ensure each icon's `fill="currentColor"`
   attribute is set so token coloring works.
 
 ---
@@ -175,36 +175,36 @@ Existing routes are preserved (no permalink breakage). New routes are added.
 
 | Route | Status | Owner |
 |---|---|---|
-| `/` | **Refactored** — home with featured post + recent posts list + small notes strip | `app/src/home.rs` |
-| `/post/:slug` | **Refactored** — single-column reading page with TOC for long posts | `app/src/post.rs` |
-| `/archive` | **NEW** — full chronological archive, filtered by tag | `app/src/archive.rs` (new) |
-| `/notes` | **NEW** (replaces `/activity`) — microblog stream, top-level | `app/src/notes.rs` (renamed from `activity.rs`) |
-| `/references` | **Refactored** — portfolio cards stripped of glassmorphism | `app/src/references.rs` |
-| `/about` | **NEW** — author bio (lifted from `/contact` `whoami`), timeline, colophon link | `app/src/about.rs` (new) |
-| `/contact` | **Refactored** — form-only; bio moved to `/about` | `app/src/contact.rs` |
-| `/colophon` | **NEW** — site tech stack, fonts, license | `app/src/colophon.rs` (new) |
-| `/post/:slug/raw.md` | **NEW** — raw markdown alternate per post | server route in `server/` crate |
-| `/feed/feed.xml` | **NEW or verify** — Atom feed | server route |
-| `/feed/rss.xml` | **NEW or verify** — RSS feed | server route |
-| `/feed/feed.json` | **NEW** — JSON feed | server route |
-| `/random` | **NEW** — Stumble redirect to a random published post | server route |
+| `/` | **Refactored**: home with featured post, recent posts list, and small notes strip | `app/src/home.rs` |
+| `/post/:slug` | **Refactored**: single-column reading page with TOC for long posts | `app/src/post.rs` |
+| `/archive` | **NEW**: full chronological archive, filtered by tag | `app/src/archive.rs` (new) |
+| `/notes` | **NEW** (replaces `/activity`): microblog stream, top-level | `app/src/notes.rs` (renamed from `activity.rs`) |
+| `/references` | **Refactored**: portfolio cards stripped of glassmorphism | `app/src/references.rs` |
+| `/about` | **NEW**: author bio (lifted from `/contact` `whoami`), timeline, colophon link | `app/src/about.rs` (new) |
+| `/contact` | **Refactored**: form-only, with bio moved to `/about` | `app/src/contact.rs` |
+| `/colophon` | **NEW**: site tech stack, fonts, license | `app/src/colophon.rs` (new) |
+| `/post/:slug/raw.md` | **NEW**: raw markdown alternate per post | server route in `server/` crate |
+| `/feed/feed.xml` | **NEW or verify**: Atom feed | server route |
+| `/feed/rss.xml` | **NEW or verify**: RSS feed | server route |
+| `/feed/feed.json` | **NEW**: JSON feed | server route |
+| `/random` | **NEW**: Stumble redirect to a random published post | server route |
 | `/activity` | **Redirect** to `/notes` (HTTP 301) | server route |
 
 ### 3.2 Navigation
 
 #### Top header (unfixed, scrolls with page)
-Pipe-separated lowercase nav (blogosphere pattern) on the right; nameplate on the left.
+Pipe-separated lowercase nav (blogosphere pattern) on the right, nameplate on the left.
 
 ```
 alex *thola*  (italicized "thola" in burgundy)            writing | notes | references | about | rss ↗
 ─────────────────────────────────────────────────────────────────────────────  (2px ink rule)
 ```
 
-- Nameplate: Fraunces 28px, "alex" in `--ink`, " " (single space), "thola" in italic + `--accent`. Both as `<a href="/">` (the whole nameplate is the home link).
+- Nameplate: Fraunces 28px, "alex" in `--ink`, " " (single space), "thola" in italic and `--accent`. Both as `<a href="/">` (the whole nameplate is the home link).
 - Nav: JetBrains Mono uppercase 12px tracked +0.08em letter-spacing, items separated by ` | ` literal pipe characters with `--ink-3` color.
 - Current route: `[data-current="true"]` → `color: var(--accent); border-bottom: 1px solid var(--accent);`.
 - `rss ↗` is the outbound link to `/feed/feed.xml` (or whichever feed format the user prefers as default).
-- Mobile (<640px): pipe nav collapses to centered single-row, smaller; nameplate stays left.
+- Mobile (<640px): pipe nav collapses to centered single-row, smaller. Nameplate stays left.
 
 #### Footer (sitemap-style)
 Replaces current fixed footer. Scrolls with page.
@@ -219,17 +219,17 @@ Replaces current fixed footer. Scrolls with page.
 
   GitHub ↗  Mastodon ↗  LinkedIn ↗  X ↗
 
-  © 2024–2026 ALEX THOLA. POWERED BY RUST + LEPTOS.       (mono uppercase)
+  © 2024–2026 ALEX THOLA. POWERED BY RUST AND LEPTOS.     (mono uppercase)
 ```
 
 - Three columns (collapses to one on <640px).
 - Footer mono uppercase 11px tracked +0.08em.
-- Social icons row uses `↗` glyph for outbound; size 20px.
+- Social icons row uses `↗` glyph for outbound, size 20px.
 
 ### 3.3 Permalinks (sacred, do not break)
 
 - `/post/:slug` is preserved exactly. RSS subscribers depend on this.
-- `/contact` is preserved (form still works); bio moved out, form remains.
+- `/contact` is preserved (form still works). Bio moved out, form remains.
 - `/references` is preserved.
 - `/activity` HTTP 301 → `/notes`. Search engines and any bookmarks redirect cleanly.
 
@@ -237,15 +237,15 @@ Replaces current fixed footer. Scrolls with page.
 
 ## 4. Route Specifications
 
-### 4.1 `/` — Home
+### 4.1 `/`: Home
 
-**Purpose**: Entry point; sells the writing without selling the consultancy.
+**Purpose**: Entry point that sells the writing without selling the consultancy.
 **Layout**: Single column, max-width `--reading-column` (720px), centered.
 
 **Sections (top to bottom)**:
 
 1. **Featured post** (most recent, full card):
-   - Date stamp tile (mono kicker `MOST RECENT • <DATE>` + huge serif day numeral) + 2px accent rail on left
+   - Date stamp tile (mono kicker `MOST RECENT • <DATE>` and huge serif day numeral) with a 2px accent rail on left
    - Post title in Fraunces 32px italic-display
    - Excerpt in Inter 17px (`--ink-2`), max 2 lines, ellipsis
    - Meta row (mono 12px uppercase): `READ TIME · TAGS · VIEWS`
@@ -255,19 +255,19 @@ Replaces current fixed footer. Scrolls with page.
    - Same date-stamp tile component, smaller (date numeral 24px instead of 32px)
    - Post-list row spec matches fsck.com: `grid-template-columns: 130px 1fr; gap: 32px;`
    - Title in Fraunces 22px italic
-   - Excerpt 1 line, mono kicker meta (read time + first tag)
+   - Excerpt 1 line, mono kicker meta (read time and first tag)
    - Hairline rule between rows
 
 3. **`+ archive →` link** to `/archive` (right-aligned mono uppercase).
 
 4. **Latest notes strip** (3 most recent notes from `/notes`):
-   - Compact: title + relative time + first tag, hairline rule between
+   - Compact: title, relative time, and first tag, hairline rule between
    - `+ notes →` link to `/notes`
 
 5. **Tag filter row** at bottom (preserved from current site, restyled):
    - Inline category strip (blogosphere pattern), not pills
    - Format: `topics: rust · leptos · surrealdb · consulting · all`
-   - Selected tag: `--accent` color + underline; others `--ink-3`
+   - Selected tag: `--accent` color and underline; others `--ink-3`
    - Click toggles filter and updates list above (existing Leptos signal flow preserved)
 
 **Acceptance criteria**:
@@ -277,9 +277,9 @@ Replaces current fixed footer. Scrolls with page.
 - [ ] Latest notes strip pulls from `select_activities(0)` and shows top 3.
 - [ ] All copy is `--ink`, all meta is `--ink-3`, all accents are `--accent`.
 - [ ] Lighthouse Performance ≥ 90, Accessibility ≥ 95.
-- [ ] Renders identically light/dark; no FOUC during theme load.
+- [ ] Renders identically light/dark, with no FOUC during theme load.
 
-### 4.2 `/post/:slug` — Post detail
+### 4.2 `/post/:slug`: Post detail
 
 **Purpose**: The reading page. The heart of the site.
 **Layout**: Single column, max-width `--reading-column` (720px), centered, top
@@ -292,17 +292,17 @@ padding `--space-reading-pad` (56px).
    - Optional: a hairline rule below
 
 2. **Date display**:
-   - Italic Fraunces 24px in `--ink-3`, format `April 7, 2026` — placed ABOVE
+   - Italic Fraunces 24px in `--ink-3`, format `April 7, 2026`, placed ABOVE
      title (fsck.com pattern)
 
 3. **Title (h1)**:
    - Fraunces 56px (40px on small viewports), weight 600, line-height 1.05,
      letter-spacing -0.02em, color `--ink`
 
-4. **Tag-byline + author chip** (1px hairline rule above and below):
+4. **Tag-byline and author chip** (1px hairline rule above and below):
    - LEFT: tags in mono 11px uppercase, comma-separated with no `#`, color `--ink-3`
      (e.g. `RUST · LEPTOS · CONSULTING`)
-   - RIGHT: tiny author chip — circular avatar 28px + "by Alex Thola" in Inter 13px
+   - RIGHT: tiny author chip, a circular avatar 28px and "by Alex Thola" in Inter 13px
 
 5. **In-flow TOC** (only for posts with > 4 h2/h3 headings or > 1500 words):
    - `<aside class="toc">` placed BEFORE article body
@@ -315,7 +315,7 @@ padding `--space-reading-pad` (56px).
    - Paragraph margin-bottom `--space-prose-y` (1.4em)
    - h2 in italic Fraunces 32px
    - h3 in mono 12px uppercase `--accent` ("kicker" pattern, fsck.com)
-   - Prose link: ink color + accent underline
+   - Prose link: ink color and accent underline
    - Blockquote: 3px accent left rail, italic, padding-left 24px
    - Code block: `--paper-2` bg, hairline border, 14px mono, 1.5 lh
    - Inline code: 0.92em, `--paper-2` bg, hairline border
@@ -326,10 +326,10 @@ padding `--space-reading-pad` (56px).
    - Three rows:
      - **Tags** linking to `/archive?tag=<slug>`
      - **Prev / Next** post links (mono uppercase, with `←` / `→` glyphs)
-     - **More from #<tag>** — 2 random posts with the same primary tag
+     - **More from #<tag>**: 2 random posts with the same primary tag
    - Mono uppercase row: `RAW MARKDOWN ↗ · COPY LINK · SHARE`
      - "RAW MARKDOWN" links to `/post/:slug/raw.md`
-     - "COPY LINK" copies canonical URL via JS (progressive — works without JS too)
+     - "COPY LINK" copies canonical URL via JS (progressive, works without JS too)
      - "SHARE" opens native share sheet on mobile, else copies URL
 
 **Acceptance criteria**:
@@ -337,16 +337,16 @@ padding `--space-reading-pad` (56px).
 - [ ] KaTeX math renders correctly (verify with one math-heavy sample).
 - [ ] Code blocks with `<pre><code class="language-rust">` render with the mono
       stack and accent kicker.
-- [ ] TOC appears only on long posts; uses anchor links to h2 headings.
+- [ ] TOC appears only on long posts, using anchor links to h2 headings.
 - [ ] `/post/:slug/raw.md` returns the raw markdown source with `Content-Type: text/markdown`.
 - [ ] `<link rel="alternate" type="text/markdown" href="/post/:slug/raw.md">` is in head.
 - [ ] `<link rel="canonical" href="/post/:slug">` is in head.
 - [ ] OG image generation: defer to PLAN.md backlog, but ensure `<meta property="og:image">` falls back to a default brand image.
 - [ ] Increment-views server action runs only in production builds (current behavior preserved).
 - [ ] Hydration works without flicker.
-- [ ] Reading column is 720px; on mobile, full-width with 24px horizontal padding.
+- [ ] Reading column is 720px. On mobile, full-width with 24px horizontal padding.
 
-### 4.3 `/archive` — NEW
+### 4.3 `/archive`: NEW
 
 **Purpose**: Full chronological list of posts, filterable by tag. Replaces the
 "all 50 most recent on home" implicit archive.
@@ -370,13 +370,13 @@ padding `--space-reading-pad` (56px).
 
 **Acceptance criteria**:
 - [ ] `/archive` returns all posts in `created_at` desc order, paginated 25 per page.
-- [ ] `/archive?tag=<slug>` filters server-side; URL is shareable.
+- [ ] `/archive?tag=<slug>` filters server-side. URL is shareable.
 - [ ] Year headers are clickable anchors (e.g. `#2026`).
 - [ ] Empty state: "No posts found for tag X" with reset link.
 
-### 4.4 `/notes` — NEW (replaces `/activity`)
+### 4.4 `/notes`: NEW (replaces `/activity`)
 
-**Purpose**: Microblog stream — short notes, links, asides. Companion to long-form blog.
+**Purpose**: Microblog stream: short notes, links, asides. Companion to long-form blog.
 
 **Layout**: Single column, max-width `--reading-column`.
 
@@ -385,7 +385,7 @@ padding `--space-reading-pad` (56px).
 1. **Page title**: "notes" in Fraunces italic 32px lowercase.
 2. **Subtitle** in mono uppercase: `SHORT-FORM NOTES, LINKS, AND ASIDES`.
 3. **Note list** (replaces existing `/activity` rendering):
-   - Each note: relative time kicker (mono 11px) + content (body Inter 17px, prose-styled) + tags row (mono 11px) + optional source link with `↗`
+   - Each note: relative time kicker (mono 11px), content (body Inter 17px, prose-styled), tags row (mono 11px), and optional source link with `↗`
    - Hairline rule between notes
    - Tags clickable, link to `/notes?tag=<slug>`
 4. **Pagination** (mono): `← prev | next →`. Existing 10/page Resource pattern preserved.
@@ -397,9 +397,9 @@ padding `--space-reading-pad` (56px).
 - [ ] Links inside note content get the `↗` outbound glyph automatically.
 - [ ] Inconsistent `bg-gray-800` and `text-blue-400` colors are gone (token-driven).
 
-### 4.5 `/references` — Refactored
+### 4.5 `/references`: Refactored
 
-**Purpose**: Portfolio. Drop the glassmorphism + grid background; preserve the
+**Purpose**: Portfolio. Drop the glassmorphism and grid background. Preserve the
 content (project title, description, tech-stack with percentages).
 
 **Layout**: Single column, max-width `--reading-column`.
@@ -413,19 +413,19 @@ content (project title, description, tech-stack with percentages).
      - Date or year kicker (mono uppercase)
      - Title in Fraunces 24px
      - Description body 17px
-     - Tech-stack as inline list with subtle bars: `RUST [▰▰▰▰▰▰▰▰▱▱ 80%] · LEPTOS [▰▰▰▰▰▰▰▱▱▱ 70%]`
-       — bars use `--accent` color, mono 11px
+     - Tech-stack as inline list with subtle bars: `RUST [▰▰▰▰▰▰▰▰▱▱ 80%] · LEPTOS [▰▰▰▰▰▰▰▱▱▱ 70%]`,
+       bars use `--accent` color, mono 11px
      - Hairline rule below
 
 **Acceptance criteria**:
 - [ ] Existing `select_references` API consumed unchanged.
 - [ ] Glassmorphism, grid background, and 2xl rounded corners removed.
 - [ ] Tech-stack percentage bars render in mono with `▰`/`▱` characters (no SVG).
-- [ ] All copy uses tokens; no `text-[#ffef5c]` arbitrary values remain.
+- [ ] All copy uses tokens. No `text-[#ffef5c]` arbitrary values remain.
 
-### 4.6 `/about` — NEW
+### 4.6 `/about`: NEW
 
-**Purpose**: Author bio + timeline. Lifted from existing `/contact` `whoami`
+**Purpose**: Author bio and timeline. Lifted from existing `/contact` `whoami`
 section.
 
 **Layout**: Single column, max-width `--reading-column`.
@@ -436,9 +436,9 @@ section.
 2. **Author block**:
    - Circular avatar 80px (current GitHub avatar URL preserved)
    - Name in Fraunces 28px
-   - Role in body 17px (`Staff Software Engineer` etc — current copy)
+   - Role in body 17px (`Staff Software Engineer` etc, current copy)
    - One-line bio in `--ink-2` italic
-3. **Long-form bio** in prose (1–2 paragraphs; user can edit). Initial template
+3. **Long-form bio** in prose (1–2 paragraphs, user can edit). Initial template
    provided based on existing copy.
 4. **Timeline / now** (markdown-driven, optional first ship):
    - Year-grouped timeline of work, talks, projects (free-form)
@@ -446,11 +446,11 @@ section.
 6. **Colophon link**: `read about how this site is built →` linking to `/colophon`.
 
 **Acceptance criteria**:
-- [ ] Avatar image loads with `loading="lazy"` + `width`/`height` to prevent CLS.
+- [ ] Avatar image loads with `loading="lazy"` and `width`/`height` to prevent CLS.
 - [ ] Same author bio is no longer present in `/contact`.
 - [ ] All links use the standard outbound pattern.
 
-### 4.7 `/contact` — Refactored
+### 4.7 `/contact`: Refactored
 
 **Purpose**: Contact form only. Bio moved out.
 
@@ -459,7 +459,7 @@ section.
 **Sections**:
 
 1. **Page title**: "contact" in Fraunces italic 32px lowercase.
-2. **Lead**: short paragraph — "Get in touch about Rust consulting, technical
+2. **Lead**: short paragraph, "Get in touch about Rust consulting, technical
    review, or speaking. I read every message." (user can edit).
 3. **Contact form** (existing fields preserved):
    - Name, Email, Subject, Message
@@ -472,22 +472,22 @@ section.
 
 **Acceptance criteria**:
 - [ ] Existing `contact` server action unchanged.
-- [ ] Form submits successfully; success message renders.
+- [ ] Form submits successfully. Success message renders.
 - [ ] All inputs labeled and accessible (`aria-label` or `<label>`).
 - [ ] Spam protection: existing approach preserved.
 
-### 4.8 `/colophon` — NEW
+### 4.8 `/colophon`: NEW
 
-**Purpose**: Hacker-culture handshake — explain how the site is built.
+**Purpose**: Hacker-culture handshake. Explain how the site is built.
 
 **Layout**: Single column, max-width `--reading-column`.
 
-**Sections (markdown content; renders as a long post)**:
+**Sections (markdown content, renders as a long post)**:
 
 1. **Page title**: "colophon" in Fraunces italic 32px lowercase.
 2. **Stack section**: Rust, Leptos, Axum, SurrealDB, Tailwind v4, Cargo-leptos,
    Caddy, DigitalOcean App Platform.
-3. **Fonts section**: Fraunces, Inter, JetBrains Mono (each linked to source +
+3. **Fonts section**: Fraunces, Inter, JetBrains Mono (each linked to source and
    licensed).
 4. **Source link**: `github.com/athola/blog ↗`.
 5. **License**: AGPL-3.0.
@@ -496,9 +496,9 @@ section.
 - [ ] Page renders as a regular post-detail layout for consistency.
 - [ ] Each font name links to its source.
 
-### 4.9 `/random` — NEW (server route)
+### 4.9 `/random`: NEW (server route)
 
-**Purpose**: Stumble button — pick a random published post and 302 redirect.
+**Purpose**: Stumble button. Pick a random published post and 302 redirect.
 
 **Acceptance criteria**:
 - [ ] `GET /random` returns 302 with `Location: /post/:slug` for a randomly
@@ -511,16 +511,16 @@ section.
 **Purpose**: First-class RSS-first behavior, three formats.
 
 **Acceptance criteria**:
-- [ ] `feed.xml`: Atom 1.0 — top 50 posts, full content if ≤ 4096 chars else excerpt.
-- [ ] `rss.xml`: RSS 2.0 — same content, RSS-2.0 envelope.
-- [ ] `feed.json`: JSON Feed v1.1 — same content, JSON envelope.
+- [ ] `feed.xml`: Atom 1.0, top 50 posts, full content if ≤ 4096 chars else excerpt.
+- [ ] `rss.xml`: RSS 2.0, same content, RSS-2.0 envelope.
+- [ ] `feed.json`: JSON Feed v1.1, same content, JSON envelope.
 - [ ] All three feeds return correct `Content-Type` headers.
 - [ ] `<head>` of every page includes `<link rel="alternate">` for all three feeds.
 - [ ] `/post/:slug` includes `<link rel="alternate" type="text/markdown">`.
 
-### 4.11 `/post/:slug/raw.md` — NEW (raw markdown alternate)
+### 4.11 `/post/:slug/raw.md`: NEW (raw markdown alternate)
 
-**Purpose**: Hacker-culture handshake; lets readers grab the source.
+**Purpose**: Hacker-culture handshake. Lets readers grab the source.
 
 **Path shape note**: Axum 0.8 forbids mixing a literal extension (`.md`) with a path parameter (`:slug`) in the same path segment, so the route ships at `/post/:slug/raw.md` rather than the cleaner `/post/:slug.md`. See `server/src/main.rs` for the load-bearing comment that documents this.
 
@@ -548,7 +548,7 @@ redesign:
 - Includes `↗ rss` outbound link.
 
 ### 5.3 `DateStamp`
-- Renders the date-stamp tile (mono kicker + serif day numeral + 2px accent rail).
+- Renders the date-stamp tile (mono kicker, serif day numeral, and 2px accent rail).
 - Props: `kicker_text: String`, `day: u8`, `month: String`, `year: i32`,
   `size: DateStampSize::{Featured | Default | Compact}`.
 - Variants:
@@ -557,9 +557,9 @@ redesign:
   - `Compact` (notes / small spaces): day 24px
 
 ### 5.4 `PostListRow`
-- Renders one post in a list, including DateStamp + title + excerpt + meta.
+- Renders one post in a list, including DateStamp, title, excerpt, and meta.
 - Props: `post: &Post`, `size: PostListSize::{Featured | Default}`.
-- Includes hairline rule below by default; opt-out via `divider: false`.
+- Includes hairline rule below by default, opt-out via `divider: false`.
 
 ### 5.5 `TagStrip`
 - Inline category strip (blogosphere pattern), URL-driven.
@@ -578,12 +578,12 @@ redesign:
 - Implementation: pure CSS via `[href^="http"]:not([href*="alexthola.com"])::after`. No component needed if CSS-only is sufficient.
 
 ### 5.8 `Footer`
-- Sitemap-style footer, three columns + social row + copyright line.
+- Sitemap-style footer, three columns, social row, and copyright line.
 - Props: none.
 
-### 5.9 `ThemeToggle` (deferred to next branch — designed-for, not implemented)
-- Token system supports it; UI deferred to PLAN.md Q1 follow-up branch.
-- For this branch: ship light + dark via `prefers-color-scheme` only. Toggle UI
+### 5.9 `ThemeToggle` (deferred to next branch, designed-for, not implemented)
+- Token system supports it. UI deferred to PLAN.md Q1 follow-up branch.
+- For this branch: ship light and dark via `prefers-color-scheme` only. Toggle UI
   is a follow-up.
 
 ---
@@ -591,9 +591,9 @@ redesign:
 ## 6. Non-Functional Requirements
 
 ### 6.1 Performance
-- [ ] **First Contentful Paint** ≤ current baseline; ideally improved by 20%
+- [ ] **First Contentful Paint** ≤ current baseline. Ideally improved by 20%
       via single-variable-font swap-in (current ships 28 Poppins TTF files).
-- [ ] **Cumulative Layout Shift** ≤ 0.05 — preload Fraunces + Inter, pre-set
+- [ ] **Cumulative Layout Shift** ≤ 0.05. Preload Fraunces and Inter, pre-set
       `width`/`height` on all `<img>`.
 - [ ] **Total webfont payload** ≤ 200KB compressed. Verify via DevTools Network
       filtered by Font.
@@ -601,11 +601,11 @@ redesign:
 
 ### 6.2 Accessibility
 - [ ] **Lighthouse Accessibility** ≥ 95 on every route.
-- [ ] **Color contrast** ≥ 4.5:1 (AA) for all text — verified with token table
+- [ ] **Color contrast** ≥ 4.5:1 (AA) for all text, verified with token table
       above.
 - [ ] **Focus states** visible on every interactive element. Use 2px `--accent`
       outline with 2px offset.
-- [ ] **Reduced motion**: respect `prefers-reduced-motion` — disable transition
+- [ ] **Reduced motion**: respect `prefers-reduced-motion` by disabling transition
       `duration-500` on hover.
 - [ ] **Skip-to-content link** at top of every page.
 - [ ] **Semantic HTML**: `<article>` for posts, `<nav>` for nav, `<aside>` for TOC.
@@ -615,7 +615,7 @@ redesign:
 ### 6.3 SEO
 - [ ] `<title>` set per route, with site suffix.
 - [ ] `<meta name="description">` per route.
-- [ ] `<meta property="og:*">` — title, description, image, url, type.
+- [ ] `<meta property="og:*">`: title, description, image, url, type.
 - [ ] `<link rel="canonical">` per page.
 - [ ] `<link rel="alternate">` for RSS / Atom / JSON Feed in head of all pages.
 - [ ] `<link rel="alternate" type="text/markdown">` on post pages.
@@ -623,20 +623,20 @@ redesign:
 - [ ] Schema.org JSON-LD: `Article` on post pages, `Person` on `/about`.
 
 ### 6.4 Browser support
-- Modern evergreen browsers (Chrome, Firefox, Safari, Edge — last 2 versions).
-- Mobile Safari + Chrome on Android.
+- Modern evergreen browsers, last 2 versions (Chrome, Firefox, Safari, Edge).
+- Mobile Safari and Chrome on Android.
 - No IE / legacy support.
 
 ### 6.5 Theme handling
 - Default to user's `prefers-color-scheme`.
 - Persist toggle (when implemented in v2 follow-up) in `localStorage` under key
   `alexthola-theme`.
-- Token system supports both modes from day one — no FOUC, theme attribute set
+- Token system supports both modes from day one: no FOUC, theme attribute set
   before paint via inline `<script>` in `<head>`.
 
 ---
 
-## 7. Acceptance Criteria — Master Checklist
+## 7. Acceptance Criteria: Master Checklist
 
 Mirror of section-specific ACs, summarized for plan-phase task ordering.
 
@@ -648,14 +648,14 @@ Mirror of section-specific ACs, summarized for plan-phase task ordering.
 - [ ] Three webfonts (Fraunces, Inter, JetBrains Mono) loaded via Latin subsets.
 - [ ] Lint rule (or grep-based check in `make validate`) fails on `bg-[#hex]`
       arbitrary values in `app/src/**/*.rs`.
-- [ ] `<head>` has `<link rel="alternate">` for all three feeds + theme-attribute
+- [ ] `<head>` has `<link rel="alternate">` for all three feeds and theme-attribute
       pre-paint script.
 
 ### Core route work
 - [ ] `/` refactored per §4.1.
 - [ ] `/post/:slug` refactored per §4.2.
 - [ ] `/archive` (NEW) per §4.3.
-- [ ] `/notes` (renamed from `/activity`) per §4.4; redirect from `/activity`.
+- [ ] `/notes` (renamed from `/activity`) per §4.4, redirect from `/activity`.
 - [ ] `/references` refactored per §4.5.
 - [ ] `/about` (NEW) per §4.6.
 - [ ] `/contact` refactored per §4.7.
@@ -671,34 +671,34 @@ Mirror of section-specific ACs, summarized for plan-phase task ordering.
 - [ ] Lighthouse Performance ≥ 90 on `/` and `/post/:slug`.
 - [ ] Lighthouse Accessibility ≥ 95 on every route.
 - [ ] Visual screenshots captured before/after for every route via `scry:record-browser`.
-- [ ] Manual smoke: KaTeX-heavy post + code-heavy post both render correctly.
+- [ ] Manual smoke: KaTeX-heavy post and code-heavy post both render correctly.
 
 ### Documentation
-- [ ] `README.md` updated to reference new design system + routes.
+- [ ] `README.md` updated to reference new design system and routes.
 - [ ] `docs/design-system.md` (NEW) extracts §2 of this spec as a living
       design reference.
 - [ ] `PLAN.md` updated to reflect what this branch ships (theme toggle now
-      structurally enabled; newsletter slot designed but integration deferred).
+      structurally enabled, newsletter slot designed but integration deferred).
 
 ---
 
 ## 8. Out of Scope (Explicit Won't-Have)
 
-- ❌ Theme **toggle UI** (designed-for via tokens; UI ships in a follow-up branch).
-- ❌ Newsletter integration (slot designed; integration is PLAN.md Q2).
+- ❌ Theme **toggle UI** (designed-for via tokens, UI ships in a follow-up branch).
+- ❌ Newsletter integration (slot designed, integration is PLAN.md Q2).
 - ❌ Comments system (PLAN.md Q2).
-- ❌ Site search (PLAN.md Q1; outside redesign scope).
-- ❌ Server-side syntax highlighting (PLAN.md Q1; current `prose` styles
+- ❌ Site search (PLAN.md Q1, outside redesign scope).
+- ❌ Server-side syntax highlighting (PLAN.md Q1, current `prose` styles
       preserved as-is).
 - ❌ Mascot / illustrations / hand-drawn elements.
 - ❌ Sticky / fixed chrome of any kind.
 - ❌ Cookie banner / analytics (defer separately if needed).
 - ❌ JavaScript framework or build tool changes.
-- ❌ Hugo / Astro / static-generator migration (Leptos + SSR is preserved).
+- ❌ Hugo / Astro / static-generator migration (Leptos and SSR are preserved).
 - ❌ Database schema migrations (existing `posts`, `tags`, `activities`,
       `references` tables preserved).
 - ❌ Author/multi-author features.
-- ❌ Tag detail pages at `/tag/:slug` (use `/archive?tag=<slug>` instead — same
+- ❌ Tag detail pages at `/tag/:slug` (use `/archive?tag=<slug>` instead, same
       experience, fewer routes).
 
 ---
@@ -707,7 +707,7 @@ Mirror of section-specific ACs, summarized for plan-phase task ordering.
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
-| Webfont payload breaks Lighthouse 90 budget | Medium | Medium | Latin subset; preload display + body only; lazy mono; if still over, drop Fraunces axes (use static weights instead of variable) |
+| Webfont payload breaks Lighthouse 90 budget | Medium | Medium | Latin subset; preload display and body only; lazy mono; if still over, drop Fraunces axes (use static weights instead of variable) |
 | Dark-mode accent contrast bug ships | Medium | High | Verify tokens at 4.5:1 BEFORE first commit; add automated contrast test to `make validate` |
 | `prose` rewrite breaks KaTeX styling | Medium | Medium | Test math-heavy post on every route commit; treat KaTeX styles as untouchable; isolate `.katex` from new prose rules |
 | `/activity` → `/notes` redirect breaks for existing readers | Low | Low | 301 redirect; preserve existing page if HTTP referer is set |
@@ -715,7 +715,7 @@ Mirror of section-specific ACs, summarized for plan-phase task ordering.
 | `<link rel="alternate" type="text/markdown">` requires raw markdown route on server | Verified-need | Low | Server route added in this branch; SurrealDB stores raw markdown already |
 | Removing fixed footer breaks bottom-anchored elements | Low | Low | Footer scrolls naturally; no UI depends on fixed footer |
 | Removing global `svg{fill:white!important}` breaks existing icons | High | Low | Audit all `icondata` usages; ensure each icon explicitly uses `currentColor`. This is a guaranteed task in the plan phase. |
-| Three font webfont families cause CLS during load | Medium | Medium | Preload + `font-display: swap` + size-adjust matched to fallback metrics |
+| Three font webfont families cause CLS during load | Medium | Medium | Preload, `font-display: swap`, and size-adjust matched to fallback metrics |
 | Spec scope creep into "while we're here, let's add search" | High | High | Out-of-scope list (§8) is explicit; lint of plan-phase tasks against §8 |
 
 ---
@@ -723,12 +723,12 @@ Mirror of section-specific ACs, summarized for plan-phase task ordering.
 ## 10. Glossary
 
 - **Token**: a named CSS variable in the `@theme` block, intended for reuse.
-- **Date-stamp**: the post-list tile (mono kicker + serif day numeral + 2px accent rail) — fsck.com pattern.
-- **Pipe-nav**: pipe-separated lowercase nav row — blogosphere pattern.
-- **Sitemap-footer**: dense footer linking every section — PostHog pattern.
-- **Italic accent nameplate**: site title with one word italicized in `--accent` — fsck.com pattern.
-- **Outbound glyph**: the `↗` appended to external links — blogosphere pattern.
-- **Locked palette**: the discipline of declaring all colors as tokens at the top of the stylesheet, with a CSS comment naming each — fsck.com pattern.
+- **Date-stamp**: the post-list tile (mono kicker, serif day numeral, and 2px accent rail), the fsck.com pattern.
+- **Pipe-nav**: pipe-separated lowercase nav row, the blogosphere pattern.
+- **Sitemap-footer**: dense footer linking every section, the PostHog pattern.
+- **Italic accent nameplate**: site title with one word italicized in `--accent`, the fsck.com pattern.
+- **Outbound glyph**: the `↗` appended to external links, the blogosphere pattern.
+- **Locked palette**: the discipline of declaring all colors as tokens at the top of the stylesheet, with a CSS comment naming each, the fsck.com pattern.
 
 ---
 
@@ -760,15 +760,15 @@ Mirror of section-specific ACs, summarized for plan-phase task ordering.
 ## Appendix B: File-level change inventory
 
 Files **modified** in execute phase:
-- `style/tailwind.css` — full rewrite (new `@theme`, no Poppins)
-- `app/src/lib.rs` — shell changes (unfix header, sitemap footer)
-- `app/src/home.rs` — featured + recent + notes strip
-- `app/src/post.rs` — TOC + post-foot
-- `app/src/contact.rs` — bio extracted out
-- `app/src/references.rs` — glassmorphism removed
+- `style/tailwind.css`: full rewrite (new `@theme`, no Poppins)
+- `app/src/lib.rs`: shell changes (unfix header, sitemap footer)
+- `app/src/home.rs`: featured, recent, and notes strip
+- `app/src/post.rs`: TOC and post-foot
+- `app/src/contact.rs`: bio extracted out
+- `app/src/references.rs`: glassmorphism removed
 - `app/src/activity.rs` → renamed `notes.rs`, palette aligned
-- `app/src/components/header.rs` — pipe-nav + nameplate
-- `app/src/components/icons.rs` — currentColor migration
+- `app/src/components/header.rs`: pipe-nav and nameplate
+- `app/src/components/icons.rs`: currentColor migration
 
 Files **added**:
 - `app/src/archive.rs` (new route)

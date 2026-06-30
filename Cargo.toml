@@ -108,7 +108,7 @@ browserquery = "defaults"
 hash-files = true
 
 # Note: `watch` and `env` keys were removed (cargo-leptos 0.3+ no longer
-# recognises them at the workspace metadata level — they are inferred from
+# recognises them at the workspace metadata level, since they are inferred from
 # the invocation: `cargo leptos watch` sets autoreload internally, and
 # the runtime LEPTOS_OUTPUT_NAME / RUST_ENV env vars drive build mode).
 

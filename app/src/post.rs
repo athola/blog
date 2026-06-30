@@ -1,13 +1,13 @@
-//! Post detail page — the heart of the site.
+//! Post detail page.
 //!
 //! Layout (spec §4.2):
 //!   1. Pre-title meta row (mono uppercase): time · read time · views
 //!   2. Italic display date above title
-//!   3. H1 — Fraunces 56px / 40px mobile
-//!   4. Tag-byline + tiny author chip (between hairline rules)
+//!   3. H1: Fraunces 56px / 40px mobile
+//!   4. Tag-byline and tiny author chip (between hairline rules)
 //!   5. In-flow TOC for posts with ≥ 4 h2 headings
 //!   6. Article body with editorial prose styling (ochre accent links etc.)
-//!   7. Post foot — prev/next + more-from-tag + raw-md/copy/share
+//!   7. Post foot: prev/next, more-from-tag, and raw-md/copy/share
 
 use leptos::{
     html::{a, article, div, img, p, script, section, span, time},
@@ -174,7 +174,7 @@ pub fn component() -> impl IntoView {
                             })
                             .collect::<Vec<_>>(),
                     )),
-                    // Prev/Next placeholder — links to /archive (deferred to post-graph API)
+                    // Prev/Next placeholder: links to /archive (deferred to post-graph API)
                     div().class("flex justify-between items-center font-mono text-[11px] uppercase tracking-[0.08em] text-ink-3").child((
                         A(AProps::builder()
                             .href("/archive".to_string())
@@ -189,7 +189,7 @@ pub fn component() -> impl IntoView {
                             }))
                             .build()),
                     )),
-                    // Tools: raw markdown link (copy/share deferred — would add web-sys feature flags)
+                    // Tools: raw markdown link (copy/share deferred, would add web-sys feature flags)
                     div().class("flex flex-wrap gap-4 items-center font-mono text-[11px] uppercase tracking-[0.08em] text-ink-3").child((
                         a()
                             .href(format!("/post/{}/raw.md", slug_for_links))
@@ -239,7 +239,7 @@ pub fn component() -> impl IntoView {
 }
 
 /// Best-effort string-parse extractor for `<h2 id="anchor">Text</h2>` elements.
-/// Pulldown-cmark + GitHub-style anchor injection produces this shape.
+/// Pulldown-cmark and GitHub-style anchor injection produces this shape.
 /// Fall-through: if no h2s have an `id` attribute, returns empty (TOC then
 /// renders nothing per Toc component's TOC_MIN_HEADINGS gate).
 fn extract_h2_headings(html: &str) -> Vec<TocHeading> {

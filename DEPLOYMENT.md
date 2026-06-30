@@ -77,7 +77,7 @@ After Droplet creation, SSH in to complete setup.
 
 **1. Set the Database Password**
 
-Generate a secure password and store it in a restricted environment file. Never put credentials directly in `ExecStart` — they appear in `ps aux` output.
+Generate a secure password and store it in a restricted environment file. Never put credentials directly in `ExecStart`, since they appear in `ps aux` output.
 
 ```bash
 # Generate a password
@@ -102,7 +102,7 @@ ps aux | grep surreal | grep -v grep
 
 **2. Configure the Firewall**
 
-Caddy (set up in Part 1b) runs on the same droplet and reaches SurrealDB at `127.0.0.1:8000`, so port 8000 stays bound to loopback and is never exposed on any external interface. Public ingress is limited to SSH for admins and Caddy's ACME + HTTPS listener.
+Caddy (set up in Part 1b) runs on the same droplet and reaches SurrealDB at `127.0.0.1:8000`, so port 8000 stays bound to loopback and is never exposed on any external interface. Public ingress is limited to SSH for admins and Caddy's ACME and HTTPS listener.
 
 > **Lockout safeguard**: before running `ufw enable`, open a second SSH session in a separate terminal and confirm it stays connected. If you typo `YOUR_ADMIN_IP`, the existing session keeps you in until you fix the rule; without that, recovery requires the DigitalOcean web console.
 
@@ -129,7 +129,7 @@ The database setup is now complete.
 
 ## Part 1 (Alternative): Manual Database Setup
 
-If you prefer manual Droplet configuration over the cloud-init script, create a Droplet with the specifications above (without user data) and run these steps. The manual path replaces only the **service install + systemd unit**; you still need Part 1, Post-Provisioning Steps 1-2 (password + firewall) and all of Part 1b (Caddy + TLS) before any client can reach the database.
+If you prefer manual Droplet configuration over the cloud-init script, create a Droplet with the specifications above (without user data) and run these steps. The manual path replaces only the **service install and systemd unit**. You still need Part 1, Post-Provisioning Steps 1-2 (password and firewall) and all of Part 1b (Caddy and TLS) before any client can reach the database.
 
 **1. Install SurrealDB**
 
@@ -158,7 +158,7 @@ sudo systemctl enable --now surrealdb
 
 **4. Finish provisioning**
 
-Before continuing to Part 1b, run **Post-Provisioning Steps 1-2** (password + firewall) from the cloud-init flow above. Without them, SurrealDB stays reachable on `0.0.0.0:8000` with no auth password set and no firewall.
+Before continuing to Part 1b, run **Post-Provisioning Steps 1-2** (password and firewall) from the cloud-init flow above. Without them, SurrealDB stays reachable on `0.0.0.0:8000` with no auth password set and no firewall.
 
 ## Part 1b: TLS Reverse Proxy (Caddy)
 
@@ -187,7 +187,7 @@ curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
 sudo apt-get update && sudo apt-get install -y caddy
 ```
 
-The HTTP-01 ACME challenge requires port 80 reachable from the public internet — that's the rule added in **Part 1, Post-Provisioning Step 2**. Without it, Caddy will fail to issue the certificate on first start.
+The HTTP-01 ACME challenge requires port 80 reachable from the public internet. That's the rule added in **Part 1, Post-Provisioning Step 2**. Without it, Caddy will fail to issue the certificate on first start.
 
 ### 3. Write `/etc/caddy/Caddyfile`
 
@@ -211,7 +211,7 @@ sudo journalctl -u caddy -n 50 | grep -i 'certificate obtained'
 curl -v https://db.YOUR_DOMAIN:8443/health   # expect HTTP/2 200
 ```
 
-Let's Encrypt issues the certificate via HTTP-01 on port 80 (opened in step 2 of Part 1). Renewal happens automatically; if port 80 is ever blocked or DNS changes, the cert will silently expire after ~30 days, so revisit this verification step whenever droplet networking changes.
+Let's Encrypt issues the certificate via HTTP-01 on port 80 (opened in step 2 of Part 1). Renewal happens automatically. If port 80 is ever blocked or DNS changes, the cert will silently expire after ~30 days, so revisit this verification step whenever droplet networking changes.
 
 ## Part 2: Application Deployment
 
@@ -249,11 +249,11 @@ SURREAL_ROOT_PASS=YOUR_SECURE_PASSWORD
 ```
 
 **Notes**:
-- `SURREAL_ADDRESS` points at the Caddy reverse proxy set up in Part 1b. TLS is terminated on the droplet; SurrealDB auth (`SURREAL_ROOT_USER`/`SURREAL_ROOT_PASS`) gates access.
+- `SURREAL_ADDRESS` points at the Caddy reverse proxy set up in Part 1b. TLS is terminated on the droplet. SurrealDB auth (`SURREAL_ROOT_USER`/`SURREAL_ROOT_PASS`) gates access.
 - Mark `SURREAL_ROOT_PASS`, `SURREAL_NS`, `SURREAL_DB`, and `SURREAL_ROOT_USER` as encrypted (`type: SECRET`) in the App spec.
 - Prior versions of this guide used an SSH tunnel or a private-IP direct connection; both have been retired. The tunnel scripts (`scripts/tunnel.sh`) remain in the repo and are still wired into the Dockerfile entrypoint, but only as a no-op shim:
   - **Leave `TUNNEL_HOST` unset** in App Platform. With `TUNNEL_HOST` empty, `tunnel.sh` logs `No TUNNEL_HOST set, starting app without tunnel` and `exec`s `/app/blog` directly.
-  - Verify on first deploy: `doctl apps logs <APP_ID> --type=run | grep 'No TUNNEL_HOST set'`. If you see autossh log lines instead, the env var is being inherited from somewhere — clear it before re-deploying, since with `TUNNEL_HOST` set but tunnel keys missing or autossh failing, `tunnel.sh` currently falls through to `exec /app/blog` anyway and the deploy will look healthy while routing is wrong.
+  - Verify on first deploy: `doctl apps logs <APP_ID> --type=run | grep 'No TUNNEL_HOST set'`. If you see autossh log lines instead, the env var is being inherited from somewhere. Clear it before re-deploying, since with `TUNNEL_HOST` set but tunnel keys missing or autossh failing, `tunnel.sh` currently falls through to `exec /app/blog` anyway and the deploy will look healthy while routing is wrong.
 
 ### 4. Deploy
 

@@ -1,7 +1,7 @@
-//! Home page — the editorial entry point.
+//! Home page: the editorial entry point.
 //!
 //! Layout (spec §4.1):
-//!   1. Featured post (DateStamp Featured + title + excerpt + meta)
+//!   1. Featured post (DateStamp Featured, title, excerpt, and meta)
 //!   2. Recent posts list (PostListRow Default × 5-7)
 //!   3. + archive → link
 //!   4. Latest notes strip (3 most recent)
@@ -37,7 +37,7 @@ pub fn component() -> impl IntoView {
         move |()| async move { select_tags().await.unwrap_or_default() },
     );
 
-    // Posts filtered by selected tags — first item becomes Featured, rest are recent
+    // Posts filtered by selected tags: first item becomes Featured, rest are recent
     let posts = Resource::new(
         move || selected_tags.get(),
         move |selected_tags| async move { select_posts(selected_tags).await },
@@ -52,10 +52,10 @@ pub fn component() -> impl IntoView {
     div().class("flex flex-col gap-12").child((
         Title(
             TitleProps::builder()
-                .text("Alex Thola — Tech Insights & Consulting")
+                .text("Alex Thola | Tech Insights & Consulting")
                 .build(),
         ),
-        // ─── Posts (featured + recent + archive link) ────────────────
+        // ─── Posts (featured, recent, and archive link) ──────────────
         Suspense(
             SuspenseProps::builder()
                 .fallback(loader::component)
@@ -77,7 +77,7 @@ pub fn component() -> impl IntoView {
                         let recent_len = recent.len();
 
                         div().class("flex flex-col").child((
-                            // Featured post — full bleed within reading column
+                            // Featured post: full bleed within reading column
                             div()
                                 .class("border-b border-rule-soft pb-2 mb-2")
                                 .child(post_list_row::component(
@@ -129,7 +129,7 @@ pub fn component() -> impl IntoView {
                         div().class("flex flex-col gap-3 pt-8 border-t-2 border-rule").child((
                             // Section kicker
                             p().class("font-mono text-[11px] uppercase tracking-[0.08em] text-ink-3")
-                                .child("notes — recent"),
+                                .child("notes: recent"),
                             // Note rows
                             div().class("flex flex-col").child(
                                 three

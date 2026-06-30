@@ -805,7 +805,7 @@ mod server_integration_tests {
                 bounded_terminate(&mut db_process, "database process");
 
                 // Clean up database directory. surrealkv stores data as a
-                // directory tree, not a single file — the previous
+                // directory tree, not a single file. The previous
                 // remove_file() silently failed on every test run and is
                 // why the workspace accumulated 219+ stale rustblog_test_*.db
                 // directories.
@@ -816,7 +816,7 @@ mod server_integration_tests {
             // Note: previously this Drop impl ended with an `lsof | xargs
             // kill` "port sweep" as a belt-and-suspenders cleanup, but
             // `lsof` can hang in uninterruptible (D) state on WSL2 and
-            // even `timeout 3` could not reliably kill it — that hang was
+            // even `timeout 3` could not reliably kill it. That hang was
             // the second root cause of cleanup never completing. Since we
             // already SIGKILL'd the server and database processes above
             // (via `Child::kill()`) and pkill'd their children, the kernel
@@ -1270,7 +1270,7 @@ mod server_integration_tests {
         );
 
         // T27: /feed/feed.xml serves the Atom 1.0 envelope. The xmlns marker
-        // is the load-bearing structural invariant — feed readers parse on it.
+        // is the load-bearing structural invariant. Feed readers parse on it.
         let resp = no_redirect
             .get(format!("{}/feed/feed.xml", server_url))
             .send()

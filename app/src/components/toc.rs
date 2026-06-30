@@ -1,4 +1,4 @@
-//! Toc — in-flow table of contents for long posts.
+//! Toc: in-flow table of contents for long posts.
 //!
 //! Renders an `<aside>` block listing h2 anchors with mono uppercase
 //! "ON THIS PAGE" kicker. Conditional: returns an empty view when fewer
@@ -28,7 +28,7 @@ pub struct TocHeading {
 /// headings get no TOC.
 pub const TOC_MIN_HEADINGS: usize = 4;
 
-/// Render the TOC — or an empty view if `headings.len() < TOC_MIN_HEADINGS`.
+/// Render the TOC, or an empty view if `headings.len() < TOC_MIN_HEADINGS`.
 pub fn component(headings: Vec<TocHeading>) -> impl IntoView {
     if headings.len() < TOC_MIN_HEADINGS {
         return Either::Left(().into_view());

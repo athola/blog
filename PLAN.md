@@ -2,7 +2,7 @@
 
 This document outlines planned features and technical improvements for the blog engine.
 
-## Site Redesign 0.2.0 — Direction D (in flight, `site-redesign-0.2.0`)
+## Site Redesign 0.2.0: Direction D (in flight, `site-redesign-0.2.0`)
 
 The site is being redesigned per the **Dual-Mode Editorial Engineer** direction
 synthesized from blogosphere.app, posthog.com, and blog.fsck.com.
@@ -12,19 +12,19 @@ synthesized from blogosphere.app, posthog.com, and blog.fsck.com.
 - **Design system reference**: [`docs/design-system.md`](./docs/design-system.md)
 
 Already shipped on the redesign branch:
-- Tailwind v4 `@theme` token system (light + dark modes), Fraunces + Inter +
-  JetBrains Mono webfonts, removal of 28 Poppins font-faces, removal of
+- Tailwind v4 `@theme` token system (light and dark modes), Fraunces, Inter,
+  and JetBrains Mono webfonts, removal of 28 Poppins font-faces, removal of
   global `svg{fill:white!important}` rule.
 - Eight new components: Nameplate, PipeNav, DateStamp, PostListRow, TagStrip,
   Footer, Toc, plus the outbound `↗` glyph CSS rule.
 - All five existing routes refactored to tokens (home, post, references,
   contact, notes-renamed-from-activity).
 - Three new routes: `/archive` (year-grouped chronological), `/about`
-  (lifted from contact whoami), `/colophon` (stack + fonts + license).
+  (lifted from contact whoami), `/colophon` (stack, fonts, and license).
 - Server-side: `/random` stumble redirect, `/post/:slug/raw.md` raw markdown
   alternate, `/feed/feed.xml` Atom feed, `/feed/rss.xml` RSS alias,
   `/activity` → `/notes` 301 permanent redirect.
-- SEO: per-post canonical + markdown alternate `<link>`, Schema.org
+- SEO: per-post canonical and markdown alternate `<link>`, Schema.org
   Article and Person JSON-LD.
 - A11y: skip-link, `:focus-visible` outline, `prefers-reduced-motion`,
   AA contrast in both modes.
@@ -36,7 +36,7 @@ Already shipped on the redesign branch:
 This quarter improves the core reading experience.
 
 -   **Theme Toggle UI**: The token system already supports dark mode (Sprint 0
-    of the redesign); the remaining work is a UI control that flips
+    of the redesign). The remaining work is a UI control that flips
     `[data-theme]` on `<html>` and persists to `localStorage` under key
     `alexthola-theme`.
 -   **Syntax Highlighting**: Add server-side syntax highlighting for code blocks to improve readability and performance. This will likely involve integrating a Rust library like `syntect` during the Markdown rendering process.

@@ -1,12 +1,12 @@
 # alexthola.com Design System
 
-**Direction**: D — Dual-Mode Editorial Engineer
+**Direction**: D (Dual-Mode Editorial Engineer)
 **Branch landed in**: `site-redesign-0.2.0`
 **Design rationale**: [`docs/design-decisions.md`](./design-decisions.md)
 **Spec**: [`docs/specification.md`](./specification.md)
 
 This document is the **living reference** for the site's design system.
-Components and routes reference these tokens; new work that needs a color,
+Components and routes reference these tokens. New work that needs a color,
 typeface, or spacing value uses an existing token or proposes a new one
 here first.
 
@@ -16,7 +16,7 @@ here first.
 
 All colors flow from a `@theme` block in `style/tailwind.css`. Every Tailwind
 utility (`bg-paper`, `text-accent`, `border-rule`) is generated from a
-`--color-*` token. Light is the default; dark activates via
+`--color-*` token. Light is the default. Dark activates via
 `[data-theme="dark"]` on `<html>`.
 
 ### Light mode
@@ -29,8 +29,8 @@ utility (`bg-paper`, `text-accent`, `border-rule`) is generated from a
 | `--color-ink-2` | `#2a2a2a` | Secondary text |
 | `--color-ink-3` | `#5a5e62` | Muted text, mono kickers |
 | `--color-ink-4` | `#8a8e92` | Subtle text, disabled, placeholders |
-| `--color-accent` | `#7a2942` | Burgundy — link underlines, hover, current-state, blockquote rail |
-| `--color-accent-soft` | `#c47c80` | Lightened accent — alpha tier |
+| `--color-accent` | `#7a2942` | Burgundy: link underlines, hover, current-state, blockquote rail |
+| `--color-accent-soft` | `#c47c80` | Lightened accent: alpha tier |
 | `--color-rule` | `#0a0a0a` | Hard 1–2px section rules |
 | `--color-rule-soft` | `#bfc1c5` | Hairline rules between list items |
 
@@ -38,19 +38,19 @@ utility (`bg-paper`, `text-accent`, `border-rule`) is generated from a
 
 | Token | Hex | Contrast vs paper |
 |---|---|---|
-| `--color-paper` | `#151515` | — |
-| `--color-paper-2` | `#2a2a2a` | — |
+| `--color-paper` | `#151515` | n/a |
+| `--color-paper-2` | `#2a2a2a` | n/a |
 | `--color-ink` | `#ecedef` | 16.4:1 ✓ AAA |
 | `--color-ink-2` | `#bfc1c5` | 11.8:1 ✓ AAA |
 | `--color-ink-3` | `#8a8e92` | 5.5:1 ✓ AA |
-| `--color-ink-4` | `#5a5e62` | 2.7:1 — decorative only |
+| `--color-ink-4` | `#5a5e62` | 2.7:1 (decorative only) |
 | `--color-accent` | `#c47c80` | 6.7:1 ✓ AA |
-| `--color-accent-soft` | `#7a2942` | — |
-| `--color-rule` | `#ecedef` | — |
-| `--color-rule-soft` | `#3a3a3a` | — |
+| `--color-accent-soft` | `#7a2942` | n/a |
+| `--color-rule` | `#ecedef` | n/a |
+| `--color-rule-soft` | `#3a3a3a` | n/a |
 
 **Discipline rules** (enforced by `make lint-tokens`):
-- Components reference tokens via Tailwind utilities — **never** `bg-[#hex]`.
+- Components reference tokens via Tailwind utilities, **never** `bg-[#hex]`.
 - New tokens must have a documented role here.
 - "Use opacity over more colors" (PostHog rule).
 
@@ -103,16 +103,16 @@ This is the PostHog-borrowed "intentional non-default weight" pattern.
 
 | Component | Source | Notes |
 |---|---|---|
-| `Nameplate` | `app/src/components/nameplate.rs` | Italic-accent two-piece title; whole element is the home link. |
-| `PipeNav` | `app/src/components/pipe_nav.rs` | Pipe-separated lowercase nav; current-route highlight. |
-| `DateStamp` | `app/src/components/date_stamp.rs` | Newspaper stamp tile (mono kicker + serif day numeral + 2px accent rail). 3 sizes. |
-| `PostListRow` | `app/src/components/post_list_row.rs` | DateStamp + title + excerpt + meta. 2 sizes. |
+| `Nameplate` | `app/src/components/nameplate.rs` | Italic-accent two-piece title. The whole element is the home link. |
+| `PipeNav` | `app/src/components/pipe_nav.rs` | Pipe-separated lowercase nav with current-route highlight. |
+| `DateStamp` | `app/src/components/date_stamp.rs` | Newspaper stamp tile (mono kicker, serif day numeral, and 2px accent rail). 3 sizes. |
+| `PostListRow` | `app/src/components/post_list_row.rs` | DateStamp, title, excerpt, and meta. 2 sizes. |
 | `TagStrip` | `app/src/components/tag_strip.rs` | Inline middot category strip with reactive selection. |
-| `Footer` | `app/src/components/footer.rs` | Sitemap-style 3-column footer + social row + mono uppercase copyright. |
+| `Footer` | `app/src/components/footer.rs` | Sitemap-style 3-column footer, social row, and mono uppercase copyright. |
 | `Toc` | `app/src/components/toc.rs` | In-flow TOC, conditional render at `TOC_MIN_HEADINGS = 4`. |
 
 Outbound link `↗` glyph is a CSS pseudo-element rule on
-`a[href^="http"]:not([href*="alexthola.com"])::after` — no Rust component.
+`a[href^="http"]:not([href*="alexthola.com"])::after`. It is not a Rust component.
 
 ---
 
@@ -148,7 +148,7 @@ text-decoration: none;
 
   GitHub  X  LinkedIn  RSS
 
-  © 2024–2026 ALEX THOLA. POWERED BY RUST + LEPTOS.
+  © 2024–2026 ALEX THOLA. POWERED BY RUST AND LEPTOS.
 ```
 
 ---
@@ -157,8 +157,8 @@ text-decoration: none;
 
 | Path | Owner | Notes |
 |---|---|---|
-| `/` | `app/src/home.rs` | Featured + recent + notes-strip + tag filter |
-| `/post/:slug` | `app/src/post.rs` | Pre-meta + italic date + h1 + tag-byline + TOC + ochre prose + post-foot |
+| `/` | `app/src/home.rs` | Featured, recent, notes-strip, and tag filter |
+| `/post/:slug` | `app/src/post.rs` | Pre-meta, italic date, h1, tag-byline, TOC, ochre prose, and post-foot |
 | `/post/:slug/raw.md` | `server/src/utils.rs::raw_markdown_handler` | Raw markdown alternate per post (Axum 0.8 forbids literal `.md` extension on the same segment as a path param) |
 | `/archive` | `app/src/archive.rs` | Year-grouped chronological archive with `?tag=foo` filter |
 | `/notes` | `app/src/notes.rs` | Microblog stream (renamed from `/activity`) |
@@ -191,7 +191,7 @@ Full `make validate` requires a running SurrealDB for integration tests.
 
 T32 in the implementation plan calls for before/after screenshots
 captured via `Skill(scry:record-browser)`. Run with `make watch` to bring
-up the dev server, then capture each route in light + dark mode.
+up the dev server, then capture each route in light and dark mode.
 
 ### Lighthouse audit (manual)
 

@@ -1,5 +1,5 @@
-//! PostListRow — one row in a post list. Combines DateStamp + title +
-//! excerpt + meta with a hairline rule separator.
+//! PostListRow: one row in a post list. Combines DateStamp, title,
+//! excerpt, and meta with a hairline rule separator.
 //!
 //! Used on the home page (recent posts) and the archive page. Two sizes:
 //! Featured (large title, full excerpt, used for top-of-home post) and
@@ -56,7 +56,7 @@ impl PostListSize {
 /// `divider` controls whether a hairline rule renders below the row (default
 /// true; opt-out via `false` for the last row in a list).
 pub fn component(post: Post, size: PostListSize, divider: bool) -> impl IntoView {
-    // The wrapper always has a class — when `divider` is false, the class is
+    // The wrapper always has a class. When `divider` is false, the class is
     // empty, keeping a uniform return type across branches.
     let wrapper_class = if divider {
         "border-b border-rule-soft"

@@ -25,11 +25,11 @@ use std::sync::{Arc, OnceLock};
 mod about; // About / bio / colophon link
 pub mod api; // API endpoints and types
 mod archive; // Year-grouped chronological archive of posts
-mod colophon; // Colophon — site tech stack, fonts, license
+mod colophon; // Colophon: site tech stack, fonts, license
 mod components; // Reusable UI components
 mod contact; // Contact page logic and components
 mod home; // Homepage logic and components
-mod notes; // Notes (microblog) page; replaces /activity
+mod notes; // Notes (microblog) page that replaces /activity
 mod post; // Post display logic and components
 mod references; // References page logic and components
 pub mod types; // Shared type definitions
@@ -54,7 +54,7 @@ fn build_css_href(output_name: &str, hash_files: bool, hash_content: Option<&str
         #[cfg(feature = "ssr")]
         if hash_content.is_some() {
             tracing::warn!(
-                "Hash file was read but contains no 'css:' entry — falling back to unhashed CSS"
+                "Hash file was read but contains no 'css:' entry, falling back to unhashed CSS"
             );
         }
     }
@@ -135,7 +135,7 @@ pub fn shell(options: Arc<LeptosOptions>) -> impl IntoView {
             meta()
                 .name("viewport")
                 .content("width=device-width, initial-scale=1"),
-            // Pre-paint theme attribute setter — runs before stylesheet loads
+            // Pre-paint theme attribute setter: runs before stylesheet loads
             script().inner_html(theme_prepaint),
             // AutoReload(AutoReloadProps::builder().options(options.clone()).build()),
             HydrationScripts(HydrationScriptsProps::builder().options(options).build()),
@@ -152,22 +152,22 @@ pub fn shell(options: Arc<LeptosOptions>) -> impl IntoView {
                     .href("/public/katex.min.css")
                     .build(),
             ),
-            // Feed advertisements — Atom + RSS per spec §4.10. JSON Feed is
+            // Feed advertisements: Atom and RSS per spec §4.10. JSON Feed is
             // deferred (out of scope; see docs/specification.md §8).
             // Markdown alternate per-post is added in app/src/post.rs.
             link()
                 .rel("alternate")
                 .r#type("application/atom+xml")
                 .href("/feed/feed.xml")
-                .attr("title", "alexthola.com — Atom"),
+                .attr("title", "alexthola.com | Atom"),
             link()
                 .rel("alternate")
                 .r#type("application/rss+xml")
                 .href("/feed/rss.xml")
-                .attr("title", "alexthola.com — RSS"),
+                .attr("title", "alexthola.com | RSS"),
             Title(
                 TitleProps::builder()
-                    .text("Alex Thola's Blog \u{2013} Tech Insights & Consulting")
+                    .text("Alex Thola's Blog | Tech Insights & Consulting")
                     .build(),
             ),
         )),
@@ -213,7 +213,7 @@ pub fn component() -> impl IntoView {
                         <Route path=StaticSegment("contact") view=contact::component/>
                         <Route path=(StaticSegment("post"), ParamSegment("slug")) view=post::component ssr=SsrMode::Async/>
                         // /notes is the canonical microblog route (renamed from /activity).
-                        // /activity is 301-redirected at the Axum level — see server/src/main.rs (T26).
+                        // /activity is 301-redirected at the Axum level. See server/src/main.rs (T26).
                         <Route path=StaticSegment("notes") view=notes::component/>
                     </FlatRoutes>
                 </main>

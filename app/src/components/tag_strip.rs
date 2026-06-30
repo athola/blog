@@ -1,4 +1,4 @@
-//! TagStrip — inline category strip rendered as a single line of
+//! TagStrip: inline category strip rendered as a single line of
 //! middot-separated text rather than chips/pills.
 //!
 //! `topics: all · rust · leptos · surrealdb · …` with the selected tag
@@ -24,7 +24,7 @@ pub fn component(tags: Vec<(String, u32)>, selected: RwSignal<Vec<String>>) -> i
         .class("font-mono text-xs uppercase tracking-[0.08em] text-ink-3 flex flex-wrap items-center gap-x-2 gap-y-1")
         .child((
             span().class("text-ink-4").child("topics:"),
-            // "all" reset button — class swaps reactively based on whether
+            // "all" reset button: class swaps reactively based on whether
             // any tag is selected.
             button()
                 .on(ev::click, move |_| selected.update(Vec::clear))

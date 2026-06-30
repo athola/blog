@@ -1,4 +1,4 @@
-//! Footer — sitemap-style three-column footer with social row and copyright.
+//! Footer: sitemap-style three-column footer with social row and copyright.
 //!
 //! Replaces the Sprint 0 transitional footer in app/src/lib.rs with the
 //! full sitemap layout per spec §3.2. Three columns (Writing, References,
@@ -55,7 +55,7 @@ pub fn component() -> impl IntoView {
                         "font-mono text-[11px] uppercase tracking-[0.08em] text-ink-4 text-center",
                     )
                     .child(format!(
-                        "© 2024–{} ALEX THOLA. POWERED BY RUST + LEPTOS.",
+                        "© 2024–{} ALEX THOLA. POWERED BY RUST AND LEPTOS.",
                         Utc::now().year()
                     )),
                 )),
