@@ -5,6 +5,12 @@
 // false-positive `dead_code` warning. Each suppression here guards a method that
 // IS exercised by at least one test binary; do not delete the methods.
 
+// Harness helpers return `SurrealResult<_>` (= `Result<_, surrealdb::Error>`),
+// whose Err variant is ~144 bytes and trips clippy::result_large_err under
+// `-D warnings`. These are test setup helpers, not a hot path, so boxing every
+// signature buys nothing; suppress the lint module-wide instead.
+#![allow(clippy::result_large_err)]
+
 use serde::Deserialize;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;

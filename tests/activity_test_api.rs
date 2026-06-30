@@ -1,4 +1,9 @@
 #![allow(deprecated)]
+// Test helpers return `Result<_, surrealdb::Error>`; the Err variant is ~144
+// bytes, which trips clippy::result_large_err under `-D warnings`. Boxing the
+// error in test setup code buys nothing (this is not a hot path), so suppress
+// the lint here rather than churning every signature.
+#![allow(clippy::result_large_err)]
 use app::types::Activity;
 use leptos::prelude::ServerFnError;
 use leptos::server_fn::error::NoCustomError;
