@@ -418,7 +418,7 @@ curl http://169.254.169.254/metadata/v1/id
 
 | Service                      | Monthly Cost |
 | ---------------------------- | ------------ |
-| App Platform (Professional)  | $12.00       |
+| App Platform (Basic)         | $12.00       |
 | SurrealDB Droplet            | $12.00       |
 | Droplet Backups              | $2.40        |
 | **Total**                    | **$26.40**   |
