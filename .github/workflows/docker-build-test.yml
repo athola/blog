@@ -159,7 +159,7 @@ jobs:
           docker run -d --name surrealdb-test \
             -p 8000:8000 \
             -v /tmp:/data \
-            surrealdb/surrealdb:v2.6.3 \
+            surrealdb/surrealdb:v3.1.5 \
             start --log info --user root --pass root file:///data/test.db --bind 0.0.0.0:8000
 
           # Wait for SurrealDB to be ready

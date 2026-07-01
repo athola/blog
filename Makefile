@@ -253,10 +253,10 @@ install-surrealdb:
 	@if command -v surreal >/dev/null 2>&1; then \
 		echo "SurrealDB already installed: $$(surreal --version)"; \
 	else \
-		echo "Downloading SurrealDB v2.6.3..."; \
+		echo "Downloading SurrealDB v3.1.5..."; \
 		mkdir -p $(HOME)/.surrealdb; \
 		cd $(HOME)/.surrealdb && \
-		curl -sSL https://github.com/surrealdb/surrealdb/releases/download/v2.6.3/surreal-v2.6.3.linux-amd64.tgz -o surreal.tgz && \
+		curl -sSL https://github.com/surrealdb/surrealdb/releases/download/v3.1.5/surreal-v3.1.5.linux-amd64.tgz -o surreal.tgz && \
 		tar -xzf surreal.tgz && \
 		chmod +x surreal && \
 		rm surreal.tgz && \

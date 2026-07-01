@@ -41,7 +41,11 @@ packages:
   - ufw
   - fail2ban
 runcmd:
-  - curl -sSf https://install.surrealdb.com | sh
+  - mkdir -p /root/.surrealdb
+  - curl -sSL https://github.com/surrealdb/surrealdb/releases/download/v3.1.5/surreal-v3.1.5.linux-amd64.tgz -o /tmp/surreal.tgz
+  - tar -xzf /tmp/surreal.tgz -C /root/.surrealdb
+  - chmod +x /root/.surrealdb/surreal
+  - rm /tmp/surreal.tgz
   - useradd -r -s /bin/false surrealdb
   - mkdir -p /var/lib/surrealdb
   - chown surrealdb:surrealdb /var/lib/surrealdb
@@ -70,6 +74,50 @@ system_info:
     name: admin
 final_message: "Droplet setup is complete. SSH into the Droplet to set the database password and configure the firewall."
 ```
+
+### Upgrading SurrealDB (2.x to 3.x)
+
+The application pins the `surrealdb` client to 3.1.5. A 3.x client cannot talk
+to a 2.x server (both the protocol and the on-disk storage format changed), so
+an existing droplet must be upgraded to 3.x **in the same change window as the
+3.x application deploy**. Upgrading the droplet ahead of the app deploy takes
+the live site down, because the currently deployed 2.x app cannot reach a 3.x
+server.
+
+Because the storage format changed, export on 2.x and re-import on 3.x rather
+than swapping the binary in place. Namespace and database come from the
+`SURREAL_NS` / `SURREAL_DB` App Platform env vars (default `rustblog`). On the
+droplet:
+
+```bash
+source /etc/surrealdb/env
+NS="${SURREAL_NS:-rustblog}"; DB="${SURREAL_DB:-rustblog}"
+
+# 1. Export a portable dump from the running 2.x server, then snapshot the dir.
+/root/.surrealdb/surreal export --conn http://127.0.0.1:8000 \
+  --user "$SURREAL_USER" --pass "$SURREAL_PASS" --ns "$NS" --db "$DB" \
+  /root/backup-2x.surql
+sudo systemctl stop surrealdb
+sudo cp -a /var/lib/surrealdb /var/lib/surrealdb.bak."$(date +%Y%m%d)"
+
+# 2. Install the pinned 3.1.5 binary.
+curl -sSL https://github.com/surrealdb/surrealdb/releases/download/v3.1.5/surreal-v3.1.5.linux-amd64.tgz -o /tmp/surreal.tgz
+sudo tar -xzf /tmp/surreal.tgz -C /root/.surrealdb && sudo chmod +x /root/.surrealdb/surreal
+/root/.surrealdb/surreal version   # expect 3.1.5
+
+# 3. Start on a fresh data dir and import the dump.
+sudo mv /var/lib/surrealdb/data.db /var/lib/surrealdb/data.db.2x
+sudo systemctl start surrealdb
+/root/.surrealdb/surreal import --conn http://127.0.0.1:8000 \
+  --user "$SURREAL_USER" --pass "$SURREAL_PASS" --ns "$NS" --db "$DB" \
+  /root/backup-2x.surql
+
+# 4. Verify record counts, then deploy the 3.x application image.
+```
+
+Roll back by stopping the service, restoring `data.db.2x`, and reinstalling the
+2.6.3 binary if the import or the app smoke test fails. Confirm the exact
+`export` / `import` flags with `surreal export --help` for each binary version.
 
 ### Post-Provisioning Steps
 
