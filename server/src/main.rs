@@ -40,7 +40,9 @@ use tower_http::compression::predicate::{NotForContentType, SizeAbove};
 use tower_http::compression::{CompressionLayer, Predicate as _};
 use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
-use utils::{connect, rss_handler, sitemap_handler};
+use utils::{
+    atom_handler, connect, random_handler, raw_markdown_handler, rss_handler, sitemap_handler,
+};
 
 fn choose_site_addr(
     config_addr: SocketAddr,
@@ -104,16 +106,13 @@ async fn main() {
         .with_max_level(tracing_level)
         .init();
 
-    // Load environment variables from a `.env` file if present.
-    // In production, env vars are typically provided externally by the host platform,
-    // so a missing `.env` should not cause errors.
+    // In production, env vars are provided externally by the host platform, so a
+    // missing `.env` is not an error.
     let _ = dotenv();
 
-    // Validate essential environment variables.
-    // In production mode (RUST_ENV=production), validation failures are fatal.
-    // In development mode, we warn but continue to allow easier local testing.
-    let is_production =
-        std::env::var("RUST_ENV").unwrap_or_else(|_| "development".to_string()) == "production";
+    // In production mode (RUST_ENV=production) validation failures are fatal; in
+    // development we warn but continue to ease local testing.
+    let is_production = SecurityConfig::from_env().is_production;
 
     if let Err(errors) = validate_production_env() {
         for error in &errors {
@@ -166,7 +165,6 @@ async fn main() {
             .unwrap_or_else(|| "../Cargo.toml".to_string())
     });
 
-    // Load Leptos configuration.
     let Ok(conf) = get_configuration(Some(&config_path)) else {
         logging::error!("Failed to load configuration from: {}", config_path);
         return;
@@ -295,9 +293,23 @@ async fn main() {
                         "/api/activities/create",
                         any(|| async { Redirect::temporary("/api/activities") }),
                     )
+                    // Sprint 3 (T26): /activity → /notes 301. The route was renamed
+                    // from /activity to /notes; preserve external bookmarks via
+                    // permanent redirect.
+                    .route("/activity", any(|| async { Redirect::permanent("/notes") }))
                     .route("/health", get(health_handler))
                     .route("/rss", get(rss_handler))
                     .route("/rss.xml", get(rss_handler))
+                    // Sprint 3: canonical /feed/* aliases (T27).
+                    .route("/feed/rss.xml", get(rss_handler))
+                    .route("/feed/feed.xml", get(atom_handler))
+                    // Sprint 3: /random stumble redirect (T24).
+                    .route("/random", get(random_handler))
+                    // Sprint 3: raw markdown alternate (T25). Axum 0.8 disallows
+                    // mixing a literal extension with a path parameter in the
+                    // same segment, so the .md slug source lives at
+                    // /post/{slug}/raw.md instead of /post/{slug}.md.
+                    .route("/post/{slug}/raw.md", get(raw_markdown_handler))
                     .route("/sitemap.xml", get(sitemap_handler))
                     // Serve static assets.
                     .nest_service(

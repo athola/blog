@@ -1,32 +1,37 @@
-/// Unit tests for server components that don't require full integration
+//! Workspace-level smoke tests for server-side rendering helpers that don't
+//! require the full HTTP/database stack.
+//!
+//! The `server` binary crate exposes no library target, so these tests exercise
+//! the `markdown` rendering crate the server renders post bodies through, rather
+//! than asserting on local literals.
+
 #[cfg(test)]
 mod server_unit_tests {
-
     #[test]
-    fn test_health_check_structure() {
-        // Test that health check would return proper JSON structure
-        let timestamp = "2023-01-01T00:00:00Z";
-        let version = "0.1.0";
-
-        assert_eq!(timestamp, "2023-01-01T00:00:00Z");
-        assert_eq!(version, "0.1.0");
+    fn markdown_renders_headings_and_code() {
+        let html = markdown::process_markdown("# Title\n\n```rust\nfn main() {}\n```")
+            .expect("markdown should render");
+        assert!(html.contains("<h1"), "expected heading, got: {html}");
+        assert!(html.contains("Title"));
+        assert!(html.contains("<pre"), "expected code block, got: {html}");
     }
 
     #[test]
-    fn test_environment_defaults() {
-        // Test default environment variable handling
-        let protocol = std::env::var("SURREAL_PROTOCOL").unwrap_or_else(|_| "http".to_owned());
-        let host = std::env::var("SURREAL_HOST").unwrap_or_else(|_| "127.0.0.1:8000".to_owned());
-
-        assert_eq!(protocol, "http");
-        assert_eq!(host, "127.0.0.1:8000");
+    fn markdown_degrades_on_malformed_math() {
+        // Malformed LaTeX must not panic the renderer; the raw expression
+        // survives as a fallback instead of crashing the worker thread.
+        let html = markdown::process_markdown("bad $\\nope{x}$ math")
+            .expect("malformed math must not error the page");
+        assert!(
+            html.contains("nope"),
+            "raw expression should survive: {html}"
+        );
     }
 
     #[test]
-    fn test_content_types() {
-        // Test expected content types
-        assert_eq!("text/html; charset=utf-8", "text/html; charset=utf-8");
-        assert_eq!("text/css", "text/css");
-        assert_eq!("text/javascript", "text/javascript");
+    fn markdown_centers_images() {
+        let html = markdown::process_markdown("![alt](photo.png)").expect("should render");
+        assert!(html.contains("justify-content: center"));
+        assert!(html.contains("photo.png"));
     }
 }

@@ -1,21 +1,26 @@
 #![allow(deprecated)]
+// Test helpers return `Result<_, surrealdb::Error>`; the Err variant is ~144
+// bytes, which trips clippy::result_large_err under `-D warnings`. Boxing the
+// error in test setup code buys nothing (this is not a hot path), so suppress
+// the lint here rather than churning every signature.
+#![allow(clippy::result_large_err)]
 use app::types::Activity;
 use leptos::prelude::ServerFnError;
 use leptos::server_fn::error::NoCustomError;
-use once_cell::sync::Lazy;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 use std::time::Duration;
 use surrealdb::engine::any::Any;
 use surrealdb::opt::auth::Root;
-use surrealdb::sql::{Id, Thing};
+use surrealdb::types::{RecordId, RecordIdKey};
 use surrealdb::Surreal;
 use tokio::sync::Mutex;
 use tokio_retry::{strategy::ExponentialBackoff, Retry};
 
 pub type TestDb = Any;
 
-static FALLBACK_ACTIVITIES: Lazy<Mutex<HashMap<String, Activity>>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
+static FALLBACK_ACTIVITIES: LazyLock<Mutex<HashMap<String, Activity>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 pub async fn retry_db_operation<F, Fut, T>(operation: F) -> Result<T, ServerFnError>
 where
@@ -72,13 +77,13 @@ async fn create_or_insert_activity(
         match db.query(query).await {
             Ok(mut response) => response
                 .take(2)
-                .map_err(|e| surrealdb::Error::Api(surrealdb::error::Api::Query(e.to_string()))),
+                .map_err(|e| surrealdb::Error::query(e.to_string(), None)),
             Err(e) => {
                 let msg = e.to_string();
                 if msg.contains("Connection uninitialised") {
                     // Generate a deterministic-ish key for fallback storage
                     let key = format!("fallback-{}", FALLBACK_ACTIVITIES.lock().await.len());
-                    let id = Thing::from(("activity", key.as_str()));
+                    let id = RecordId::new("activity", key.as_str());
                     let stored = store_fallback(&id, activity).await;
                     Ok(Some(stored))
                 } else {
@@ -91,53 +96,34 @@ async fn create_or_insert_activity(
 
 async fn create_activity_with_fixed_id(
     db: &Surreal<TestDb>,
-    id: &Thing,
+    id: &RecordId,
     mut activity: Activity,
 ) -> Result<Activity, surrealdb::Error> {
+    // The id is supplied to `create()` directly, so drop it from the content to
+    // avoid a duplicate-id field in the payload.
     activity.id = None;
 
     db.use_ns("test").use_db("test").await?;
 
-    let query = build_create_query(id, &activity);
-    let mut response = match db.query(query).await {
-        Ok(res) => res,
-        Err(e) => {
-            let msg = e.to_string();
-            if msg.contains("Connection uninitialised") {
-                let fallback = store_fallback(id, activity).await;
-                return Ok(fallback);
-            }
-            eprintln!("create_activity_with_fixed_id query error: {:?}", e);
-            return Err(e);
-        }
-    };
-
-    match response.take(2) {
+    // Mirror the production `insert_activity` path (app/src/api.rs): the typed
+    // builder API deserializes the created record for us. The previous raw-query
+    // approach (`CREATE ... RETURN *` + `response.take(2)`) broke under
+    // surrealdb 3.x because the CREATE succeeded server-side while `take(2)`
+    // errored, so the retry re-ran the CREATE and hit "already exists".
+    match db
+        .create::<Option<Activity>>(id.clone())
+        .content(activity.clone())
+        .await
+    {
         Ok(Some(record)) => Ok(record),
         Ok(None) => Ok(store_fallback(id, activity).await),
         Err(e) => {
-            let msg = e.to_string();
-            if msg.contains("Connection uninitialised") {
+            if e.to_string().contains("Connection uninitialised") {
                 Ok(store_fallback(id, activity).await)
             } else {
-                Err(surrealdb::Error::Api(surrealdb::error::Api::Query(msg)))
+                Err(e)
             }
         }
-    }
-}
-
-fn build_create_query(id: &Thing, activity: &Activity) -> String {
-    let table = id.tb.as_str();
-    let key = record_key_literal(&id.id);
-    let payload = serde_json::to_string(activity).unwrap();
-    format!("USE NS test; USE DB test; CREATE {table}:{key} CONTENT {payload} RETURN *")
-}
-
-fn record_key_literal(key: &Id) -> String {
-    match key {
-        Id::String(value) => value.as_str().to_string(),
-        Id::Number(value) => value.to_string(),
-        other => panic!("Unsupported record id key variant in tests: {:?}", other),
     }
 }
 
@@ -167,8 +153,8 @@ pub async fn select_activities(
 async fn ensure_test_scope(db: &Surreal<TestDb>) -> Result<(), ServerFnError> {
     let _ = db
         .signin(Root {
-            username: "root",
-            password: "root",
+            username: "root".to_string(),
+            password: "root".to_string(),
         })
         .await;
     retry_db_operation(|| async { db.query("USE NS test; USE DB test;").await })
@@ -176,8 +162,16 @@ async fn ensure_test_scope(db: &Surreal<TestDb>) -> Result<(), ServerFnError> {
         .map(|_| ())
 }
 
-async fn store_fallback(id: &Thing, mut activity: Activity) -> Activity {
-    let key = record_key_literal(&id.id);
+fn record_key_literal(key: &RecordIdKey) -> String {
+    match key {
+        RecordIdKey::String(value) => value.as_str().to_string(),
+        RecordIdKey::Number(value) => value.to_string(),
+        other => panic!("Unsupported record id key variant in tests: {:?}", other),
+    }
+}
+
+async fn store_fallback(id: &RecordId, mut activity: Activity) -> Activity {
+    let key = record_key_literal(&id.key);
     activity.id = Some(id.clone());
     let mut map = FALLBACK_ACTIVITIES.lock().await;
     map.insert(key, activity.clone());

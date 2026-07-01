@@ -24,6 +24,8 @@ ssr = [
     "dep:tracing",
     "dep:tokio-retry",
     "dep:shared_utils",
+    "surrealdb/protocol-http",
+    "surrealdb/kv-mem",
 ]
 
 [dependencies]

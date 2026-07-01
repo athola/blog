@@ -26,7 +26,7 @@ on every commit.
 
 ## Quick Start
 
-Get a local development environment running in a couple of minutes:
+Get a local development environment running:
 
 ```bash
 git clone https://github.com/athola/blog.git
@@ -41,13 +41,19 @@ Visit `http://127.0.0.1:3007` to see the blog running locally. Run
 
 ## Features
 
-- **Server-side rendering** via Leptos + Axum for fast first paint and
+- **Server-side rendering** via Leptos and Axum for fast first paint and
   progressive hydration.
 - **Real-time data** backed by SurrealDB 2.x with automatic connection
   retry and migrations under `migrations/`.
 - **Markdown with math**: KaTeX rendering for technical posts.
-- **Responsive styling** through TailwindCSS v4 (`@tailwindcss/cli`)
-  with a typography plugin for long-form content.
+- **Editorial design system**: TailwindCSS v4 `@theme` block defines
+  every color, typeface, and spacing token in one place. Direction D
+  (Dual-Mode Editorial Engineer). See [`docs/design-system.md`](docs/design-system.md).
+- **Light and dark themes** with no FOUC: a pre-paint script in `<head>`
+  reads `localStorage` then `prefers-color-scheme` before the
+  stylesheet loads.
+- **Three-family type stack**: Fraunces (display serif), Inter
+  (variable sans, custom 470 weight), JetBrains Mono (code and meta).
 - **WebAssembly frontend** compiled by `cargo-leptos`; the client bundle
   ships as gzipped WASM.
 - **Automated security scanning**: Gitleaks, Semgrep, and TruffleHog
@@ -74,13 +80,34 @@ graph LR
 ### Core components
 
 - **`frontend/`**: Leptos client compiled to WASM.
-- **`app/`**: shared component library and routing.
+- **`app/`**: shared component library and routing. Routes live at
+  `app/src/{home,post,archive,notes,references,about,colophon,contact}.rs`;
+  reusable UI lives in `app/src/components/`.
 - **`server/`**: Axum application handling SSR, API routes, and
-  database access.
+  database access. Includes RSS, Atom, sitemap, raw-markdown, and
+  random-stumble handlers in `server/src/utils.rs`.
 - **`markdown/`**: Markdown pipeline with KaTeX math support.
 - **`shared_utils/`**: cross-crate helpers and types.
 - **Build system**: `cargo-leptos` for dev/hot-reload and
   `cargo-make` (`Makefile.toml`) for CI and release orchestration.
+
+### Routes
+
+| Path | Purpose |
+|---|---|
+| `/` | Home: featured and recent posts, notes strip, tag filter |
+| `/post/:slug` | Reading page with in-flow TOC, canonical, and JSON-LD |
+| `/post/:slug/raw.md` | Raw markdown alternate per post |
+| `/archive` | Year-grouped chronological archive (supports `?tag=`) |
+| `/notes` | Microblog stream (replaces legacy `/activity`) |
+| `/references` | Project portfolio with mono ▰▱ tech-stack bars |
+| `/about` | Bio, links, colophon link, JSON-LD Person |
+| `/colophon` | Stack, fonts, source, license |
+| `/contact` | Contact form |
+| `/random` | "Stumble": 302 to a random published post |
+| `/feed/feed.xml` | Atom 1.0 |
+| `/feed/rss.xml` | RSS 2.0 |
+| `/sitemap.xml` | XML sitemap |
 
 ## Development
 
@@ -150,7 +177,7 @@ operational runbooks, and troubleshooting.
   models.
 - [Development Workflow](wiki/Development-Workflow.md): local setup,
   testing, and common `make` targets.
-- [Deployment Guide](DEPLOYMENT.md): DigitalOcean + Caddy production
+- [Deployment Guide](DEPLOYMENT.md): DigitalOcean and Caddy production
   setup.
 - [Security Guide](wiki/Security-Guide.md): hardening practices and
   scanning pipeline.
@@ -199,13 +226,13 @@ security reports.**
 Measured targets for production (`alexthola.com`):
 
 - **First Contentful Paint**: ~200 ms
-- **WASM bundle size**: ~1.6 MB gzipped (8.3 MB raw); `wasm-opt` is
+- **WASM bundle size**: ~1.6 MB gzipped (8.3 MB raw). `wasm-opt` is
   currently disabled in `frontend/Cargo.toml`, so the artifact is the
   unminified `wasm-release` profile output.
 - **Database query latency**: <50 ms for typical operations
 - **Memory footprint**: <50 MB resident
 
-These are operational targets rather than guaranteed SLAs; regressions
+These are operational targets rather than guaranteed SLAs. Regressions
 are flagged by CI integration tests before deploy.
 
 ## Roadmap

@@ -19,7 +19,7 @@ pub fn component() -> impl IntoView {
             .rel("noopener noreferrer")
             .target("_blank")
             .aria_label("GitHub")
-            .class("transition-all text-white duration-500 size-6 hover:text-[#ffef5c]")
+            .class("transition-all text-ink duration-500 size-6 hover:text-accent")
             .child(
                 span().class("size-6").child(
                     view! {
@@ -33,7 +33,7 @@ pub fn component() -> impl IntoView {
             .rel("noopener noreferrer")
             .target("_blank")
             .aria_label("X")
-            .class("transition-all text-white duration-500 size-6 hover:text-[#ffef5c]")
+            .class("transition-all text-ink duration-500 size-6 hover:text-accent")
             .child(
                 span().class("size-6").child(
                     view! {
@@ -47,7 +47,7 @@ pub fn component() -> impl IntoView {
             .rel("noopener noreferrer")
             .target("_blank")
             .aria_label("LinkedIn")
-            .class("transition-all text-white duration-500 size-6 hover:text-[#ffef5c]")
+            .class("transition-all text-ink duration-500 size-6 hover:text-accent")
             .child(
                 span().class("size-6").child(
                     view! {
@@ -57,11 +57,11 @@ pub fn component() -> impl IntoView {
                     }
                 ),
             ),
-        a().href("/rss.xml")
+        a().href("/feed/rss.xml")
             .rel("noopener noreferrer")
             .target("_blank")
             .aria_label("rss")
-            .class("transition-all text-white duration-500 size-6 hover:text-[#ffef5c]")
+            .class("transition-all text-ink duration-500 size-6 hover:text-accent")
             .child(
                 span().class("size-6").child(
                     view! {

@@ -8,6 +8,11 @@
 //!
 //! All database operations are wrapped with a retry mechanism to enhance resilience.
 
+// Suppresses the `leptos::server_fn::error::NoCustomError` deprecation, used
+// pervasively here via `ServerFnError::<NoCustomError>::ServerError(..)`, the
+// idiomatic error type for leptos 0.8 server functions. server_fn 0.9 removes
+// the `WrappedServerError` variant; drop this allow during the leptos 0.9
+// upgrade and migrate to the new custom-error API.
 #![allow(deprecated)]
 
 extern crate alloc;
@@ -19,61 +24,25 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "ssr")]
 use leptos::server_fn::error::NoCustomError;
 #[cfg(feature = "ssr")]
-use shared_utils::{RetryConfig, retry_async};
-#[cfg(feature = "ssr")]
-use std::time::Duration;
-#[cfg(feature = "ssr")]
-use tokio_retry::{Retry, strategy::ExponentialBackoff};
+use shared_utils::{
+    RetryConfig, is_valid_email, is_valid_slug, is_valid_tag, retry_async, sanitize_html,
+};
 
 #[cfg(feature = "ssr")]
 use crate::types::Activity;
 use crate::types::{Post, Reference};
-#[cfg(feature = "ssr")]
-use surrealdb::RecordId;
 
 #[cfg(any(feature = "ssr", test))]
 const ACTIVITIES_PER_PAGE: usize = 10;
 
-/// Validates that a slug contains only safe characters for use in database queries.
-///
-/// Valid slugs contain only alphanumeric characters, hyphens, and underscores.
-/// This prevents potential injection attacks when interpolating slugs into queries.
-///
-/// # Arguments
-///
-/// * `slug` - The slug string to validate.
-///
-/// # Returns
-///
-/// `true` if the slug is safe, `false` otherwise.
-#[cfg(any(feature = "ssr", test))]
-fn is_valid_slug(slug: &str) -> bool {
-    !slug.is_empty()
-        && slug.len() <= 200
-        && slug
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-}
-
-/// Validates that a tag contains only safe characters for use in database queries.
-///
-/// Valid tags contain only alphanumeric characters, hyphens, underscores, and spaces.
-///
-/// # Arguments
-///
-/// * `tag` - The tag string to validate.
-///
-/// # Returns
-///
-/// `true` if the tag is safe, `false` otherwise.
+/// Maximum slug length accepted before a database lookup (matches the
+/// canonical limit enforced by `server::validation::validate_slug`).
 #[cfg(feature = "ssr")]
-fn is_valid_tag(tag: &str) -> bool {
-    !tag.is_empty()
-        && tag.len() <= 100
-        && tag
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == ' ')
-}
+const MAX_SLUG_LEN: usize = 200;
+
+/// Maximum tag length accepted before a database lookup.
+#[cfg(feature = "ssr")]
+const MAX_TAG_LEN: usize = 100;
 
 /// Fetches a list of blog posts from the database.
 ///
@@ -115,7 +84,7 @@ pub async fn select_posts(
     } else {
         // Validate all tags as secondary defense layer
         for tag in &tags {
-            if !is_valid_tag(tag) {
+            if !is_valid_tag(tag, MAX_TAG_LEN) {
                 return Err(ServerFnError::<NoCustomError>::ServerError(format!(
                     "Invalid tag format: '{}'",
                     tag.chars().take(50).collect::<String>()
@@ -123,12 +92,11 @@ pub async fn select_posts(
             }
         }
         // Use parameterized query with array binding
-        let tags_param = tags.clone();
         let mut query = retry_async("select_posts", RetryConfig::default(), || {
-            let t = tags_param.clone();
+            let tags = tags.clone();
             async move {
                 db.query("SELECT *, author.* FROM post WHERE tags CONTAINSANY $tags ORDER BY created_at DESC")
-                    .bind(("tags", t))
+                    .bind(("tags", tags))
                     .await
             }
         })
@@ -211,7 +179,7 @@ pub async fn select_post(slug: String) -> Result<Post, ServerFnError> {
     let db = db.as_ref();
 
     // Validate slug format as secondary defense layer
-    if !is_valid_slug(&slug) {
+    if !is_valid_slug(&slug, MAX_SLUG_LEN) {
         return Err(ServerFnError::<NoCustomError>::ServerError(format!(
             "Invalid slug format: '{}'",
             slug.chars().take(50).collect::<String>()
@@ -219,12 +187,11 @@ pub async fn select_post(slug: String) -> Result<Post, ServerFnError> {
     }
 
     // Use parameterized query to prevent SQL injection
-    let slug_param = slug.clone();
     let mut query = retry_async("select_post", RetryConfig::default(), || {
-        let s = slug_param.clone();
+        let slug = slug.clone();
         async move {
             db.query("SELECT *, author.* FROM post WHERE slug = $slug")
-                .bind(("slug", s))
+                .bind(("slug", slug))
                 .await
         }
     })
@@ -269,7 +236,7 @@ pub async fn increment_views(id: String) -> Result<(), ServerFnError> {
     let db = db.as_ref();
 
     // Validate id format as secondary defense layer
-    if !is_valid_slug(&id) {
+    if !is_valid_slug(&id, MAX_SLUG_LEN) {
         return Err(ServerFnError::<NoCustomError>::ServerError(format!(
             "Invalid post id format: '{}'",
             id.chars().take(50).collect::<String>()
@@ -278,12 +245,11 @@ pub async fn increment_views(id: String) -> Result<(), ServerFnError> {
 
     // Use parameterized query to prevent SQL injection
     // SurrealDB record ID syntax: type:id (e.g., post:abc123)
-    let id_param = id.clone();
     retry_async("increment_views", RetryConfig::default(), || {
-        let i = id_param.clone();
+        let id = id.clone();
         async move {
             db.query("UPDATE type::thing('post', $id) SET total_views = total_views + 1")
-                .bind(("id", i))
+                .bind(("id", id))
                 .await
         }
     })
@@ -311,41 +277,32 @@ pub struct ContactRequest {
     pub website: Option<String>,
 }
 
-/// Sanitizes a string by escaping HTML entities to prevent XSS attacks.
+/// Validates a contact-form email address, returning its normalized (trimmed,
+/// lowercased) form.
 ///
-/// This function replaces dangerous HTML characters with their entity equivalents.
-#[cfg(feature = "ssr")]
-fn sanitize_html(input: &str) -> String {
-    let mut result = String::with_capacity(input.len());
-    for c in input.chars() {
-        match c {
-            '&' => result.push_str("&amp;"),
-            '<' => result.push_str("&lt;"),
-            '>' => result.push_str("&gt;"),
-            '"' => result.push_str("&quot;"),
-            '\'' => result.push_str("&#x27;"),
-            '/' => result.push_str("&#x2F;"),
-            '`' => result.push_str("&#x60;"),
-            _ => result.push(c),
-        }
-    }
-    result
-}
-
-/// Validates an email address format (basic validation).
+/// Delegates to the canonical [`is_valid_email`] rule so the contact form, the
+/// highest-risk user input point, is validated no more weakly than
+/// `server::validation::validate_email`.
 #[cfg(feature = "ssr")]
 fn validate_contact_email(input: &str) -> Result<String, String> {
-    let trimmed = input.trim();
-    if trimmed.is_empty() {
-        return Err("Email cannot be empty".to_string());
-    }
-    if trimmed.len() > 254 {
-        return Err("Email too long".to_string());
-    }
-    if !trimmed.contains('@') || !trimmed.contains('.') {
+    if !is_valid_email(input) {
         return Err("Invalid email format".to_string());
     }
-    Ok(trimmed.to_lowercase())
+    Ok(input.trim().to_lowercase())
+}
+
+/// Sanitizes a required contact-form field: trims, HTML-escapes, and enforces
+/// non-empty plus a maximum length. `field` labels the field in error messages.
+#[cfg(feature = "ssr")]
+fn sanitize_required_field(value: &str, field: &str, max_len: usize) -> Result<String, String> {
+    let sanitized = sanitize_html(value.trim());
+    if sanitized.is_empty() {
+        return Err(format!("{field} cannot be empty"));
+    }
+    if sanitized.len() > max_len {
+        return Err(format!("{field} too long (max {max_len} characters)"));
+    }
+    Ok(sanitized)
 }
 
 /// Handles contact form submissions by sending an email.
@@ -392,41 +349,12 @@ pub async fn contact(data: ContactRequest) -> Result<(), ServerFnError> {
     let validated_email =
         validate_contact_email(&data.email).map_err(ServerFnError::<NoCustomError>::ServerError)?;
 
-    let sanitized_name = sanitize_html(data.name.trim());
-    if sanitized_name.is_empty() {
-        return Err(ServerFnError::<NoCustomError>::ServerError(
-            "Name cannot be empty".to_string(),
-        ));
-    }
-    if sanitized_name.len() > 100 {
-        return Err(ServerFnError::<NoCustomError>::ServerError(
-            "Name too long (max 100 characters)".to_string(),
-        ));
-    }
-
-    let sanitized_subject = sanitize_html(data.subject.trim());
-    if sanitized_subject.is_empty() {
-        return Err(ServerFnError::<NoCustomError>::ServerError(
-            "Subject cannot be empty".to_string(),
-        ));
-    }
-    if sanitized_subject.len() > 200 {
-        return Err(ServerFnError::<NoCustomError>::ServerError(
-            "Subject too long (max 200 characters)".to_string(),
-        ));
-    }
-
-    let sanitized_message = sanitize_html(data.message.trim());
-    if sanitized_message.is_empty() {
-        return Err(ServerFnError::<NoCustomError>::ServerError(
-            "Message cannot be empty".to_string(),
-        ));
-    }
-    if sanitized_message.len() > 5000 {
-        return Err(ServerFnError::<NoCustomError>::ServerError(
-            "Message too long (max 5000 characters)".to_string(),
-        ));
-    }
+    let sanitized_name = sanitize_required_field(&data.name, "Name", 100)
+        .map_err(ServerFnError::<NoCustomError>::ServerError)?;
+    let sanitized_subject = sanitize_required_field(&data.subject, "Subject", 200)
+        .map_err(ServerFnError::<NoCustomError>::ServerError)?;
+    let sanitized_message = sanitize_required_field(&data.message, "Message", 5000)
+        .map_err(ServerFnError::<NoCustomError>::ServerError)?;
 
     let mailer = AsyncSmtpTransport::<Tokio1Executor>::relay(&env::var("SMTP_HOST")?)?
         .credentials(Credentials::new(
@@ -448,27 +376,15 @@ pub async fn contact(data: ContactRequest) -> Result<(), ServerFnError> {
         .header(ContentType::TEXT_PLAIN)
         .body(email_body)?;
 
-    // Configure email sending with exponential backoff for resilience.
-    let retry_strategy = ExponentialBackoff::from_millis(200)
-        .max_delay(Duration::from_secs(10))
-        .take(3); // Attempt email delivery up to 3 times.
-
-    match Retry::spawn(retry_strategy, || async {
-        match mailer.send(email.clone()).await {
-            Ok(response) => {
-                tracing::info!("Email sent successfully: {response:?}");
-                Ok(())
-            }
-            Err(email_err) => {
-                tracing::warn!("Failed to send email, retrying: {email_err:?}");
-                Err(email_err)
-            }
-        }
+    // Send the email with exponential backoff (200ms base, 10s cap, 3 attempts),
+    // sharing the same retry/logging path as every database operation.
+    match retry_async("contact_email", RetryConfig::new(200, 10, 3), || async {
+        mailer.send(email.clone()).await
     })
     .await
     {
-        Ok(_) => {
-            tracing::info!("Email sent successfully with retries");
+        Ok(response) => {
+            tracing::info!("Email sent successfully: {response:?}");
             Ok(())
         }
         Err(email_err) => {
@@ -524,6 +440,54 @@ pub struct Pagination {
 ///
 /// A `Result` indicating success (`()`) or a `ServerFnError` on failure
 /// (e.g., database error, serialization failure).
+///
+/// Inserts an `Activity` record using SurrealDB's native API.
+///
+/// Generic over the connection type so the same insert logic serves both the
+/// production `Surreal<Client>` path and the in-memory `Surreal<Any>` used in
+/// tests. When `activity.id` is set it is converted to a `RecordId` and used as
+/// the record key; otherwise the record is created in the `activity` table.
+#[cfg(feature = "ssr")]
+async fn insert_activity<C: surrealdb::Connection>(
+    db: &surrealdb::Surreal<C>,
+    activity: Activity,
+) -> Result<(), Box<surrealdb::Error>> {
+    let _: Option<Activity> = if let Some(id) = activity.id.clone() {
+        // The id is specified in the create call, so drop it from the content.
+        let mut content_activity = activity.clone();
+        content_activity.id = None;
+
+        db.create::<Option<Activity>>(id)
+            .content(content_activity)
+            .await
+            .map_err(Box::new)?
+    } else {
+        db.create::<Option<Activity>>("activity")
+            .content(activity)
+            .await
+            .map_err(Box::new)?
+    };
+    Ok(())
+}
+
+/// Fetches one page of activity records, newest first. Shared by the
+/// `select_activities` server function and its test harness so the query string
+/// and bindings live in exactly one place (mirrors `insert_activity`).
+#[cfg(any(feature = "ssr", test))]
+async fn query_activities_page<C: surrealdb::Connection>(
+    db: &surrealdb::Surreal<C>,
+    page: usize,
+) -> Result<Vec<Activity>, Box<surrealdb::Error>> {
+    let start = page * ACTIVITIES_PER_PAGE;
+    db.query("SELECT * FROM activity ORDER BY created_at DESC LIMIT $limit START $start")
+        .bind(("limit", ACTIVITIES_PER_PAGE))
+        .bind(("start", start))
+        .await
+        .map_err(Box::new)?
+        .take(0)
+        .map_err(Box::new)
+}
+
 #[server(prefix = "/api/activities", endpoint = "create")]
 pub async fn create_activity(
     api_key: String,
@@ -543,30 +507,11 @@ pub async fn create_activity(
     let AppState { db, .. } = expect_context::<AppState>();
     let db = db.as_ref();
 
-    // Use SurrealDB's native API for creating records
     let create_result: Result<(), String> =
         retry_async("create_activity", RetryConfig::default(), || async {
-            let _: Option<Activity> = if let Some(id) = activity.id.clone() {
-                // Convert Thing to RecordId
-                // Note: We need to remove the id field from content since we're specifying it in the create call
-                let mut content_activity = activity.clone();
-                content_activity.id = None;
-
-                // Convert Thing to RecordId by extracting table and id
-                let table: &str = &id.tb;
-                let id_str = id.id.to_string();
-                let record_id = RecordId::from((table, id_str.as_str()));
-                db.create::<Option<Activity>>(record_id)
-                    .content(content_activity)
-                    .await
-                    .map_err(|e| e.to_string())?
-            } else {
-                db.create::<Option<Activity>>("activity")
-                    .content(activity.clone())
-                    .await
-                    .map_err(|e| e.to_string())?
-            };
-            Ok(())
+            insert_activity(db, activity.clone())
+                .await
+                .map_err(|e| e.to_string())
         })
         .await;
 
@@ -601,23 +546,11 @@ pub async fn select_activities(
     let AppState { db, .. } = expect_context::<AppState>();
     let db = db.as_ref();
 
-    // Use SurrealDB's native API for selecting records
-    let start = page * ACTIVITIES_PER_PAGE;
     let activities: Vec<Activity> =
         retry_async("select_activities", RetryConfig::default(), || async {
-            let result: Vec<Activity> = db
-                .query("SELECT * FROM activity ORDER BY created_at DESC LIMIT $limit START $start")
-                .bind(("limit", ACTIVITIES_PER_PAGE))
-                .bind(("start", start))
-                .await
-                .map_err(|e| {
-                    ServerFnError::<NoCustomError>::ServerError(format!("Database error: {e}"))
-                })?
-                .take(0)
-                .map_err(|e| {
-                    ServerFnError::<NoCustomError>::ServerError(format!("Query error: {e}"))
-                })?;
-            Ok::<_, ServerFnError>(result)
+            query_activities_page(db, page).await.map_err(|e| {
+                ServerFnError::<NoCustomError>::ServerError(format!("Database error: {e}"))
+            })
         })
         .await
         .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Database error: {e}")))?;
@@ -634,52 +567,12 @@ mod tests {
     #[cfg(feature = "ssr")]
     use surrealdb::engine::any::Any;
     #[cfg(feature = "ssr")]
-    use surrealdb::sql::Thing;
+    use surrealdb::types::RecordId;
     #[cfg(feature = "ssr")]
     use tokio_test::block_on;
 
-    // === Input Validation Tests ===
-
-    /// Verifies that `is_valid_slug` accepts valid slugs.
-    #[test]
-    fn test_is_valid_slug_accepts_valid() {
-        assert!(is_valid_slug("hello-world"));
-        assert!(is_valid_slug("my_post_123"));
-        assert!(is_valid_slug("PostTitle"));
-        assert!(is_valid_slug("a"));
-        assert!(is_valid_slug("123"));
-    }
-
-    /// Verifies that `is_valid_slug` rejects invalid slugs.
-    #[test]
-    fn test_is_valid_slug_rejects_invalid() {
-        assert!(!is_valid_slug(""));
-        assert!(!is_valid_slug("hello world")); // spaces
-        assert!(!is_valid_slug("hello\"world")); // quotes
-        assert!(!is_valid_slug("hello'world")); // single quotes
-        assert!(!is_valid_slug("hello;world")); // semicolon
-        assert!(!is_valid_slug("hello\nworld")); // newline
-        assert!(!is_valid_slug(&"a".repeat(201))); // too long
-    }
-
-    /// Verifies that `is_valid_tag` accepts valid tags.
-    #[test]
-    fn test_is_valid_tag_accepts_valid() {
-        assert!(is_valid_tag("rust"));
-        assert!(is_valid_tag("web-dev"));
-        assert!(is_valid_tag("programming_tips"));
-        assert!(is_valid_tag("machine learning")); // spaces allowed in tags
-    }
-
-    /// Verifies that `is_valid_tag` rejects invalid tags.
-    #[test]
-    fn test_is_valid_tag_rejects_invalid() {
-        assert!(!is_valid_tag(""));
-        assert!(!is_valid_tag("tag\"injection")); // quotes
-        assert!(!is_valid_tag("tag;drop")); // semicolon
-        assert!(!is_valid_tag("tag\ttab")); // tab
-        assert!(!is_valid_tag(&"a".repeat(101))); // too long
-    }
+    // Slug/tag/email validation rules are unit-tested in the `shared_utils`
+    // crate, the canonical home for those helpers.
 
     /// Verifies the default state of a `ContactRequest`.
     #[test]
@@ -710,40 +603,6 @@ mod tests {
         assert_eq!(request.email, deserialized.email);
         assert_eq!(request.subject, deserialized.subject);
         assert_eq!(request.message, deserialized.message);
-    }
-    /// Validates the exponential backoff retry configuration for email sending.
-    #[cfg(feature = "ssr")]
-    #[test]
-    fn test_email_retry_config() {
-        use std::time::Duration;
-        use tokio_retry::strategy::ExponentialBackoff;
-
-        // Ensure the `contact` function signature is stable.
-        let _: fn(ContactRequest) -> _ = contact;
-
-        let retry_strategy = ExponentialBackoff::from_millis(200)
-            .max_delay(Duration::from_secs(10))
-            .take(3);
-        let delays: Vec<_> = retry_strategy.collect();
-
-        // Verify the number of retry attempts.
-        assert_eq!(delays.len(), 3);
-        // Check initial delay.
-        assert!(delays[0] >= Duration::from_millis(180) && delays[0] <= Duration::from_millis(220));
-    }
-
-    /// Verifies that all server function endpoints retain their correct signatures.
-    /// This ensures API contracts remain stable despite internal retry implementations.
-    #[test]
-    fn test_server_fn_signatures() {
-        let _: fn(Vec<String>) -> _ = select_posts;
-        let _: fn() -> _ = select_tags;
-        let _: fn(String) -> _ = select_post;
-        let _: fn(String) -> _ = increment_views;
-        let _: fn(ContactRequest) -> _ = contact;
-        let _: fn() -> _ = select_references;
-        let _: fn(String, Activity) -> _ = create_activity;
-        let _: fn(usize) -> _ = select_activities;
     }
     #[test]
     /// Confirms the default values of the `Activity` struct.
@@ -784,8 +643,6 @@ mod tests {
     /// Tests the `create_activity` function's existence and serialization capabilities.
     fn test_create_activity_basics() {
         block_on(async {
-            let _: fn(String, Activity) -> _ = create_activity; // Check signature
-
             let activity = Activity {
                 content: "Test activity content".to_string(),
                 tags: vec!["test".to_string()],
@@ -795,23 +652,6 @@ mod tests {
             let serialized = serde_json::to_string(&activity).unwrap();
             assert!(!serialized.is_empty());
             assert!(serialized.contains("Test activity content"));
-        });
-    }
-    #[cfg(feature = "ssr")]
-    #[test]
-    /// Tests `select_activities` function's existence and pagination logic.
-    fn test_select_activities_pagination_logic() {
-        block_on(async {
-            let _: fn(usize) -> _ = select_activities; // Check signature
-
-            let page = 0;
-            let activities_per_page = 10;
-            let start = page * activities_per_page;
-            assert_eq!(start, 0);
-
-            let page = 1;
-            let start = page * activities_per_page;
-            assert_eq!(start, 10);
         });
     }
     #[test]
@@ -862,21 +702,6 @@ mod tests {
         }
     }
     #[test]
-    /// Confirms that pagination parameters are handled correctly.
-    fn test_activity_pagination_params() {
-        let test_pages = vec![0, 1, 5, 10];
-        for page in test_pages {
-            let start = page * ACTIVITIES_PER_PAGE;
-            assert!(start >= ACTIVITIES_PER_PAGE * page);
-        }
-    }
-    #[test]
-    /// Verifies the integrity of activity server function signatures.
-    fn test_activity_endpoint_signatures() {
-        let _: fn(String, Activity) -> _ = create_activity;
-        let _: fn(usize) -> _ = select_activities;
-    }
-    #[test]
     /// Tests error handling for invalid activity data deserialization.
     fn test_activity_error_deserialization() {
         let invalid_activity_json = serde_json::json!({
@@ -889,26 +714,6 @@ mod tests {
             result.is_err(),
             "Invalid activity data should fail deserialization"
         );
-    }
-    #[cfg(feature = "ssr")]
-    #[test]
-    /// Confirms activity server functions are registered and have expected signatures.
-    fn test_activity_server_fn_registration() {
-        block_on(async {
-            let _: fn(String, Activity) -> _ = create_activity;
-        });
-    }
-    #[test]
-    /// Tests the port calculation logic used in integration tests.
-    fn test_port_calculation() {
-        let base_port = 3007;
-        let test_port = 3030;
-        let expected_db_port = 8000 + (test_port - base_port);
-        assert_eq!(expected_db_port, 8023);
-
-        let min_port = 3007;
-        let min_db_port = 8000 + (min_port - base_port);
-        assert_eq!(min_db_port, 8000);
     }
     #[test]
     /// Verifies the expected JSON response format for activities.
@@ -930,36 +735,6 @@ mod tests {
             Some("https://example.com".to_string())
         );
     }
-    #[test]
-    /// Tests the URL construction logic for activity endpoints.
-    fn test_activity_endpoint_url_construction() {
-        let base_url = "http://127.0.0.1:3030";
-        let page = 0;
-
-        let create_url = format!("{}/api/activities/create", base_url);
-        let fetch_url = format!("{}/api/activities?page={page}", base_url);
-
-        assert_eq!(create_url, "http://127.0.0.1:3030/api/activities/create");
-        assert_eq!(fetch_url, "http://127.0.0.1:3030/api/activities?page=0");
-
-        for page in 0..=5 {
-            let url = format!("{}/api/activities?page={page}", base_url);
-            assert!(url.contains(&format!("page={page}")));
-        }
-    }
-    #[test]
-    /// Verifies expected HTTP status codes for activity-related operations.
-    fn test_activity_status_code_expectations() {
-        use http::StatusCode;
-
-        assert_eq!(StatusCode::CREATED, 201);
-        assert_eq!(StatusCode::OK, 200);
-
-        assert!(StatusCode::CREATED.is_success());
-        assert!(StatusCode::OK.is_success());
-        assert!(!StatusCode::BAD_REQUEST.is_success());
-    }
-
     // === Activity Integration Tests (Mock Database) ===
 
     /// Sets up a mock SurrealDB instance for testing.
@@ -967,61 +742,37 @@ mod tests {
         let db: Surreal<Any> = Surreal::init();
         db.connect("memory").await.unwrap();
         db.use_ns("test").use_db("test").await.unwrap();
+        // surrealdb 3.x errors on SELECT from a table that was never defined,
+        // whereas 2.x returned an empty set. Production defines `activity` via
+        // migrations/0004_add_activity_table.surql, so mirror that here so the
+        // mock reflects the real schema (SCHEMALESS keeps the fixture light).
+        db.query("DEFINE TABLE IF NOT EXISTS activity SCHEMALESS")
+            .await
+            .unwrap();
         db
     }
 
-    /// Helper to create an activity in the mock database.
+    /// Helper to create an activity in the mock database. Delegates to the same
+    /// `insert_activity` used by the production `create_activity` server function.
     async fn create_activity_in_db(
         db: &Surreal<Any>,
         activity: Activity,
     ) -> Result<(), ServerFnError> {
-        // Use SurrealDB's native API for creating records
-        let _: Option<Activity> = if let Some(id) = activity.id.clone() {
-            // Convert Thing to RecordId
-            // Note: We need to remove the id field from content since we're specifying it in the create call
-            let mut content_activity = activity.clone();
-            content_activity.id = None;
-
-            // Use the SurrealDB RecordId directly with explicit type annotation
-            // Convert Thing to RecordId by extracting table and id
-            let table: &str = &id.tb;
-            let id_str = id.id.to_string();
-            let record_id = RecordId::from((table, id_str.as_str()));
-            db.create::<Option<Activity>>(record_id)
-                .content(content_activity)
-                .await
-                .map_err(|e| {
-                    ServerFnError::<NoCustomError>::ServerError(format!("Create error: {e}"))
-                })?
-        } else {
-            db.create::<Option<Activity>>("activity")
-                .content(activity)
-                .await
-                .map_err(|e| {
-                    ServerFnError::<NoCustomError>::ServerError(format!("Create error: {e}"))
-                })?
-        };
-        Ok(())
+        insert_activity(db, activity)
+            .await
+            .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Create error: {e}")))
     }
 
-    /// Helper to select activities from the mock database.
+    /// Helper to select activities from the mock database. Delegates to the same
+    /// `query_activities_page` used by the production `select_activities` server
+    /// function so the query and bindings are exercised by these tests.
     async fn select_activities_from_db(
         db: &Surreal<Any>,
         page: usize,
     ) -> Result<Vec<Activity>, ServerFnError> {
-        // Use SurrealDB's native API for selecting records
-        let start = page * ACTIVITIES_PER_PAGE;
-        let activities: Vec<Activity> = db
-            .query("SELECT * FROM activity ORDER BY created_at DESC LIMIT $limit START $start")
-            .bind(("limit", ACTIVITIES_PER_PAGE))
-            .bind(("start", start))
+        query_activities_page(db, page)
             .await
-            .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {e}")))?
-            .take(0)
-            .map_err(|e| {
-                ServerFnError::<NoCustomError>::ServerError(format!("Query result error: {e}"))
-            })?;
-        Ok(activities)
+            .map_err(|e| ServerFnError::<NoCustomError>::ServerError(format!("Query error: {e}")))
     }
 
     /// Helper to fetch a specific activity by its ID from the mock database.
@@ -1035,7 +786,7 @@ mod tests {
     async fn test_create_activity_mock_db() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Some(Thing::from(("activity", "test_id"))),
+            id: Some(RecordId::new("activity", "test_id")),
             content: "This is a test activity".to_string(),
             created_at: "2023-01-01T12:00:00Z".to_string(),
             ..Default::default()
@@ -1055,7 +806,7 @@ mod tests {
     async fn test_create_activity_with_tags_mock_db() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Some(Thing::from(("activity", "tagged_activity"))),
+            id: Some(RecordId::new("activity", "tagged_activity")),
             content: "Activity with tags".to_string(),
             tags: vec!["rust".to_string(), "testing".to_string(), "tdd".to_string()],
             created_at: "2023-01-01T12:00:00Z".to_string(),
@@ -1077,7 +828,7 @@ mod tests {
     async fn test_create_activity_with_source_mock_db() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Some(Thing::from(("activity", "sourced_activity"))),
+            id: Some(RecordId::new("activity", "sourced_activity")),
             content: "Activity with source".to_string(),
             source: Some("https://github.com/rust-lang/rust".to_string()),
             created_at: "2023-01-01T12:00:00Z".to_string(),
@@ -1102,7 +853,7 @@ mod tests {
     async fn test_create_activity_empty_content_mock_db() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Some(Thing::from(("activity", "empty_content"))),
+            id: Some(RecordId::new("activity", "empty_content")),
             content: "".to_string(),
             created_at: "2023-01-01T12:00:00Z".to_string(),
             ..Default::default()
@@ -1122,7 +873,7 @@ mod tests {
     async fn test_create_activity_long_content_mock_db() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Some(Thing::from(("activity", "long_content"))),
+            id: Some(RecordId::new("activity", "long_content")),
             content: "a".repeat(10000),
             created_at: "2023-01-01T12:00:00Z".to_string(),
             ..Default::default()
@@ -1144,7 +895,7 @@ mod tests {
         let db = setup_mock_db().await;
         let special_content = "Special chars: áéíóú ñ ¿¡ 🚀 \n\t\r\"'\\";
         let activity = Activity {
-            id: Some(Thing::from(("activity", "special_chars"))),
+            id: Some(RecordId::new("activity", "special_chars")),
             content: special_content.to_string(),
             tags: vec!["español".to_string(), "unicode".to_string()],
             created_at: "2023-01-01T12:00:00Z".to_string(),
@@ -1169,7 +920,7 @@ mod tests {
     async fn test_create_activity_unicode_tags_mock_db() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Some(Thing::from(("activity", "unicode_tags"))),
+            id: Some(RecordId::new("activity", "unicode_tags")),
             content: "Unicode tags test".to_string(),
             tags: vec![
                 "中文".to_string(),
@@ -1201,7 +952,7 @@ mod tests {
     async fn test_create_activity_empty_tags_mock_db() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Some(Thing::from(("activity", "empty_tags"))),
+            id: Some(RecordId::new("activity", "empty_tags")),
             content: "Empty tags test".to_string(),
             tags: Vec::new(),
             created_at: "2023-01-01T12:00:00Z".to_string(),
@@ -1222,7 +973,7 @@ mod tests {
     async fn test_create_activity_invalid_source_url_mock_db() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Some(Thing::from(("activity", "invalid_url"))),
+            id: Some(RecordId::new("activity", "invalid_url")),
             content: "Invalid URL test".to_string(),
             source: Some("not-a-valid-url".to_string()),
             created_at: "2023-01-01T12:00:00Z".to_string(),
@@ -1244,20 +995,20 @@ mod tests {
         let db = setup_mock_db().await;
         let activities = vec![
             Activity {
-                id: Some(Thing::from(("activity", "multi_1"))),
+                id: Some(RecordId::new("activity", "multi_1")),
                 content: "First activity".to_string(),
                 created_at: "2023-01-01T12:00:00Z".to_string(),
                 ..Default::default()
             },
             Activity {
-                id: Some(Thing::from(("activity", "multi_2"))),
+                id: Some(RecordId::new("activity", "multi_2")),
                 content: "Second activity".to_string(),
                 tags: vec!["test".to_string()],
                 created_at: "2023-01-01T12:01:00Z".to_string(),
                 ..Default::default()
             },
             Activity {
-                id: Some(Thing::from(("activity", "multi_3"))),
+                id: Some(RecordId::new("activity", "multi_3")),
                 content: "Third activity".to_string(),
                 source: Some("https://example.com".to_string()),
                 created_at: "2023-01-01T12:02:00Z".to_string(),
@@ -1285,7 +1036,7 @@ mod tests {
         let db = setup_mock_db().await;
         for i in 0..5 {
             let activity = Activity {
-                id: Some(Thing::from(("activity", format!("test_id_{i}").as_str()))),
+                id: Some(RecordId::new("activity", format!("test_id_{i}").as_str())),
                 content: format!("Activity {i}"),
                 created_at: format!("2023-01-01T12:00:0{i}Z"),
                 ..Default::default()
@@ -1304,7 +1055,7 @@ mod tests {
         let db = setup_mock_db().await;
         for i in 0..25 {
             let activity = Activity {
-                id: Some(Thing::from(("activity", format!("page_test_{i}").as_str()))),
+                id: Some(RecordId::new("activity", format!("page_test_{i}").as_str())),
                 content: format!("Page test activity {i}"),
                 created_at: format!("2023-01-01T12:{i:02}:00Z"),
                 ..Default::default()
@@ -1340,10 +1091,10 @@ mod tests {
 
         for (timestamp, content) in activities_data {
             let activity = Activity {
-                id: Some(Thing::from((
+                id: Some(RecordId::new(
                     "activity",
                     content.replace(" ", "_").to_lowercase().as_str(),
-                ))),
+                )),
                 content: content.to_string(),
                 created_at: timestamp.to_string(),
                 ..Default::default()
@@ -1371,7 +1122,7 @@ mod tests {
 
         for (id, content) in activities_data {
             let activity = Activity {
-                id: Some(Thing::from(("activity", id))),
+                id: Some(RecordId::new("activity", id)),
                 content: content.to_string(),
                 created_at: same_timestamp.to_string(),
                 ..Default::default()
@@ -1414,7 +1165,7 @@ mod tests {
 
         for (id, content) in activities_data {
             let activity = Activity {
-                id: Some(Thing::from(("activity", id))),
+                id: Some(RecordId::new("activity", id)),
                 content,
                 created_at: "2023-01-01T12:00:00Z".to_string(),
                 ..Default::default()
@@ -1441,28 +1192,28 @@ mod tests {
         let db = setup_mock_db().await;
         let activities_data = vec![
             Activity {
-                id: Some(Thing::from(("activity", "tagged_1"))),
+                id: Some(RecordId::new("activity", "tagged_1")),
                 content: "Activity with tags".to_string(),
                 tags: vec!["rust".to_string(), "web".to_string()],
                 source: None,
                 created_at: "2023-01-01T12:00:00Z".to_string(),
             },
             Activity {
-                id: Some(Thing::from(("activity", "sourced_1"))),
+                id: Some(RecordId::new("activity", "sourced_1")),
                 content: "Activity with source".to_string(),
                 tags: Vec::new(),
                 source: Some("https://github.com".to_string()),
                 created_at: "2023-01-01T12:01:00Z".to_string(),
             },
             Activity {
-                id: Some(Thing::from(("activity", "both_1"))),
+                id: Some(RecordId::new("activity", "both_1")),
                 content: "Activity with both".to_string(),
                 tags: vec!["fullstack".to_string()],
                 source: Some("https://example.com".to_string()),
                 created_at: "2023-01-01T12:02:00Z".to_string(),
             },
             Activity {
-                id: Some(Thing::from(("activity", "neither_1"))),
+                id: Some(RecordId::new("activity", "neither_1")),
                 content: "Activity with neither".to_string(),
                 tags: Vec::new(),
                 source: None,
@@ -1478,7 +1229,10 @@ mod tests {
         assert_eq!(activities.len(), 4);
         for activity in &activities {
             let id = activity.id.as_ref().expect("Activity ID should be present");
-            let id_part = id.id.to_string();
+            let id_part = match &id.key {
+                surrealdb::types::RecordIdKey::String(s) => s.clone(),
+                other => panic!("Unexpected non-string activity id key: {other:?}"),
+            };
             match id_part.as_str() {
                 "tagged_1" => {
                     assert_eq!(activity.tags, vec!["rust".to_string(), "web".to_string()]);
@@ -1518,10 +1272,10 @@ mod tests {
         let db = setup_mock_db().await;
         for i in 0..5 {
             let activity = Activity {
-                id: Some(Thing::from((
+                id: Some(RecordId::new(
                     "activity",
                     format!("large_page_{i}").as_str(),
-                ))),
+                )),
                 content: format!("Activity {i}"),
                 created_at: format!("2023-01-01T12:00:0{i}Z"),
                 ..Default::default()

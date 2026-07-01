@@ -1,12 +1,25 @@
+// NOTE on the `#[allow(dead_code)]` attributes below: this module is compiled
+// independently into *every* integration-test binary in `tests/`. A helper used
+// by, say, `migration_core_tests.rs` is genuinely dead when the harness is
+// linked into `server_integration_tests.rs`, which would otherwise emit a
+// false-positive `dead_code` warning. Each suppression here guards a method that
+// IS exercised by at least one test binary; do not delete the methods.
+
+// Harness helpers return `SurrealResult<_>` (= `Result<_, surrealdb::Error>`),
+// whose Err variant is ~144 bytes and trips clippy::result_large_err under
+// `-D warnings`. These are test setup helpers, not a hot path, so boxing every
+// signature buys nothing; suppress the lint module-wide instead.
+#![allow(clippy::result_large_err)]
+
 use serde::Deserialize;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use surrealdb::engine::local::{Db, Mem};
-use surrealdb::sql::Thing;
-use surrealdb::{Response, Result as SurrealResult, Surreal};
+use surrealdb::types::{RecordId, SurrealValue};
+use surrealdb::{IndexedResults, Result as SurrealResult, Surreal};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, SurrealValue)]
 struct CountResult {
     count: i64,
 }
@@ -114,9 +127,10 @@ impl MigrationTestFramework {
             if let Some(migration) = self.migration_cache.get(key).cloned() {
                 self.execute_migration(&migration).await?;
             } else {
-                return Err(surrealdb::Error::Api(surrealdb::error::Api::Query(
+                return Err(surrealdb::Error::query(
                     format!("Migration not found: {}", key),
-                )));
+                    None,
+                ));
             }
         }
         Ok(())
@@ -390,7 +404,7 @@ impl MigrationTestFramework {
         &self,
         table_record: &str,
         field: &str,
-    ) -> SurrealResult<Option<Thing>> {
+    ) -> SurrealResult<Option<RecordId>> {
         let mut result = self
             .db
             .query(format!("SELECT VALUE {} FROM {}", field, table_record))
@@ -399,7 +413,7 @@ impl MigrationTestFramework {
     }
 
     /// Execute raw query for complex operations
-    pub async fn execute_query(&self, query: &str) -> SurrealResult<Response> {
+    pub async fn execute_query(&self, query: &str) -> SurrealResult<IndexedResults> {
         self.db.query(query).await
     }
 

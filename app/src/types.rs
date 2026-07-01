@@ -6,7 +6,7 @@
 //! serialization/deserialization logic and `Default` implementations.
 
 use serde::{Deserialize, Serialize};
-use surrealdb::sql::Thing;
+use surrealdb::types::{RecordId, SurrealValue};
 
 #[cfg(feature = "ssr")]
 use axum::extract::FromRef;
@@ -30,9 +30,9 @@ impl FromRef<AppState> for LeptosOptions {
 }
 
 /// Represents an author of a blog post.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, SurrealValue)]
 pub struct Author {
-    pub id: Thing,
+    pub id: RecordId,
     pub name: String,
     pub email: String,
     pub bio: Option<String>,
@@ -42,10 +42,9 @@ pub struct Author {
 }
 
 impl Default for Author {
-    /// Provides default values for `Author` fields.
     fn default() -> Self {
         Self {
-            id: Thing::from(("author", "0")),
+            id: RecordId::new("author", "0"),
             name: String::new(),
             email: String::new(),
             bio: None,
@@ -57,9 +56,9 @@ impl Default for Author {
 }
 
 /// Represents a blog post.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, SurrealValue)]
 pub struct Post {
-    pub id: Thing,
+    pub id: RecordId,
     pub title: String,
     pub summary: String,
     pub body: String,
@@ -75,10 +74,9 @@ pub struct Post {
 }
 
 impl Default for Post {
-    /// Provides default values for `Post` fields.
     fn default() -> Self {
         Self {
-            id: Thing::from(("post", "0")),
+            id: RecordId::new("post", "0"),
             title: String::new(),
             summary: String::new(),
             body: String::new(),
@@ -96,9 +94,9 @@ impl Default for Post {
 }
 
 /// Represents a project reference or portfolio item.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, SurrealValue)]
 pub struct Reference {
-    pub id: Thing,
+    pub id: RecordId,
     pub title: String,
     pub description: String,
     pub url: String,
@@ -111,11 +109,11 @@ pub struct Reference {
 }
 
 /// Represents an activity record, typically for an activity stream or event log.
-#[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, SurrealValue)]
 pub struct Activity {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub id: Option<Thing>,
+    pub id: Option<RecordId>,
     pub content: String,
     #[serde(default)]
     pub tags: Vec<String>,
@@ -130,7 +128,7 @@ impl Activity {
     /// Builds the deterministic `activity:post-<slug>` identifier used by newsletter
     /// sync jobs for deduplicating post announcements.
     #[must_use]
-    pub fn deterministic_post_id<S: AsRef<str>>(slug: S) -> Thing {
+    pub fn deterministic_post_id<S: AsRef<str>>(slug: S) -> RecordId {
         let slug = slug.as_ref();
         let trimmed = slug.trim();
         let stripped = trimmed.trim_matches('/');
@@ -146,7 +144,7 @@ impl Activity {
         } else {
             without_mid_post
         };
-        Thing::from(("activity", format!("post-{}", cleaned).as_str()))
+        RecordId::new("activity", format!("post-{}", cleaned).as_str())
     }
 }
 
@@ -320,13 +318,13 @@ mod activity_type_tests {
     #[test]
     fn test_activity_deterministic_id_helper_normalizes_slug() {
         let id = Activity::deterministic_post_id(" /Rust-Launch/ ");
-        assert_eq!(id, Thing::from(("activity", "post-rust-launch")));
+        assert_eq!(id, RecordId::new("activity", "post-rust-launch"));
 
         let id_with_trailing = Activity::deterministic_post_id(" demo-post ");
-        assert_eq!(id_with_trailing, Thing::from(("activity", "post-demo")));
+        assert_eq!(id_with_trailing, RecordId::new("activity", "post-demo"));
 
         let id_with_mid = Activity::deterministic_post_id(" demo-post-beta ");
-        assert_eq!(id_with_mid, Thing::from(("activity", "post-demo-beta")));
+        assert_eq!(id_with_mid, RecordId::new("activity", "post-demo-beta"));
     }
 
     /// Ensures `deterministic_post_id` panics when given an empty or whitespace-only slug.

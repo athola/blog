@@ -6,9 +6,8 @@ use harness::{MigrationTestFramework as TestDatabase, TestDataBuilder};
 #[cfg(test)]
 mod schema_evolution_tests {
     use super::*;
-    use std::str::FromStr;
     use std::time::Instant;
-    use surrealdb::sql::Thing;
+    use surrealdb::types::RecordId;
 
     #[tokio::test]
     async fn test_initial_schema_migration() {
@@ -136,7 +135,7 @@ mod schema_evolution_tests {
             .query_field_thing("post:event_test", "author")
             .await
             .unwrap();
-        assert_eq!(author_ref, Some(Thing::from(("author", "event_test"))));
+        assert_eq!(author_ref, Some(RecordId::new("author", "event_test")));
     }
 
     #[tokio::test]
@@ -250,7 +249,7 @@ mod schema_evolution_tests {
         test_db.insert_basic_test_data().await.unwrap();
 
         // Verify initial data exists by checking if the post exists
-        let initial_post: Option<Thing> =
+        let initial_post: Option<RecordId> =
             test_db.query_field_thing("post:test", "id").await.unwrap();
         assert!(initial_post.is_some(), "Initial post should exist");
 
@@ -482,7 +481,7 @@ mod schema_evolution_tests {
             .await
             .unwrap();
         assert!(post_author.is_some());
-        assert_eq!(post_author, Some(Thing::from(("author", "test"))));
+        assert_eq!(post_author, Some(RecordId::new("author", "test")));
 
         // Test execute_query for custom queries
         let result = test_db
@@ -668,7 +667,10 @@ mod schema_evolution_tests {
 
             let author_ref = test_db.query_field_thing(post_id, "author").await.unwrap();
             assert!(author_ref.is_some());
-            let expected_id = Thing::from_str(expected_author).unwrap();
+            let (expected_table, expected_key) = expected_author
+                .split_once(':')
+                .expect("expected author record id in table:key form");
+            let expected_id = RecordId::new(expected_table, expected_key);
             assert_eq!(author_ref.unwrap(), expected_id);
         }
     }
@@ -843,7 +845,7 @@ mod schema_evolution_tests {
             .query_field_thing("post:test", "author")
             .await
             .unwrap();
-        assert_eq!(post_author, Some(Thing::from(("author", "test"))));
+        assert_eq!(post_author, Some(RecordId::new("author", "test")));
     }
 
     #[tokio::test]

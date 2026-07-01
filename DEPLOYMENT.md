@@ -41,7 +41,11 @@ packages:
   - ufw
   - fail2ban
 runcmd:
-  - curl -sSf https://install.surrealdb.com | sh
+  - mkdir -p /root/.surrealdb
+  - curl -sSL https://github.com/surrealdb/surrealdb/releases/download/v3.1.5/surreal-v3.1.5.linux-amd64.tgz -o /tmp/surreal.tgz
+  - tar -xzf /tmp/surreal.tgz -C /root/.surrealdb
+  - chmod +x /root/.surrealdb/surreal
+  - rm /tmp/surreal.tgz
   - useradd -r -s /bin/false surrealdb
   - mkdir -p /var/lib/surrealdb
   - chown surrealdb:surrealdb /var/lib/surrealdb
@@ -71,13 +75,57 @@ system_info:
 final_message: "Droplet setup is complete. SSH into the Droplet to set the database password and configure the firewall."
 ```
 
+### Upgrading SurrealDB (2.x to 3.x)
+
+The application pins the `surrealdb` client to 3.1.5. A 3.x client cannot talk
+to a 2.x server (both the protocol and the on-disk storage format changed), so
+an existing droplet must be upgraded to 3.x **in the same change window as the
+3.x application deploy**. Upgrading the droplet ahead of the app deploy takes
+the live site down, because the currently deployed 2.x app cannot reach a 3.x
+server.
+
+Because the storage format changed, export on 2.x and re-import on 3.x rather
+than swapping the binary in place. Namespace and database come from the
+`SURREAL_NS` / `SURREAL_DB` App Platform env vars (default `rustblog`). On the
+droplet:
+
+```bash
+source /etc/surrealdb/env
+NS="${SURREAL_NS:-rustblog}"; DB="${SURREAL_DB:-rustblog}"
+
+# 1. Export a portable dump from the running 2.x server, then snapshot the dir.
+/root/.surrealdb/surreal export --conn http://127.0.0.1:8000 \
+  --user "$SURREAL_USER" --pass "$SURREAL_PASS" --ns "$NS" --db "$DB" \
+  /root/backup-2x.surql
+sudo systemctl stop surrealdb
+sudo cp -a /var/lib/surrealdb /var/lib/surrealdb.bak."$(date +%Y%m%d)"
+
+# 2. Install the pinned 3.1.5 binary.
+curl -sSL https://github.com/surrealdb/surrealdb/releases/download/v3.1.5/surreal-v3.1.5.linux-amd64.tgz -o /tmp/surreal.tgz
+sudo tar -xzf /tmp/surreal.tgz -C /root/.surrealdb && sudo chmod +x /root/.surrealdb/surreal
+/root/.surrealdb/surreal version   # expect 3.1.5
+
+# 3. Start on a fresh data dir and import the dump.
+sudo mv /var/lib/surrealdb/data.db /var/lib/surrealdb/data.db.2x
+sudo systemctl start surrealdb
+/root/.surrealdb/surreal import --conn http://127.0.0.1:8000 \
+  --user "$SURREAL_USER" --pass "$SURREAL_PASS" --ns "$NS" --db "$DB" \
+  /root/backup-2x.surql
+
+# 4. Verify record counts, then deploy the 3.x application image.
+```
+
+Roll back by stopping the service, restoring `data.db.2x`, and reinstalling the
+2.6.3 binary if the import or the app smoke test fails. Confirm the exact
+`export` / `import` flags with `surreal export --help` for each binary version.
+
 ### Post-Provisioning Steps
 
 After Droplet creation, SSH in to complete setup.
 
 **1. Set the Database Password**
 
-Generate a secure password and store it in a restricted environment file. Never put credentials directly in `ExecStart` — they appear in `ps aux` output.
+Generate a secure password and store it in a restricted environment file. Never put credentials directly in `ExecStart`, since they appear in `ps aux` output.
 
 ```bash
 # Generate a password
@@ -102,7 +150,7 @@ ps aux | grep surreal | grep -v grep
 
 **2. Configure the Firewall**
 
-Caddy (set up in Part 1b) runs on the same droplet and reaches SurrealDB at `127.0.0.1:8000`, so port 8000 stays bound to loopback and is never exposed on any external interface. Public ingress is limited to SSH for admins and Caddy's ACME + HTTPS listener.
+Caddy (set up in Part 1b) runs on the same droplet and reaches SurrealDB at `127.0.0.1:8000`, so port 8000 stays bound to loopback and is never exposed on any external interface. Public ingress is limited to SSH for admins and Caddy's ACME and HTTPS listener.
 
 > **Lockout safeguard**: before running `ufw enable`, open a second SSH session in a separate terminal and confirm it stays connected. If you typo `YOUR_ADMIN_IP`, the existing session keeps you in until you fix the rule; without that, recovery requires the DigitalOcean web console.
 
@@ -129,7 +177,7 @@ The database setup is now complete.
 
 ## Part 1 (Alternative): Manual Database Setup
 
-If you prefer manual Droplet configuration over the cloud-init script, create a Droplet with the specifications above (without user data) and run these steps. The manual path replaces only the **service install + systemd unit**; you still need Part 1, Post-Provisioning Steps 1-2 (password + firewall) and all of Part 1b (Caddy + TLS) before any client can reach the database.
+If you prefer manual Droplet configuration over the cloud-init script, create a Droplet with the specifications above (without user data) and run these steps. The manual path replaces only the **service install and systemd unit**. You still need Part 1, Post-Provisioning Steps 1-2 (password and firewall) and all of Part 1b (Caddy and TLS) before any client can reach the database.
 
 **1. Install SurrealDB**
 
@@ -158,7 +206,7 @@ sudo systemctl enable --now surrealdb
 
 **4. Finish provisioning**
 
-Before continuing to Part 1b, run **Post-Provisioning Steps 1-2** (password + firewall) from the cloud-init flow above. Without them, SurrealDB stays reachable on `0.0.0.0:8000` with no auth password set and no firewall.
+Before continuing to Part 1b, run **Post-Provisioning Steps 1-2** (password and firewall) from the cloud-init flow above. Without them, SurrealDB stays reachable on `0.0.0.0:8000` with no auth password set and no firewall.
 
 ## Part 1b: TLS Reverse Proxy (Caddy)
 
@@ -187,7 +235,7 @@ curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
 sudo apt-get update && sudo apt-get install -y caddy
 ```
 
-The HTTP-01 ACME challenge requires port 80 reachable from the public internet — that's the rule added in **Part 1, Post-Provisioning Step 2**. Without it, Caddy will fail to issue the certificate on first start.
+The HTTP-01 ACME challenge requires port 80 reachable from the public internet. That's the rule added in **Part 1, Post-Provisioning Step 2**. Without it, Caddy will fail to issue the certificate on first start.
 
 ### 3. Write `/etc/caddy/Caddyfile`
 
@@ -211,7 +259,7 @@ sudo journalctl -u caddy -n 50 | grep -i 'certificate obtained'
 curl -v https://db.YOUR_DOMAIN:8443/health   # expect HTTP/2 200
 ```
 
-Let's Encrypt issues the certificate via HTTP-01 on port 80 (opened in step 2 of Part 1). Renewal happens automatically; if port 80 is ever blocked or DNS changes, the cert will silently expire after ~30 days, so revisit this verification step whenever droplet networking changes.
+Let's Encrypt issues the certificate via HTTP-01 on port 80 (opened in step 2 of Part 1). Renewal happens automatically. If port 80 is ever blocked or DNS changes, the cert will silently expire after ~30 days, so revisit this verification step whenever droplet networking changes.
 
 ## Part 2: Application Deployment
 
@@ -249,11 +297,11 @@ SURREAL_ROOT_PASS=YOUR_SECURE_PASSWORD
 ```
 
 **Notes**:
-- `SURREAL_ADDRESS` points at the Caddy reverse proxy set up in Part 1b. TLS is terminated on the droplet; SurrealDB auth (`SURREAL_ROOT_USER`/`SURREAL_ROOT_PASS`) gates access.
+- `SURREAL_ADDRESS` points at the Caddy reverse proxy set up in Part 1b. TLS is terminated on the droplet. SurrealDB auth (`SURREAL_ROOT_USER`/`SURREAL_ROOT_PASS`) gates access.
 - Mark `SURREAL_ROOT_PASS`, `SURREAL_NS`, `SURREAL_DB`, and `SURREAL_ROOT_USER` as encrypted (`type: SECRET`) in the App spec.
 - Prior versions of this guide used an SSH tunnel or a private-IP direct connection; both have been retired. The tunnel scripts (`scripts/tunnel.sh`) remain in the repo and are still wired into the Dockerfile entrypoint, but only as a no-op shim:
   - **Leave `TUNNEL_HOST` unset** in App Platform. With `TUNNEL_HOST` empty, `tunnel.sh` logs `No TUNNEL_HOST set, starting app without tunnel` and `exec`s `/app/blog` directly.
-  - Verify on first deploy: `doctl apps logs <APP_ID> --type=run | grep 'No TUNNEL_HOST set'`. If you see autossh log lines instead, the env var is being inherited from somewhere — clear it before re-deploying, since with `TUNNEL_HOST` set but tunnel keys missing or autossh failing, `tunnel.sh` currently falls through to `exec /app/blog` anyway and the deploy will look healthy while routing is wrong.
+  - Verify on first deploy: `doctl apps logs <APP_ID> --type=run | grep 'No TUNNEL_HOST set'`. If you see autossh log lines instead, the env var is being inherited from somewhere. Clear it before re-deploying, since with `TUNNEL_HOST` set but tunnel keys missing or autossh failing, `tunnel.sh` currently falls through to `exec /app/blog` anyway and the deploy will look healthy while routing is wrong.
 
 ### 4. Deploy
 
@@ -418,7 +466,7 @@ curl http://169.254.169.254/metadata/v1/id
 
 | Service                      | Monthly Cost |
 | ---------------------------- | ------------ |
-| App Platform (Professional)  | $12.00       |
+| App Platform (Basic)         | $12.00       |
 | SurrealDB Droplet            | $12.00       |
 | Droplet Backups              | $2.40        |
 | **Total**                    | **$26.40**   |
