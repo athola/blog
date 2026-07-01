@@ -30,6 +30,7 @@ use std::time::Duration;
 use surrealdb::Surreal;
 use surrealdb::engine::remote::http::{Client, Http, Https};
 use surrealdb::opt::auth::{Database, Namespace, Root};
+use surrealdb::types::SurrealValue;
 use tokio_retry::{Retry, strategy::ExponentialBackoff};
 use tracing::{error, warn};
 
@@ -137,9 +138,9 @@ pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
                 "SURREAL_ROOT_USER and SURREAL_ROOT_PASS are both unset; SURREAL_ALLOW_ANONYMOUS is set, proceeding without authentication"
             );
         } else if is_production {
-            return Err(surrealdb::Error::Api(surrealdb::error::Api::InvalidParams(
-                "SURREAL_ROOT_USER and SURREAL_ROOT_PASS are required in production. Set SURREAL_ALLOW_ANONYMOUS=true to override.".into(),
-            )));
+            return Err(surrealdb::Error::internal(
+                "SURREAL_ROOT_USER and SURREAL_ROOT_PASS are required in production. Set SURREAL_ALLOW_ANONYMOUS=true to override.".to_string(),
+            ));
         } else {
             warn!(
                 "SURREAL_ROOT_USER and SURREAL_ROOT_PASS are both unset; using unauthenticated access (set credentials for production)"
@@ -213,7 +214,13 @@ pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
 
             // Attempt root-level authentication first (recommended for simple setups).
             if let Some((ref username, ref password)) = root_credentials {
-                match db.signin(Root { username, password }).await {
+                match db
+                    .signin(Root {
+                        username: username.clone(),
+                        password: password.clone(),
+                    })
+                    .await
+                {
                     Ok(_) => return Ok(()),
                     Err(e) => {
                         tracing::debug!("Root authentication attempt failed: {:?}", e);
@@ -226,9 +233,9 @@ pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
             if let Some((ref username, ref password)) = namespace_credentials {
                 match db
                     .signin(Namespace {
-                        namespace: &ns_clone,
-                        username,
-                        password,
+                        namespace: ns_clone.clone(),
+                        username: username.clone(),
+                        password: password.clone(),
                     })
                     .await
                 {
@@ -247,10 +254,10 @@ pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
             if let Some((ref username, ref password)) = database_credentials {
                 match db
                     .signin(Database {
-                        namespace: &ns_clone,
-                        database: &db_name_clone,
-                        username,
-                        password,
+                        namespace: ns_clone.clone(),
+                        database: db_name_clone.clone(),
+                        username: username.clone(),
+                        password: password.clone(),
                     })
                     .await
                 {
@@ -269,9 +276,10 @@ pub async fn connect() -> Result<Surreal<Client>, surrealdb::Error> {
                 Err(err)
             } else {
                 // This case should ideally not be reached if at least one credential set is provided.
-                Err(surrealdb::Error::Api(surrealdb::error::Api::Query(
+                Err(surrealdb::Error::query(
                     "No SurrealDB authentication methods succeeded".to_string(),
-                )))
+                    None,
+                ))
             }
         }
     })
@@ -475,7 +483,7 @@ fn escape_xml(input: &str) -> String {
 /// response if the database query fails.
 pub async fn sitemap_handler(State(state): State<AppState>) -> Response<String> {
     /// Internal struct for deserializing post data relevant to the sitemap.
-    #[derive(Serialize, Deserialize)]
+    #[derive(Serialize, Deserialize, SurrealValue)]
     struct Post {
         slug: Option<String>,
         created_at: String,
@@ -742,7 +750,7 @@ pub async fn generate_atom(db: &Surreal<Client>) -> Result<String, ServerFnError
 /// Handles GET /random: picks a random published post and 302 redirects
 /// to its detail page (spec §4.9, "Stumble" mechanic).
 pub async fn random_handler(State(state): State<AppState>) -> Response<String> {
-    #[derive(Deserialize)]
+    #[derive(Deserialize, SurrealValue)]
     struct SlugOnly {
         slug: Option<String>,
     }
@@ -821,7 +829,7 @@ pub async fn raw_markdown_handler(
         );
     }
 
-    #[derive(Deserialize)]
+    #[derive(Deserialize, SurrealValue)]
     struct BodyOnly {
         body: String,
     }

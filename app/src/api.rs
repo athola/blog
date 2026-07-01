@@ -31,8 +31,6 @@ use shared_utils::{
 #[cfg(feature = "ssr")]
 use crate::types::Activity;
 use crate::types::{Post, Reference};
-#[cfg(feature = "ssr")]
-use surrealdb::RecordId;
 
 #[cfg(any(feature = "ssr", test))]
 const ACTIVITIES_PER_PAGE: usize = 10;
@@ -459,10 +457,7 @@ async fn insert_activity<C: surrealdb::Connection>(
         let mut content_activity = activity.clone();
         content_activity.id = None;
 
-        let table: &str = &id.tb;
-        let id_str = id.id.to_string();
-        let record_id = RecordId::from((table, id_str.as_str()));
-        db.create::<Option<Activity>>(record_id)
+        db.create::<Option<Activity>>(id)
             .content(content_activity)
             .await
             .map_err(Box::new)?
@@ -572,7 +567,7 @@ mod tests {
     #[cfg(feature = "ssr")]
     use surrealdb::engine::any::Any;
     #[cfg(feature = "ssr")]
-    use surrealdb::sql::Thing;
+    use surrealdb::types::RecordId;
     #[cfg(feature = "ssr")]
     use tokio_test::block_on;
 
@@ -747,6 +742,13 @@ mod tests {
         let db: Surreal<Any> = Surreal::init();
         db.connect("memory").await.unwrap();
         db.use_ns("test").use_db("test").await.unwrap();
+        // surrealdb 3.x errors on SELECT from a table that was never defined,
+        // whereas 2.x returned an empty set. Production defines `activity` via
+        // migrations/0004_add_activity_table.surql, so mirror that here so the
+        // mock reflects the real schema (SCHEMALESS keeps the fixture light).
+        db.query("DEFINE TABLE IF NOT EXISTS activity SCHEMALESS")
+            .await
+            .unwrap();
         db
     }
 
@@ -784,7 +786,7 @@ mod tests {
     async fn test_create_activity_mock_db() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Some(Thing::from(("activity", "test_id"))),
+            id: Some(RecordId::new("activity", "test_id")),
             content: "This is a test activity".to_string(),
             created_at: "2023-01-01T12:00:00Z".to_string(),
             ..Default::default()
@@ -804,7 +806,7 @@ mod tests {
     async fn test_create_activity_with_tags_mock_db() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Some(Thing::from(("activity", "tagged_activity"))),
+            id: Some(RecordId::new("activity", "tagged_activity")),
             content: "Activity with tags".to_string(),
             tags: vec!["rust".to_string(), "testing".to_string(), "tdd".to_string()],
             created_at: "2023-01-01T12:00:00Z".to_string(),
@@ -826,7 +828,7 @@ mod tests {
     async fn test_create_activity_with_source_mock_db() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Some(Thing::from(("activity", "sourced_activity"))),
+            id: Some(RecordId::new("activity", "sourced_activity")),
             content: "Activity with source".to_string(),
             source: Some("https://github.com/rust-lang/rust".to_string()),
             created_at: "2023-01-01T12:00:00Z".to_string(),
@@ -851,7 +853,7 @@ mod tests {
     async fn test_create_activity_empty_content_mock_db() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Some(Thing::from(("activity", "empty_content"))),
+            id: Some(RecordId::new("activity", "empty_content")),
             content: "".to_string(),
             created_at: "2023-01-01T12:00:00Z".to_string(),
             ..Default::default()
@@ -871,7 +873,7 @@ mod tests {
     async fn test_create_activity_long_content_mock_db() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Some(Thing::from(("activity", "long_content"))),
+            id: Some(RecordId::new("activity", "long_content")),
             content: "a".repeat(10000),
             created_at: "2023-01-01T12:00:00Z".to_string(),
             ..Default::default()
@@ -893,7 +895,7 @@ mod tests {
         let db = setup_mock_db().await;
         let special_content = "Special chars: áéíóú ñ ¿¡ 🚀 \n\t\r\"'\\";
         let activity = Activity {
-            id: Some(Thing::from(("activity", "special_chars"))),
+            id: Some(RecordId::new("activity", "special_chars")),
             content: special_content.to_string(),
             tags: vec!["español".to_string(), "unicode".to_string()],
             created_at: "2023-01-01T12:00:00Z".to_string(),
@@ -918,7 +920,7 @@ mod tests {
     async fn test_create_activity_unicode_tags_mock_db() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Some(Thing::from(("activity", "unicode_tags"))),
+            id: Some(RecordId::new("activity", "unicode_tags")),
             content: "Unicode tags test".to_string(),
             tags: vec![
                 "中文".to_string(),
@@ -950,7 +952,7 @@ mod tests {
     async fn test_create_activity_empty_tags_mock_db() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Some(Thing::from(("activity", "empty_tags"))),
+            id: Some(RecordId::new("activity", "empty_tags")),
             content: "Empty tags test".to_string(),
             tags: Vec::new(),
             created_at: "2023-01-01T12:00:00Z".to_string(),
@@ -971,7 +973,7 @@ mod tests {
     async fn test_create_activity_invalid_source_url_mock_db() {
         let db = setup_mock_db().await;
         let activity = Activity {
-            id: Some(Thing::from(("activity", "invalid_url"))),
+            id: Some(RecordId::new("activity", "invalid_url")),
             content: "Invalid URL test".to_string(),
             source: Some("not-a-valid-url".to_string()),
             created_at: "2023-01-01T12:00:00Z".to_string(),
@@ -993,20 +995,20 @@ mod tests {
         let db = setup_mock_db().await;
         let activities = vec![
             Activity {
-                id: Some(Thing::from(("activity", "multi_1"))),
+                id: Some(RecordId::new("activity", "multi_1")),
                 content: "First activity".to_string(),
                 created_at: "2023-01-01T12:00:00Z".to_string(),
                 ..Default::default()
             },
             Activity {
-                id: Some(Thing::from(("activity", "multi_2"))),
+                id: Some(RecordId::new("activity", "multi_2")),
                 content: "Second activity".to_string(),
                 tags: vec!["test".to_string()],
                 created_at: "2023-01-01T12:01:00Z".to_string(),
                 ..Default::default()
             },
             Activity {
-                id: Some(Thing::from(("activity", "multi_3"))),
+                id: Some(RecordId::new("activity", "multi_3")),
                 content: "Third activity".to_string(),
                 source: Some("https://example.com".to_string()),
                 created_at: "2023-01-01T12:02:00Z".to_string(),
@@ -1034,7 +1036,7 @@ mod tests {
         let db = setup_mock_db().await;
         for i in 0..5 {
             let activity = Activity {
-                id: Some(Thing::from(("activity", format!("test_id_{i}").as_str()))),
+                id: Some(RecordId::new("activity", format!("test_id_{i}").as_str())),
                 content: format!("Activity {i}"),
                 created_at: format!("2023-01-01T12:00:0{i}Z"),
                 ..Default::default()
@@ -1053,7 +1055,7 @@ mod tests {
         let db = setup_mock_db().await;
         for i in 0..25 {
             let activity = Activity {
-                id: Some(Thing::from(("activity", format!("page_test_{i}").as_str()))),
+                id: Some(RecordId::new("activity", format!("page_test_{i}").as_str())),
                 content: format!("Page test activity {i}"),
                 created_at: format!("2023-01-01T12:{i:02}:00Z"),
                 ..Default::default()
@@ -1089,10 +1091,10 @@ mod tests {
 
         for (timestamp, content) in activities_data {
             let activity = Activity {
-                id: Some(Thing::from((
+                id: Some(RecordId::new(
                     "activity",
                     content.replace(" ", "_").to_lowercase().as_str(),
-                ))),
+                )),
                 content: content.to_string(),
                 created_at: timestamp.to_string(),
                 ..Default::default()
@@ -1120,7 +1122,7 @@ mod tests {
 
         for (id, content) in activities_data {
             let activity = Activity {
-                id: Some(Thing::from(("activity", id))),
+                id: Some(RecordId::new("activity", id)),
                 content: content.to_string(),
                 created_at: same_timestamp.to_string(),
                 ..Default::default()
@@ -1163,7 +1165,7 @@ mod tests {
 
         for (id, content) in activities_data {
             let activity = Activity {
-                id: Some(Thing::from(("activity", id))),
+                id: Some(RecordId::new("activity", id)),
                 content,
                 created_at: "2023-01-01T12:00:00Z".to_string(),
                 ..Default::default()
@@ -1190,28 +1192,28 @@ mod tests {
         let db = setup_mock_db().await;
         let activities_data = vec![
             Activity {
-                id: Some(Thing::from(("activity", "tagged_1"))),
+                id: Some(RecordId::new("activity", "tagged_1")),
                 content: "Activity with tags".to_string(),
                 tags: vec!["rust".to_string(), "web".to_string()],
                 source: None,
                 created_at: "2023-01-01T12:00:00Z".to_string(),
             },
             Activity {
-                id: Some(Thing::from(("activity", "sourced_1"))),
+                id: Some(RecordId::new("activity", "sourced_1")),
                 content: "Activity with source".to_string(),
                 tags: Vec::new(),
                 source: Some("https://github.com".to_string()),
                 created_at: "2023-01-01T12:01:00Z".to_string(),
             },
             Activity {
-                id: Some(Thing::from(("activity", "both_1"))),
+                id: Some(RecordId::new("activity", "both_1")),
                 content: "Activity with both".to_string(),
                 tags: vec!["fullstack".to_string()],
                 source: Some("https://example.com".to_string()),
                 created_at: "2023-01-01T12:02:00Z".to_string(),
             },
             Activity {
-                id: Some(Thing::from(("activity", "neither_1"))),
+                id: Some(RecordId::new("activity", "neither_1")),
                 content: "Activity with neither".to_string(),
                 tags: Vec::new(),
                 source: None,
@@ -1227,7 +1229,10 @@ mod tests {
         assert_eq!(activities.len(), 4);
         for activity in &activities {
             let id = activity.id.as_ref().expect("Activity ID should be present");
-            let id_part = id.id.to_string();
+            let id_part = match &id.key {
+                surrealdb::types::RecordIdKey::String(s) => s.clone(),
+                other => panic!("Unexpected non-string activity id key: {other:?}"),
+            };
             match id_part.as_str() {
                 "tagged_1" => {
                     assert_eq!(activity.tags, vec!["rust".to_string(), "web".to_string()]);
@@ -1267,10 +1272,10 @@ mod tests {
         let db = setup_mock_db().await;
         for i in 0..5 {
             let activity = Activity {
-                id: Some(Thing::from((
+                id: Some(RecordId::new(
                     "activity",
                     format!("large_page_{i}").as_str(),
-                ))),
+                )),
                 content: format!("Activity {i}"),
                 created_at: format!("2023-01-01T12:00:0{i}Z"),
                 ..Default::default()

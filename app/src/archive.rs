@@ -153,11 +153,11 @@ fn group_by_year(posts: Vec<Post>) -> Vec<(String, Vec<Post>)> {
 mod tests {
     use super::*;
     use crate::types::{Author, Post};
-    use surrealdb::sql::Thing;
+    use surrealdb::types::RecordId;
 
     fn mk_post(slug: &str, year: i32, month: u8, day: u8) -> Post {
         Post {
-            id: Thing::from(("post", slug)),
+            id: RecordId::new("post", slug),
             slug: Some(slug.to_string()),
             title: format!("Post {}", slug),
             summary: "summary".into(),

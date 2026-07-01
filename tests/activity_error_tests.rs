@@ -7,19 +7,21 @@ use activity_test_api::{
 use app::types::Activity;
 use leptos::prelude::ServerFnError;
 use surrealdb::engine::any;
-use surrealdb::sql::Thing;
+use surrealdb::types::RecordId;
 
-fn make_thing<T, K>((table, key): (T, K)) -> Thing
+fn make_thing<T, K>((table, key): (T, K)) -> RecordId
 where
     T: Into<String>,
     K: Into<String>,
 {
-    Thing::from((table.into(), key.into()))
+    let table: String = table.into();
+    let key: String = key.into();
+    RecordId::new(table, key)
 }
 
 fn mock_db_error(message: &str) -> surrealdb::Error {
     // In 2.4.0, use Api error for remote database errors
-    surrealdb::Error::Api(surrealdb::error::Api::Query(message.to_string()))
+    surrealdb::Error::query(message.to_string(), None)
 }
 
 #[cfg(test)]
@@ -40,7 +42,7 @@ mod activity_error_tests {
     async fn test_create_activity_with_invalid_id() {
         let db = any::connect("mem://").await.unwrap();
         db.use_ns("test").use_db("test").await.unwrap();
-        // Test with invalid Thing structure
+        // Test with invalid RecordId structure
         let activity = Activity {
             id: Some(make_thing(("invalid_table", "test_id"))), // Wrong table name
             content: "Test invalid ID".to_string(),
@@ -296,8 +298,8 @@ mod activity_error_tests {
         let db = any::connect("mem://").await.unwrap();
         let _ = db
             .signin(surrealdb::opt::auth::Root {
-                username: "root",
-                password: "root",
+                username: "root".to_string(),
+                password: "root".to_string(),
             })
             .await;
         db.use_ns("test").await.unwrap();

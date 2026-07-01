@@ -16,10 +16,10 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use surrealdb::engine::local::{Db, Mem};
-use surrealdb::sql::Thing;
-use surrealdb::{Response, Result as SurrealResult, Surreal};
+use surrealdb::types::{RecordId, SurrealValue};
+use surrealdb::{IndexedResults, Result as SurrealResult, Surreal};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, SurrealValue)]
 struct CountResult {
     count: i64,
 }
@@ -127,9 +127,10 @@ impl MigrationTestFramework {
             if let Some(migration) = self.migration_cache.get(key).cloned() {
                 self.execute_migration(&migration).await?;
             } else {
-                return Err(surrealdb::Error::Api(surrealdb::error::Api::Query(
+                return Err(surrealdb::Error::query(
                     format!("Migration not found: {}", key),
-                )));
+                    None,
+                ));
             }
         }
         Ok(())
@@ -403,7 +404,7 @@ impl MigrationTestFramework {
         &self,
         table_record: &str,
         field: &str,
-    ) -> SurrealResult<Option<Thing>> {
+    ) -> SurrealResult<Option<RecordId>> {
         let mut result = self
             .db
             .query(format!("SELECT VALUE {} FROM {}", field, table_record))
@@ -412,7 +413,7 @@ impl MigrationTestFramework {
     }
 
     /// Execute raw query for complex operations
-    pub async fn execute_query(&self, query: &str) -> SurrealResult<Response> {
+    pub async fn execute_query(&self, query: &str) -> SurrealResult<IndexedResults> {
         self.db.query(query).await
     }
 

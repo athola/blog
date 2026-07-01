@@ -12,7 +12,7 @@ use std::sync::LazyLock;
 use std::time::Duration;
 use surrealdb::engine::any::Any;
 use surrealdb::opt::auth::Root;
-use surrealdb::sql::{Id, Thing};
+use surrealdb::types::{RecordId, RecordIdKey};
 use surrealdb::Surreal;
 use tokio::sync::Mutex;
 use tokio_retry::{strategy::ExponentialBackoff, Retry};
@@ -77,13 +77,13 @@ async fn create_or_insert_activity(
         match db.query(query).await {
             Ok(mut response) => response
                 .take(2)
-                .map_err(|e| surrealdb::Error::Api(surrealdb::error::Api::Query(e.to_string()))),
+                .map_err(|e| surrealdb::Error::query(e.to_string(), None)),
             Err(e) => {
                 let msg = e.to_string();
                 if msg.contains("Connection uninitialised") {
                     // Generate a deterministic-ish key for fallback storage
                     let key = format!("fallback-{}", FALLBACK_ACTIVITIES.lock().await.len());
-                    let id = Thing::from(("activity", key.as_str()));
+                    let id = RecordId::new("activity", key.as_str());
                     let stored = store_fallback(&id, activity).await;
                     Ok(Some(stored))
                 } else {
@@ -96,7 +96,7 @@ async fn create_or_insert_activity(
 
 async fn create_activity_with_fixed_id(
     db: &Surreal<TestDb>,
-    id: &Thing,
+    id: &RecordId,
     mut activity: Activity,
 ) -> Result<Activity, surrealdb::Error> {
     activity.id = None;
@@ -125,23 +125,23 @@ async fn create_activity_with_fixed_id(
             if msg.contains("Connection uninitialised") {
                 Ok(store_fallback(id, activity).await)
             } else {
-                Err(surrealdb::Error::Api(surrealdb::error::Api::Query(msg)))
+                Err(surrealdb::Error::query(msg, None))
             }
         }
     }
 }
 
-fn build_create_query(id: &Thing, activity: &Activity) -> String {
-    let table = id.tb.as_str();
-    let key = record_key_literal(&id.id);
+fn build_create_query(id: &RecordId, activity: &Activity) -> String {
+    let table = id.table.as_str();
+    let key = record_key_literal(&id.key);
     let payload = serde_json::to_string(activity).unwrap();
     format!("USE NS test; USE DB test; CREATE {table}:{key} CONTENT {payload} RETURN *")
 }
 
-fn record_key_literal(key: &Id) -> String {
+fn record_key_literal(key: &RecordIdKey) -> String {
     match key {
-        Id::String(value) => value.as_str().to_string(),
-        Id::Number(value) => value.to_string(),
+        RecordIdKey::String(value) => value.as_str().to_string(),
+        RecordIdKey::Number(value) => value.to_string(),
         other => panic!("Unsupported record id key variant in tests: {:?}", other),
     }
 }
@@ -172,8 +172,8 @@ pub async fn select_activities(
 async fn ensure_test_scope(db: &Surreal<TestDb>) -> Result<(), ServerFnError> {
     let _ = db
         .signin(Root {
-            username: "root",
-            password: "root",
+            username: "root".to_string(),
+            password: "root".to_string(),
         })
         .await;
     retry_db_operation(|| async { db.query("USE NS test; USE DB test;").await })
@@ -181,8 +181,8 @@ async fn ensure_test_scope(db: &Surreal<TestDb>) -> Result<(), ServerFnError> {
         .map(|_| ())
 }
 
-async fn store_fallback(id: &Thing, mut activity: Activity) -> Activity {
-    let key = record_key_literal(&id.id);
+async fn store_fallback(id: &RecordId, mut activity: Activity) -> Activity {
+    let key = record_key_literal(&id.key);
     activity.id = Some(id.clone());
     let mut map = FALLBACK_ACTIVITIES.lock().await;
     map.insert(key, activity.clone());
