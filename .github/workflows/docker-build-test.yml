@@ -155,19 +155,28 @@ jobs:
 
       - name: Start SurrealDB for testing
         run: |
-          # Start SurrealDB with file storage for testing
+          # Start SurrealDB with an in-memory store for testing. The `file://`
+          # scheme was removed in SurrealDB 3.x (use `rocksdb://`/`surrealkv://`),
+          # and this throwaway test DB needs no persistence, so `memory` is both
+          # correct and avoids volume permission issues under the non-root image.
           docker run -d --name surrealdb-test \
             -p 8000:8000 \
-            -v /tmp:/data \
             surrealdb/surrealdb:v3.1.5 \
-            start --log info --user root --pass root file:///data/test.db --bind 0.0.0.0:8000
+            start --log info --user root --pass root --bind 0.0.0.0:8000 memory
 
-          # Wait for SurrealDB to be ready
+          # Wait for SurrealDB to be ready. Fail loudly if it never comes up so
+          # a startup regression is reported here instead of surfacing later as a
+          # confusing "cannot link to a non running container" error.
           for i in {1..30}; do
             if curl -s http://localhost:8000/health >/dev/null 2>&1; then
               echo "SurrealDB is ready"
               sleep 5  # Give extra time for full initialization
               break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "SurrealDB failed to become ready within 30s"
+              docker logs surrealdb-test || true
+              exit 1
             fi
             sleep 1
           done

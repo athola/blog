@@ -99,50 +99,31 @@ async fn create_activity_with_fixed_id(
     id: &RecordId,
     mut activity: Activity,
 ) -> Result<Activity, surrealdb::Error> {
+    // The id is supplied to `create()` directly, so drop it from the content to
+    // avoid a duplicate-id field in the payload.
     activity.id = None;
 
     db.use_ns("test").use_db("test").await?;
 
-    let query = build_create_query(id, &activity);
-    let mut response = match db.query(query).await {
-        Ok(res) => res,
-        Err(e) => {
-            let msg = e.to_string();
-            if msg.contains("Connection uninitialised") {
-                let fallback = store_fallback(id, activity).await;
-                return Ok(fallback);
-            }
-            eprintln!("create_activity_with_fixed_id query error: {:?}", e);
-            return Err(e);
-        }
-    };
-
-    match response.take(2) {
+    // Mirror the production `insert_activity` path (app/src/api.rs): the typed
+    // builder API deserializes the created record for us. The previous raw-query
+    // approach (`CREATE ... RETURN *` + `response.take(2)`) broke under
+    // surrealdb 3.x because the CREATE succeeded server-side while `take(2)`
+    // errored, so the retry re-ran the CREATE and hit "already exists".
+    match db
+        .create::<Option<Activity>>(id.clone())
+        .content(activity.clone())
+        .await
+    {
         Ok(Some(record)) => Ok(record),
         Ok(None) => Ok(store_fallback(id, activity).await),
         Err(e) => {
-            let msg = e.to_string();
-            if msg.contains("Connection uninitialised") {
+            if e.to_string().contains("Connection uninitialised") {
                 Ok(store_fallback(id, activity).await)
             } else {
-                Err(surrealdb::Error::query(msg, None))
+                Err(e)
             }
         }
-    }
-}
-
-fn build_create_query(id: &RecordId, activity: &Activity) -> String {
-    let table = id.table.as_str();
-    let key = record_key_literal(&id.key);
-    let payload = serde_json::to_string(activity).unwrap();
-    format!("USE NS test; USE DB test; CREATE {table}:{key} CONTENT {payload} RETURN *")
-}
-
-fn record_key_literal(key: &RecordIdKey) -> String {
-    match key {
-        RecordIdKey::String(value) => value.as_str().to_string(),
-        RecordIdKey::Number(value) => value.to_string(),
-        other => panic!("Unsupported record id key variant in tests: {:?}", other),
     }
 }
 
@@ -179,6 +160,14 @@ async fn ensure_test_scope(db: &Surreal<TestDb>) -> Result<(), ServerFnError> {
     retry_db_operation(|| async { db.query("USE NS test; USE DB test;").await })
         .await
         .map(|_| ())
+}
+
+fn record_key_literal(key: &RecordIdKey) -> String {
+    match key {
+        RecordIdKey::String(value) => value.as_str().to_string(),
+        RecordIdKey::Number(value) => value.to_string(),
+        other => panic!("Unsupported record id key variant in tests: {:?}", other),
+    }
 }
 
 async fn store_fallback(id: &RecordId, mut activity: Activity) -> Activity {
